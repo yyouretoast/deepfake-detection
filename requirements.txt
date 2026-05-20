@@ -1,6 +1,7 @@
 streamlit
 opencv-python-headless
 retina-face
-tensorflow
+tensorflow==2.15.0
+tf-keras
 numpy
 huggingface_hub
