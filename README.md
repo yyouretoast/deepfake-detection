@@ -133,8 +133,4 @@ deepfake-detection/
 
 ---
 
-## 👤 Author & License
-
-Developed by **Yassin Mohamed**. Licensed under the [MIT License](LICENSE).
-- **LinkedIn**: [Yassin Mohamed](https://www.linkedin.com/in/yassinyasser/)
-- **Email**: [yyasso2005@gmail.com](mailto:yyasso2005@gmail.com)
+Licensed under the [MIT License](LICENSE).
