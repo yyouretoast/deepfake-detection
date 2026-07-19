@@ -1,7 +1,9 @@
+from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 import torch
 from PIL import Image
+
 try:
     from facenet_pytorch import MTCNN
     HAS_FACENET = True
@@ -11,15 +13,17 @@ except ImportError:
 class DynamicFaceCropper:
     """
     Face extraction engine using facenet-pytorch (MTCNN) with relative dynamic padding.
-    Supports single-image cropping and ultra-fast GPU batch cropping.
+    Supports single-image cropping and GPU batch cropping.
     """
-    def __init__(self, scale_factor=1.30, target_size=224, device=None):
+    def __init__(
+        self,
+        scale_factor: float = 1.30,
+        target_size: int = 224,
+        device: Optional[torch.device] = None
+    ) -> None:
         self.scale_factor = scale_factor
         self.target_size = target_size
-        if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = device
+        self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
             
         if HAS_FACENET:
             self.mtcnn = MTCNN(
@@ -31,12 +35,12 @@ class DynamicFaceCropper:
         else:
             self.mtcnn = None
 
-    def crop_face(self, image_rgb: np.ndarray) -> np.ndarray:
-        """
-        Detects largest face in single RGB image, applies relative padding (scale_factor),
-        crops and resizes to target_size x target_size. Returns RGB uint8 array.
-        """
-        h, w, c = image_rgb.shape
+    def crop_face(self, image_rgb: np.ndarray) -> Optional[np.ndarray]:
+        """Detects largest face in single RGB image, applies relative padding, crops and resizes."""
+        if image_rgb is None or image_rgb.size == 0:
+            return None
+
+        h, w, _ = image_rgb.shape
         if h == 0 or w == 0:
             return None
 
@@ -53,14 +57,12 @@ class DynamicFaceCropper:
 
         return self._crop_from_box(image_rgb, boxes)
 
-    def crop_faces_batched(self, images_rgb_list: list) -> list:
-        """
-        Ultra-fast GPU batched face detection on a list of RGB image arrays.
-        """
+    def crop_faces_batched(self, images_rgb_list: List[np.ndarray]) -> List[np.ndarray]:
+        """GPU batched face detection on a list of RGB image arrays."""
         if not images_rgb_list:
             return []
 
-        cropped_faces = []
+        cropped_faces: List[np.ndarray] = []
 
         if self.mtcnn is not None:
             try:
@@ -83,6 +85,10 @@ class DynamicFaceCropper:
 
         return cropped_faces
 
+    def _get_resize_interpolation(self, src_h: int, target_h: int) -> int:
+        """Selects optimal interpolation method based on upscaling vs downsampling."""
+        return cv2.INTER_AREA if src_h >= target_h else cv2.INTER_CUBIC
+
     def _crop_from_box(self, image_rgb: np.ndarray, boxes) -> np.ndarray:
         h, w, _ = image_rgb.shape
         best_box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
@@ -100,13 +106,11 @@ class DynamicFaceCropper:
         new_bw = bw * self.scale_factor
         new_bh = bh * self.scale_factor
 
-        # Calculate symmetric bounding box coordinates
         raw_x1 = cx - new_bw / 2.0
         raw_y1 = cy - new_bh / 2.0
         raw_x2 = cx + new_bw / 2.0
         raw_y2 = cy + new_bh / 2.0
 
-        # Calculate required padding if box extends past image borders
         pad_left = max(0, int(-raw_x1))
         pad_top = max(0, int(-raw_y1))
         pad_right = max(0, int(raw_x2 - w))
@@ -131,7 +135,7 @@ class DynamicFaceCropper:
         if face.size == 0 or face.shape[0] < 10 or face.shape[1] < 10:
             return self._center_crop(image_rgb)
 
-        interp = cv2.INTER_AREA if (face.shape[0] >= self.target_size) else cv2.INTER_CUBIC
+        interp = self._get_resize_interpolation(face.shape[0], self.target_size)
         return cv2.resize(face, (self.target_size, self.target_size), interpolation=interp)
 
     def _center_crop(self, image_rgb: np.ndarray) -> np.ndarray:
@@ -147,7 +151,7 @@ class DynamicFaceCropper:
         if crop.size == 0:
             return np.zeros((self.target_size, self.target_size, 3), dtype=np.uint8)
 
-        interp = cv2.INTER_AREA if (crop.shape[0] >= self.target_size) else cv2.INTER_CUBIC
+        interp = self._get_resize_interpolation(crop.shape[0], self.target_size)
         return cv2.resize(crop, (self.target_size, self.target_size), interpolation=interp)
 
 def is_blurry(image_rgb: np.ndarray, threshold: float = 30.0) -> bool:
@@ -156,4 +160,4 @@ def is_blurry(image_rgb: np.ndarray, threshold: float = 30.0) -> bool:
         return True
     gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
     var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return var < threshold
+    return float(var) < threshold

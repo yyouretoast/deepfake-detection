@@ -1,3 +1,4 @@
+from typing import List, Tuple, Dict, Any, Optional
 import os
 import tempfile
 import cv2
@@ -6,7 +7,6 @@ import torch
 from PIL import Image
 import streamlit as st
 
-# Import custom core modules
 from src.dataset.preprocess import DynamicFaceCropper
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.explainability.gradcam import PyTorchGradCAM, overlay_cam
@@ -16,14 +16,12 @@ try:
 except ImportError:
     HAS_ONNX = False
 
-# Page Configuration
 st.set_page_config(
     page_title="Deepfake Detector v2 (PyTorch + ConvNeXt + ONNX)",
     page_icon="🎭",
     layout="centered"
 )
 
-# Custom Styling (Dark Glassmorphism)
 st.markdown("""
     <style>
     .main {
@@ -60,7 +58,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Header Section
 st.markdown("""
     <div class="header-box">
         <h1 style='color: #60a5fa; margin-bottom: 5px;'>🎭 Deepfake Detection Engine v2</h1>
@@ -70,15 +67,14 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-IMG_SIZE = 224
-FRAMES_TO_SAMPLE = 10
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+IMG_SIZE: int = 224
+FRAMES_TO_SAMPLE: int = 10
+DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @st.cache_resource
-def load_models():
-    # 1. Try ONNX model first for 3x-5x faster CPU/GPU inference
+def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
     onnx_path = "deepfake_convnext_v2.onnx"
-    onnx_predictor = None
+    onnx_predictor: Optional[Any] = None
     if HAS_ONNX and os.path.exists(onnx_path):
         try:
             onnx_predictor = ONNXDeepfakePredictor(onnx_path)
@@ -86,7 +82,6 @@ def load_models():
         except Exception:
             onnx_predictor = None
 
-    # 2. PyTorch Model (used for Grad-CAM heatmaps and fallback)
     pytorch_model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
     weights_path = "deepfake_convnext_v2.pth"
     has_weights = os.path.exists(weights_path)
@@ -105,7 +100,7 @@ except Exception as e:
     st.error(f"❌ Model initialization error: {e}")
     st.stop()
 
-def preprocess_tensors_batch(faces_rgb_list: list) -> tuple:
+def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarray, torch.Tensor]:
     """Returns normalized numpy batch [B, 3, 224, 224] and PyTorch tensor batch."""
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 1, 3)
     std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 1, 3)
@@ -116,7 +111,7 @@ def preprocess_tensors_batch(faces_rgb_list: list) -> tuple:
     tensor = torch.from_numpy(norm_nchw).float().to(DEVICE)
     return norm_nchw, tensor
 
-def predict_video_sequence(video_path: str, enable_gradcam: bool = False):
+def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Optional[Dict[str, Any]]:
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return None
@@ -127,7 +122,7 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False):
             return None
 
         step = max(total // FRAMES_TO_SAMPLE, 1)
-        frames_rgb = []
+        frames_rgb: List[np.ndarray] = []
 
         for i in range(FRAMES_TO_SAMPLE):
             cap.set(cv2.CAP_PROP_POS_FRAMES, i * step)
@@ -141,14 +136,12 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False):
     if not frames_rgb:
         return None
 
-    # Ultra-Fast GPU Batch Face Extraction
     faces = cropper.crop_faces_batched(frames_rgb)
     if not faces:
         return None
 
     numpy_batch, torch_batch = preprocess_tensors_batch(faces)
 
-    # Use ONNX Runtime if available for 3x-5x speedup
     if onnx_predictor is not None:
         probs = onnx_predictor.predict_batch(numpy_batch).tolist()
     else:
@@ -162,9 +155,7 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False):
     frame_preds = probs
     sample_outputs = []
     
-    # Check if trained weights exist before attempting Grad-CAM heatmaps
     can_render_gradcam = enable_gradcam and has_pytorch_weights
-    gradcam_engine = PyTorchGradCAM(pytorch_model) if can_render_gradcam else None
 
     for idx, (face, prob) in enumerate(zip(faces, probs)):
         if len(sample_outputs) < 4:
@@ -172,11 +163,12 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False):
             conf = prob * 100 if prob > 0.5 else (1 - prob) * 100
             
             overlay_img = None
-            if can_render_gradcam and gradcam_engine is not None:
+            if can_render_gradcam:
                 try:
-                    single_tensor = torch_batch[idx:idx+1]
-                    heatmap = gradcam_engine.generate_heatmap(single_tensor, target_class=1 if prob > 0.5 else 0)
-                    overlay_img = overlay_cam(face, heatmap)
+                    with PyTorchGradCAM(pytorch_model) as gradcam_engine:
+                        single_tensor = torch_batch[idx:idx+1]
+                        heatmap = gradcam_engine.generate_heatmap(single_tensor, target_class=1 if prob > 0.5 else 0)
+                        overlay_img = overlay_cam(face, heatmap)
                 except Exception:
                     overlay_img = face
             else:
@@ -199,7 +191,6 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False):
         "frame_preds": frame_preds
     }
 
-# File Upload Section
 st.markdown("### 📤 Upload Video for Deepfake Verification")
 uploaded_file = st.file_uploader(
     "Upload MP4, AVI, or MOV video file (Max 50MB)",
@@ -225,7 +216,7 @@ if uploaded_file:
         st.stop()
 
     content = uploaded_file.read()
-    tmp_path = None
+    tmp_path: Optional[str] = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
             tmp.write(content)
@@ -240,7 +231,7 @@ if uploaded_file:
             try:
                 os.unlink(tmp_path)
             except PermissionError:
-                pass  # Safely handle Windows OS tempfile file locking
+                pass
 
     if res is None:
         st.error("❌ No clear face detections were found in the uploaded video.")

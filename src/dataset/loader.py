@@ -1,3 +1,4 @@
+from typing import List, Tuple, Optional
 import os
 import re
 import random
@@ -11,33 +12,35 @@ from albumentations.pytorch import ToTensorV2
 def extract_video_id(filename: str) -> str:
     """
     Extracts primary target video identifier from face filename.
-    Format examples:
+    
+    Format Examples:
       'Deepfakes_123_456_f0.png' -> video_id '123' (primary target identity)
-      'original_000_f2.png' -> video_id '000'
-      '045_f12.png' -> video_id '045'
-    Guarantees original reference videos and their deepfake pairs end up in the exact same split.
+      'original_000_f2.png'     -> video_id '000'
+      '045_f12.png'             -> video_id '045'
     """
     basename = os.path.splitext(filename)[0]
-    # Remove frame suffix like _f0, _f12
     base_no_frame = re.sub(r'_f\d+$', '', basename)
     
-    # Check for paired pattern like Deepfakes_123_456 or 123_456
     match_pair = re.search(r'(\d+)_\d+', base_no_frame)
     if match_pair:
         return match_pair.group(1)
         
-    # Check for single video ID like 000 or original_000
     match_single = re.search(r'(\d+)', base_no_frame)
     if match_single:
         return match_single.group(1)
         
     return base_no_frame.split('_')[0]
 
-def group_video_split(file_list, test_size=0.15, val_size=0.15, seed=42):
+def group_video_split(
+    file_list: List[str],
+    test_size: float = 0.15,
+    val_size: float = 0.15,
+    seed: int = 42
+) -> Tuple[List[str], List[str], List[str]]:
     """
     Group-based split guaranteeing zero primary video_id overlap between train, val, and test sets.
     """
-    video_map = {}
+    video_map: dict = {}
     for filepath in file_list:
         vid = extract_video_id(os.path.basename(filepath))
         if vid not in video_map:
@@ -60,14 +63,13 @@ def group_video_split(file_list, test_size=0.15, val_size=0.15, seed=42):
     val_files = [f for vid in val_vids for f in video_map[vid]]
     test_files = [f for vid in test_vids for f in video_map[vid]]
 
-    # Safety assertion: Zero video ID overlap across all splits
     assert len(train_vids.intersection(val_vids)) == 0, "Data leakage between Train and Val splits"
     assert len(train_vids.intersection(test_vids)) == 0, "Data leakage between Train and Test splits"
     assert len(val_vids.intersection(test_vids)) == 0, "Data leakage between Val and Test splits"
 
     return train_files, val_files, test_files
 
-def get_transforms(img_size=224, is_train=True):
+def get_transforms(img_size: int = 224, is_train: bool = True) -> A.Compose:
     """Albumentations pipeline with spatial & compression augmentations."""
     if is_train:
         return A.Compose([
@@ -91,15 +93,20 @@ class DeepfakeDataset(Dataset):
     """
     PyTorch Dataset for face images with binary targets (0: Fake, 1: Real).
     """
-    def __init__(self, file_paths, labels, transform=None):
+    def __init__(
+        self,
+        file_paths: List[str],
+        labels: List[int],
+        transform: Optional[A.Compose] = None
+    ) -> None:
         self.file_paths = file_paths
         self.labels = labels
         self.transform = transform
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.file_paths)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         path = self.file_paths[idx]
         label = self.labels[idx]
 
@@ -116,3 +123,26 @@ class DeepfakeDataset(Dataset):
             image_tensor = (image_tensor - mean) / std
 
         return image_tensor, torch.tensor(label, dtype=torch.float32)
+
+def create_dataloaders(
+    train_samples: List[Tuple[str, int]],
+    val_samples: List[Tuple[str, int]],
+    test_samples: List[Tuple[str, int]],
+    batch_size: int = 64,
+    img_size: int = 224,
+    num_workers: int = 4
+) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """Factory helper function returning initialized PyTorch DataLoaders."""
+    train_paths, train_labels = zip(*train_samples) if train_samples else ([], [])
+    val_paths, val_labels = zip(*val_samples) if val_samples else ([], [])
+    test_paths, test_labels = zip(*test_samples) if test_samples else ([], [])
+
+    train_ds = DeepfakeDataset(list(train_paths), list(train_labels), get_transforms(img_size, is_train=True))
+    val_ds = DeepfakeDataset(list(val_paths), list(val_labels), get_transforms(img_size, is_train=False))
+    test_ds = DeepfakeDataset(list(test_paths), list(test_labels), get_transforms(img_size, is_train=False))
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
+    return train_loader, val_loader, test_loader
