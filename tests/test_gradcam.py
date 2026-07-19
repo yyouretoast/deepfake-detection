@@ -15,7 +15,6 @@ def test_gradcam_target_layer_spatial_redirection():
     model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
     gradcam = PyTorchGradCAM(model)
     
-    # Assert target layer belongs to spatial_backbone, NOT freq_extractor
     spatial_layers = set(dict(model.spatial_backbone.named_modules()).values())
     freq_layers = set(dict(model.freq_extractor.named_modules()).values())
     
@@ -33,6 +32,21 @@ def test_gradcam_heatmap_generation():
     assert heatmap.shape == (224, 224)
     assert np.min(heatmap) >= 0.0
     assert np.max(heatmap) <= 1.0 + 1e-6
+
+def test_gradcam_batched_heatmap_generation():
+    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    dummy_batch = torch.randn(4, 3, 224, 224)
+    
+    with PyTorchGradCAM(model) as gradcam:
+        heatmaps = gradcam.generate_heatmaps_batch(dummy_batch, target_classes=[1, 0, 1, 0])
+        
+    assert isinstance(heatmaps, list)
+    assert len(heatmaps) == 4
+    for hm in heatmaps:
+        assert isinstance(hm, np.ndarray)
+        assert hm.shape == (224, 224)
+        assert np.min(hm) >= 0.0
+        assert np.max(hm) <= 1.0 + 1e-6
 
 def test_gradcam_overlay():
     dummy_image = np.zeros((224, 224, 3), dtype=np.uint8)

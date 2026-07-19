@@ -1,4 +1,4 @@
-from typing import Optional, Any, Tuple
+from typing import Optional, Any, Tuple, List
 import cv2
 import numpy as np
 import torch
@@ -9,7 +9,7 @@ class PyTorchGradCAM:
     """
     Grad-CAM Heatmap Generator for PyTorch ConvNeXt / EfficientNet models.
     Supports Python context manager protocol (`with PyTorchGradCAM(model) as gradcam:`)
-    to guarantee hook cleanup and prevent RAM/VRAM leaks.
+    and batched heatmap generation for ultra-fast multi-frame rendering.
     """
     def __init__(self, model: nn.Module, target_layer: Optional[nn.Module] = None) -> None:
         self.model = model
@@ -69,42 +69,61 @@ class PyTorchGradCAM:
         self.gradients = grad_out[0].detach()
 
     def generate_heatmap(self, input_tensor: torch.Tensor, target_class: int = 1) -> np.ndarray:
+        """Generates normalized Grad-CAM heatmap array [H, W] in range [0, 1] for a single image."""
+        heatmaps = self.generate_heatmaps_batch(input_tensor, target_classes=[target_class])
+        return heatmaps[0]
+
+    def generate_heatmaps_batch(
+        self,
+        input_tensor_batch: torch.Tensor,
+        target_classes: Optional[List[int]] = None
+    ) -> List[np.ndarray]:
         """
-        Generates normalized Grad-CAM heatmap array [H, W] in range [0, 1].
-        
-        Args:
-            input_tensor: Input tensor of shape [1, 3, H, W].
-            target_class: Target class index (0: Fake, 1: Real).
-            
-        Returns:
-            Normalized 2D float32 heatmap array [H, W].
+        Batched Grad-CAM heatmap generation over a batch of images [B, 3, H, W]
+        in 1 single forward/backward pass.
         """
+        if input_tensor_batch.ndim == 3:
+            input_tensor_batch = input_tensor_batch.unsqueeze(0)
+
+        batch_size = input_tensor_batch.shape[0]
+        if target_classes is None:
+            target_classes = [1] * batch_size
+
         self._register_hooks()
         try:
             with torch.enable_grad():
                 self.model.zero_grad()
-                tensor_clone = input_tensor.detach().clone()
+                tensor_clone = input_tensor_batch.detach().clone()
                 tensor_clone.requires_grad = True
                 
-                output = self.model(tensor_clone)
-                score = output[0] if output.ndim == 1 else output[0, 0]
+                outputs = self.model(tensor_clone)
+                scores = outputs if outputs.ndim == 1 else outputs[:, 0]
                 
-                loss = score if target_class == 1 else -score
+                loss_weights = torch.tensor(
+                    [1.0 if tc == 1 else -1.0 for tc in target_classes],
+                    device=input_tensor_batch.device,
+                    dtype=scores.dtype
+                )
+                loss = torch.sum(scores * loss_weights)
+
                 loss.backward()
                 self.model.zero_grad()
 
                 if self.gradients is None or self.feature_maps is None:
-                    return np.zeros((input_tensor.shape[2], input_tensor.shape[3]), dtype=np.float32)
+                    return [np.zeros((input_tensor_batch.shape[2], input_tensor_batch.shape[3]), dtype=np.float32) for _ in range(batch_size)]
 
-                weights = torch.mean(self.gradients[0], dim=(1, 2), keepdim=True)
-                cam = torch.sum(weights * self.feature_maps[0], dim=0)
-                cam = F.relu(cam)
-                
-                cam_np = cam.cpu().numpy()
-                cam_np = cam_np - np.min(cam_np)
-                cam_np = cam_np / (np.max(cam_np) + 1e-8)
-                
-                return cam_np
+                heatmaps: List[np.ndarray] = []
+                for b in range(batch_size):
+                    weights = torch.mean(self.gradients[b], dim=(1, 2), keepdim=True)
+                    cam = torch.sum(weights * self.feature_maps[b], dim=0)
+                    cam = F.relu(cam)
+                    
+                    cam_np = cam.cpu().numpy()
+                    cam_np = cam_np - np.min(cam_np)
+                    cam_np = cam_np / (np.max(cam_np) + 1e-8)
+                    heatmaps.append(cam_np)
+
+                return heatmaps
         finally:
             self._remove_hooks()
             self.feature_maps = None

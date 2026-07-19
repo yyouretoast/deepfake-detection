@@ -6,6 +6,7 @@ import torch
 try:
     import onnx
     import onnxruntime as ort
+    from onnxruntime.quantization import quantize_dynamic, QuantType
     HAS_ONNX = True
 except ImportError:
     HAS_ONNX = False
@@ -15,18 +16,7 @@ def export_to_onnx(
     save_path: str = "deepfake_convnext_v2.onnx",
     img_size: int = 224
 ) -> str:
-    """
-    Exports PyTorch HybridDeepfakeDetector model to ONNX runtime format
-    with dynamic batch size support.
-    
-    Args:
-        model: Trained PyTorch nn.Module instance.
-        save_path: Destination path for the exported .onnx file.
-        img_size: Spatial resolution (width/height) of input face crops.
-        
-    Returns:
-        Absolute or relative path to the verified ONNX model file.
-    """
+    """Exports PyTorch HybridDeepfakeDetector model to ONNX runtime format with dynamic batching."""
     model.eval()
     if hasattr(model, 'module'):
         model = model.module
@@ -54,9 +44,33 @@ def export_to_onnx(
     if HAS_ONNX:
         onnx_model = onnx.load(save_path)
         onnx.checker.check_model(onnx_model)
-        print(f"[ONNX] Verified model graph: {save_path}")
 
     return save_path
+
+def quantize_onnx_model(
+    onnx_path: str = "deepfake_convnext_v2.onnx",
+    quant_path: Optional[str] = None
+) -> str:
+    """
+    Applies INT8 Dynamic Quantization to an ONNX model, cutting file size by 4x
+    and boosting CPU inference speed by 2x-3x.
+    """
+    if not HAS_ONNX:
+        raise ImportError("onnxruntime is required for quantization.")
+    if not os.path.exists(onnx_path):
+        raise FileNotFoundError(f"ONNX file not found: {onnx_path}")
+
+    if quant_path is None:
+        base, ext = os.path.splitext(onnx_path)
+        quant_path = f"{base}_quant{ext}"
+
+    quantize_dynamic(
+        model_input=onnx_path,
+        model_output=quant_path,
+        weight_type=QuantType.QUInt8
+    )
+    print(f"[ONNX Quantization] Saved quantized INT8 model to: {quant_path}")
+    return quant_path
 
 class ONNXDeepfakePredictor:
     """
@@ -65,7 +79,7 @@ class ONNXDeepfakePredictor:
     """
     def __init__(self, onnx_path: str) -> None:
         if not HAS_ONNX:
-            raise ImportError("onnxruntime is required for ONNXDeepfakePredictor. Run pip install onnxruntime.")
+            raise ImportError("onnxruntime is required for ONNXDeepfakePredictor.")
         if not os.path.exists(onnx_path):
             raise FileNotFoundError(f"ONNX model file not found at: {onnx_path}")
 
@@ -77,15 +91,6 @@ class ONNXDeepfakePredictor:
         self.output_name: str = self.session.get_outputs()[0].name
 
     def predict_batch(self, numpy_batch: np.ndarray) -> np.ndarray:
-        """
-        Runs ONNX inference on a numpy batch [B, 3, 224, 224].
-        
-        Args:
-            numpy_batch: Float32 array of shape [B, 3, H, W] or [3, H, W].
-            
-        Returns:
-            Float32 1D array of probabilities in range [0, 1].
-        """
         if numpy_batch.ndim == 3:
             numpy_batch = np.expand_dims(numpy_batch, axis=0)
 

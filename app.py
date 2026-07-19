@@ -8,7 +8,7 @@ from PIL import Image
 import streamlit as st
 
 from src.dataset.preprocess import DynamicFaceCropper
-from src.models.hybrid_detector import HybridDeepfakeDetector, build_model
+from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.explainability.gradcam import PyTorchGradCAM, overlay_cam
 
 try:
@@ -113,7 +113,7 @@ def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarr
 
 def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Optional[Dict[str, Any]]:
     """
-    Fast video inference engine using cap.grab() / retrieve() sequential frame decoding (3.2x faster).
+    High-performance video inference engine with PyTorch AMP autocast and batched Grad-CAM.
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -130,7 +130,6 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         curr_frame = 0
         target_frames = set(i * step for i in range(FRAMES_TO_SAMPLE))
 
-        # 3.2x Faster sequential frame grabbing (avoids keyframe seeking overhead)
         while cap.isOpened() and len(frames_rgb) < FRAMES_TO_SAMPLE and curr_frame <= max(target_frames):
             if curr_frame in target_frames:
                 ret, frame = cap.read()
@@ -138,7 +137,7 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     frames_rgb.append(rgb)
             else:
-                cap.grab()  # Fast grab without full RGB decoding
+                cap.grab()
             curr_frame += 1
     finally:
         cap.release()
@@ -152,12 +151,14 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
 
     numpy_batch, torch_batch = preprocess_tensors_batch(faces)
 
+    # High-Performance PyTorch AMP Autocast / ONNX Inference
     if onnx_predictor is not None:
         probs = onnx_predictor.predict_batch(numpy_batch).tolist()
     else:
         with torch.no_grad():
-            logits = pytorch_model(torch_batch)
-            probs = torch.sigmoid(logits).cpu().numpy().tolist()
+            with torch.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
+                logits = pytorch_model(torch_batch)
+                probs = torch.sigmoid(logits.float()).cpu().numpy().tolist()
 
     if isinstance(probs, float):
         probs = [probs]
@@ -167,24 +168,27 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
     
     can_render_gradcam = enable_gradcam and has_pytorch_weights
 
-    for idx, (face, prob) in enumerate(zip(faces, probs)):
-        if len(sample_outputs) < 4:
-            label = "Real" if prob > 0.5 else "Fake"
-            conf = prob * 100 if prob > 0.5 else (1 - prob) * 100
-            
-            overlay_img = None
-            if can_render_gradcam:
-                try:
-                    with PyTorchGradCAM(pytorch_model) as gradcam_engine:
-                        single_tensor = torch_batch[idx:idx+1]
-                        heatmap = gradcam_engine.generate_heatmap(single_tensor, target_class=1 if prob > 0.5 else 0)
-                        overlay_img = overlay_cam(face, heatmap)
-                except Exception:
-                    overlay_img = face
-            else:
-                overlay_img = face
-                
-            sample_outputs.append((overlay_img, label, conf, prob))
+    # High-Performance Batched Grad-CAM Generation (1 single pass for up to 4 sample frames)
+    sample_faces = faces[:4]
+    sample_probs = probs[:4]
+    sample_heatmaps = []
+
+    if can_render_gradcam:
+        try:
+            with PyTorchGradCAM(pytorch_model) as gradcam_engine:
+                sample_tensors = torch_batch[:len(sample_faces)]
+                target_classes = [1 if p > 0.5 else 0 for p in sample_probs]
+                sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors, target_classes=target_classes)
+        except Exception:
+            sample_heatmaps = [None] * len(sample_faces)
+
+    for idx, (face, prob) in enumerate(zip(sample_faces, sample_probs)):
+        label = "Real" if prob > 0.5 else "Fake"
+        conf = prob * 100 if prob > 0.5 else (1 - prob) * 100
+        
+        heatmap = sample_heatmaps[idx] if idx < len(sample_heatmaps) else None
+        overlay_img = overlay_cam(face, heatmap) if heatmap is not None else face
+        sample_outputs.append((overlay_img, label, conf, prob))
 
     avg_prob = float(np.mean(frame_preds))
     final_label = "Real" if avg_prob > 0.5 else "Fake"
@@ -214,7 +218,7 @@ if enable_gradcam and not has_pytorch_weights:
 st.sidebar.markdown(f"""
 ---
 ### 🛠️ System Configuration
-- **Engine**: {'⚡ ONNX Runtime (3x-5x Accelerated)' if onnx_predictor else '🔥 PyTorch Native'}
+- **Engine**: {'⚡ ONNX Runtime (3x-5x Accelerated)' if onnx_predictor else '🔥 PyTorch Native (AMP Autocast Enabled)'}
 - **Model**: ConvNeXt-Small + 2D FFT Frequency Stream
 - **Padding**: Relative 1.30x Scale Expansion
 - **Validation**: Video-ID GroupKFold Split (Zero Leakage)
