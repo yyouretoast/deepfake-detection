@@ -153,3 +153,12 @@ deepfake-detection/
 ├── requirements.txt           # Project dependencies
 ├── Dockerfile                 # Production container deployment definition
 └── README.md                  # Project documentation
+```
+
+---
+
+## 👤 Author & License
+
+Developed by **Yassin Yasser**. Licensed under the [MIT License](LICENSE).
+- **LinkedIn**: [Yassin Yasser](https://www.linkedin.com/in/yassinyasser/)
+- **Email**: [yyasso2005@gmail.com](mailto:yyasso2005@gmail.com)

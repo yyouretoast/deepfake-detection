@@ -9,7 +9,7 @@ class PyTorchGradCAM:
     """
     Grad-CAM Heatmap Generator for PyTorch ConvNeXt / EfficientNet models.
     Supports Python context manager protocol (`with PyTorchGradCAM(model) as gradcam:`)
-    and batched heatmap generation for ultra-fast multi-frame rendering.
+    and single-pass batched heatmap generation upscaled to input image resolution (224x224).
     """
     def __init__(self, model: nn.Module, target_layer: Optional[nn.Module] = None) -> None:
         self.model = model
@@ -80,12 +80,14 @@ class PyTorchGradCAM:
     ) -> List[np.ndarray]:
         """
         Batched Grad-CAM heatmap generation over a batch of images [B, 3, H, W]
-        in 1 single forward/backward pass.
+        in 1 single forward/backward pass. Upscales heatmaps to match input image spatial resolution (H, W).
         """
         if input_tensor_batch.ndim == 3:
             input_tensor_batch = input_tensor_batch.unsqueeze(0)
 
         batch_size = input_tensor_batch.shape[0]
+        input_h, input_w = input_tensor_batch.shape[2], input_tensor_batch.shape[3]
+
         if target_classes is None:
             target_classes = [1] * batch_size
 
@@ -110,7 +112,7 @@ class PyTorchGradCAM:
                 self.model.zero_grad()
 
                 if self.gradients is None or self.feature_maps is None:
-                    return [np.zeros((input_tensor_batch.shape[2], input_tensor_batch.shape[3]), dtype=np.float32) for _ in range(batch_size)]
+                    return [np.zeros((input_h, input_w), dtype=np.float32) for _ in range(batch_size)]
 
                 heatmaps: List[np.ndarray] = []
                 for b in range(batch_size):
@@ -118,7 +120,13 @@ class PyTorchGradCAM:
                     cam = torch.sum(weights * self.feature_maps[b], dim=0)
                     cam = F.relu(cam)
                     
-                    cam_np = cam.cpu().numpy()
+                    # Bilinear Upsampling to match input image spatial resolution (e.g. 224x224)
+                    cam_4d = cam.unsqueeze(0).unsqueeze(0)
+                    cam_upsampled = F.interpolate(
+                        cam_4d, size=(input_h, input_w), mode='bilinear', align_corners=False
+                    ).squeeze()
+
+                    cam_np = cam_upsampled.cpu().numpy()
                     cam_np = cam_np - np.min(cam_np)
                     cam_np = cam_np / (np.max(cam_np) + 1e-8)
                     heatmaps.append(cam_np)
@@ -135,8 +143,10 @@ class PyTorchGradCAM:
 def overlay_cam(image_rgb: np.ndarray, heatmap: np.ndarray, alpha: float = 0.4) -> np.ndarray:
     """Overlays normalized [0, 1] heatmap on RGB uint8 image using OpenCV Jet colormap."""
     h, w, _ = image_rgb.shape
-    heatmap_resized = cv2.resize(heatmap, (w, h))
-    heatmap_uint8 = np.uint8(255 * heatmap_resized)
+    if heatmap.shape != (h, w):
+        heatmap = cv2.resize(heatmap, (w, h))
+
+    heatmap_uint8 = np.uint8(255 * heatmap)
     heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
     heatmap_color_rgb = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
     

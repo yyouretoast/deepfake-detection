@@ -1,8 +1,10 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 import cv2
 import numpy as np
 import torch
 from PIL import Image
+
+from src.config import load_config
 
 try:
     from facenet_pytorch import MTCNN
@@ -14,13 +16,24 @@ class DynamicFaceCropper:
     """
     Face extraction engine using facenet-pytorch (MTCNN) with relative dynamic padding.
     Supports single-image cropping and GPU batch cropping.
+    Ingests global configuration from config/default.yaml via src/config.py.
     """
     def __init__(
         self,
-        scale_factor: float = 1.30,
-        target_size: int = 224,
-        device: Optional[torch.device] = None
+        scale_factor: Optional[float] = None,
+        target_size: Optional[int] = None,
+        device: Optional[torch.device] = None,
+        config: Optional[Dict[str, Any]] = None
     ) -> None:
+        if config is None:
+            config = load_config()
+
+        prep_cfg = config.get("preprocessing", {})
+        if scale_factor is None:
+            scale_factor = prep_cfg.get("padding_scale", 1.30)
+        if target_size is None:
+            target_size = prep_cfg.get("img_size", 224)
+
         self.scale_factor = scale_factor
         self.target_size = target_size
         self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -154,8 +167,13 @@ class DynamicFaceCropper:
         interp = self._get_resize_interpolation(crop.shape[0], self.target_size)
         return cv2.resize(crop, (self.target_size, self.target_size), interpolation=interp)
 
-def is_blurry(image_rgb: np.ndarray, threshold: float = 30.0) -> bool:
-    """Checks image blurriness using Laplacian variance."""
+def is_blurry(image_rgb: np.ndarray, threshold: Optional[float] = None, config: Optional[Dict[str, Any]] = None) -> bool:
+    """Checks image blurriness using Laplacian variance, ingesting config defaults."""
+    if threshold is None:
+        if config is None:
+            config = load_config()
+        threshold = config.get("preprocessing", {}).get("blur_threshold_real", 30.0)
+
     if image_rgb is None or image_rgb.size == 0:
         return True
     gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
