@@ -1,8 +1,10 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import torch
 import torch.nn as nn
 import torch.fft
 import timm
+
+from src.config import load_config
 
 class FFTFrequencyExtractor(nn.Module):
     """
@@ -14,7 +16,6 @@ class FFTFrequencyExtractor(nn.Module):
         super().__init__()
         self.out_features = out_features
         
-        # 1x1 Conv2d Grayscale projection kernel (0.299 R + 0.587 G + 0.114 B)
         self.rgb_to_gray = nn.Conv2d(3, 1, kernel_size=1, bias=False)
         with torch.no_grad():
             self.rgb_to_gray.weight.data = torch.tensor([[[[0.299]], [[0.587]], [[0.114]]]], dtype=torch.float32)
@@ -36,7 +37,6 @@ class FFTFrequencyExtractor(nn.Module):
         self.fc = nn.Linear(128, out_features)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Fast 1x1 Conv cuDNN kernel grayscale projection
         gray = self.rgb_to_gray(x)
         gray_fp32 = gray.to(torch.float32)
         
@@ -65,19 +65,31 @@ class HybridDeepfakeDetector(nn.Module):
     """
     def __init__(
         self,
-        backbone_name: str = "convnext_small",
+        backbone_name: Optional[str] = None,
         pretrained: bool = True,
         use_fft_branch: bool = True,
-        dropout: float = 0.3
+        dropout: float = 0.3,
+        config: Optional[Dict[str, Any]] = None
     ) -> None:
         super().__init__()
+        if config is None:
+            config = load_config()
+
+        model_cfg = config.get("model", {})
+        if backbone_name is None:
+            backbone_name = model_cfg.get("backbone", "convnext_small")
+        use_fft_branch = model_cfg.get("use_fft_branch", use_fft_branch)
+        dropout = model_cfg.get("dropout", dropout)
+
         self.use_fft_branch = use_fft_branch
         self.spatial_backbone = timm.create_model(backbone_name, pretrained=pretrained, num_classes=0)
         spatial_in_features: int = self.spatial_backbone.num_features
 
+        freq_embed_dim = model_cfg.get("freq_embed_dim", 128)
+
         if self.use_fft_branch:
-            self.freq_extractor = FFTFrequencyExtractor(out_features=128)
-            fusion_dim = spatial_in_features + 128
+            self.freq_extractor = FFTFrequencyExtractor(out_features=freq_embed_dim)
+            fusion_dim = spatial_in_features + freq_embed_dim
         else:
             self.freq_extractor = None
             fusion_dim = spatial_in_features
@@ -115,24 +127,23 @@ def build_model(
     use_fft: bool = True,
     device: Optional[torch.device] = None,
     pretrained: bool = True,
-    compile_model: bool = False
+    compile_model: bool = False,
+    config: Optional[Dict[str, Any]] = None
 ) -> nn.Module:
     """Factory function to build, wrap in DataParallel, and optionally JIT compile model."""
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=pretrained, use_fft_branch=use_fft)
+    model = HybridDeepfakeDetector(pretrained=pretrained, use_fft_branch=use_fft, config=config)
     
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model)
 
     model = model.to(device)
 
-    # PyTorch 2.0+ torch.compile JIT optimization
     if compile_model and hasattr(torch, "compile"):
         try:
             model = torch.compile(model)
-            print("[Optimized] PyTorch 2.0 torch.compile graph acceleration active.")
         except Exception:
             pass
 
