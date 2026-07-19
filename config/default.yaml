@@ -1,0 +1,39 @@
+# Deepfake Detection Engine - Configuration
+
+paths:
+  kaggle_input: "/kaggle/input/datasets/xdxd003/ff-c23/FaceForensics++_C23"
+  output_dir: "/kaggle/working/frames"
+  processed_dir: "/kaggle/working/processed"
+  model_save_path: "/kaggle/working/deepfake_convnext_v2.pth"
+
+preprocessing:
+  img_size: 224
+  padding_scale: 1.30  # Relative bounding box expansion factor (1.30 = 30% expansion)
+  max_videos_per_type: 200
+  frames_per_video: 15
+  min_face_size: 20
+  blur_threshold_real: 50
+  blur_threshold_fake: 20
+
+model:
+  backbone: "convnext_small"
+  pretrained: true
+  use_fft_branch: true  # Toggle for Frequency Stream Ablation Study
+  spatial_embed_dim: 768
+  freq_embed_dim: 128
+  dropout: 0.3
+
+training:
+  batch_size: 64  # Distributed across 2x NVIDIA T4 GPUs (32 per GPU)
+  num_workers: 4
+  epochs_phase1: 8
+  epochs_phase2: 12
+  lr_phase1: 3.0e-4
+  lr_phase2: 3.0e-5
+  weight_decay: 1.0e-4
+  use_amp: true  # PyTorch Automatic Mixed Precision (fp16)
+  seed: 42
+
+manipulation_types:
+  all: ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter", "DeepFakeDetection"]
+  held_out_loto: "FaceShifter"  # Target type for Leave-One-Type-Out generalization test
