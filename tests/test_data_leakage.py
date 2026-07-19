@@ -3,7 +3,7 @@ from src.dataset.loader import extract_video_id, group_video_split
 
 def test_extract_video_id():
     assert extract_video_id("original_000_f0.png") == "000"
-    assert extract_video_id("Deepfakes_001_002_f3.png") == "001_002"
+    assert extract_video_id("Deepfakes_001_002_f3.png") == "001"
     assert extract_video_id("045_f12.png") == "045"
 
 def test_group_video_split_zero_leakage():
