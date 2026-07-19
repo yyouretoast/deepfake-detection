@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 import cv2
 import numpy as np
 import torch
@@ -33,12 +33,20 @@ class PyTorchGradCAM:
         self.gradients = None
 
     def _find_last_conv_layer(self) -> nn.Module:
+        """
+        Target layer auto-detection restricted strictly to spatial_backbone.
+        Prevents hook misdirection to 2D FFT frequency extractor layers.
+        """
+        target_root = getattr(self.model, "spatial_backbone", self.model)
+        if hasattr(self.model, "module"):
+            target_root = getattr(self.model.module, "spatial_backbone", self.model.module)
+
         last_layer: Optional[nn.Module] = None
-        for name, module in self.model.named_modules():
+        for name, module in target_root.named_modules():
             if isinstance(module, torch.nn.Conv2d):
                 last_layer = module
         if last_layer is None:
-            raise ValueError("No Conv2d layer found in model for Grad-CAM")
+            raise ValueError("No Conv2d layer found in spatial backbone for Grad-CAM")
         return last_layer
 
     def _register_hooks(self) -> None:
