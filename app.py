@@ -17,7 +17,7 @@ except ImportError:
     HAS_ONNX = False
 
 st.set_page_config(
-    page_title="Deepfake Detector v2 (PyTorch + ConvNeXt + ONNX)",
+    page_title="Deepfake Detector (PyTorch + ConvNeXt + ONNX)",
     page_icon="🎭",
     layout="centered"
 )
@@ -60,7 +60,7 @@ st.markdown("""
 
 st.markdown("""
     <div class="header-box">
-        <h1 style='color: #60a5fa; margin-bottom: 5px;'>🎭 Deepfake Detection Engine v2</h1>
+        <h1 style='color: #60a5fa; margin-bottom: 5px;'>Deepfake Detection Engine</h1>
         <p style='color: #94a3b8; font-size: 14px;'>
             PyTorch 2.x / ONNX Runtime • ConvNeXt-Small + 2D FFT Frequency Stream • GroupKFold Verified
         </p>
@@ -78,7 +78,7 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
     if HAS_ONNX and os.path.exists(onnx_path):
         try:
             onnx_predictor = ONNXDeepfakePredictor(onnx_path)
-            st.toast("⚡ Loaded ONNX Runtime Acceleration Engine (3x-5x Faster!)")
+            st.toast("ONNX Runtime Acceleration Engine initialized successfully.")
         except Exception:
             onnx_predictor = None
 
@@ -97,7 +97,7 @@ try:
     pytorch_model, onnx_predictor, has_pytorch_weights = load_models()
     cropper = DynamicFaceCropper(scale_factor=1.30, target_size=IMG_SIZE, device=DEVICE)
 except Exception as e:
-    st.error(f"❌ Model initialization error: {e}")
+    st.error(f"Model initialization error: {e}")
     st.stop()
 
 def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarray, torch.Tensor]:
@@ -113,7 +113,7 @@ def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarr
 
 def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Optional[Dict[str, Any]]:
     """
-    High-performance video inference engine with PyTorch AMP autocast and batched Grad-CAM.
+    Video inference engine with PyTorch AMP autocast and batched Grad-CAM.
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -151,7 +151,7 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
 
     numpy_batch, torch_batch = preprocess_tensors_batch(faces)
 
-    # High-Performance PyTorch AMP Autocast / ONNX Inference
+    # PyTorch AMP Autocast / ONNX Inference
     if onnx_predictor is not None:
         probs = onnx_predictor.predict_batch(numpy_batch).tolist()
     else:
@@ -168,7 +168,7 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
     
     can_render_gradcam = enable_gradcam and has_pytorch_weights
 
-    # High-Performance Batched Grad-CAM Generation (1 single pass for up to 4 sample frames)
+    # Batched Grad-CAM Generation for sample frames
     sample_faces = faces[:4]
     sample_probs = probs[:4]
     sample_heatmaps = []
@@ -205,28 +205,28 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         "frame_preds": frame_preds
     }
 
-st.markdown("### 📤 Upload Video for Deepfake Verification")
+st.markdown("### Upload Video File for Analysis")
 uploaded_file = st.file_uploader(
     "Upload MP4, AVI, or MOV video file (Max 50MB)",
     type=["mp4", "avi", "mov"]
 )
 
-enable_gradcam = st.sidebar.checkbox("🔥 Enable Grad-CAM Artifact Heatmaps", value=True)
+enable_gradcam = st.sidebar.checkbox("Enable Grad-CAM Explainability Heatmaps", value=True)
 if enable_gradcam and not has_pytorch_weights:
-    st.sidebar.warning("⚠️ Trained PyTorch weights missing (`deepfake_convnext_v2.pth`). Heatmaps disabled.")
+    st.sidebar.warning("Trained PyTorch weights missing (`deepfake_convnext_v2.pth`). Heatmaps disabled.")
 
 st.sidebar.markdown(f"""
 ---
-### 🛠️ System Configuration
-- **Engine**: {'⚡ ONNX Runtime (3x-5x Accelerated)' if onnx_predictor else '🔥 PyTorch Native (AMP Autocast Enabled)'}
+### System Configuration
+- **Engine**: {'ONNX Runtime (Accelerated)' if onnx_predictor else 'PyTorch Native (AMP Autocast)'}
 - **Model**: ConvNeXt-Small + 2D FFT Frequency Stream
 - **Padding**: Relative 1.30x Scale Expansion
-- **Validation**: Video-ID GroupKFold Split (Zero Leakage)
+- **Validation**: Video-ID GroupKFold Split
 """)
 
 if uploaded_file:
     if uploaded_file.size > 50 * 1024 * 1024:
-        st.error("❌ File size exceeds 50MB limit.")
+        st.error("File size exceeds 50MB limit.")
         st.stop()
 
     content = uploaded_file.read()
@@ -238,7 +238,7 @@ if uploaded_file:
 
         st.video(content)
 
-        with st.spinner("🔍 Analyzing video frames with Spatial & Frequency Neural Engine..."):
+        with st.spinner("Analyzing video frames with Spatial & Frequency Neural Engine..."):
             res = predict_video_sequence(tmp_path, enable_gradcam=enable_gradcam)
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -248,17 +248,16 @@ if uploaded_file:
                 pass
 
     if res is None:
-        st.error("❌ No clear face detections were found in the uploaded video.")
+        st.error("No clear face detections were found in the uploaded video.")
     else:
         st.markdown("<hr>", unsafe_allow_html=True)
         is_fake = res["final_label"] == "Fake"
         card_class = "result-card-fake" if is_fake else "result-card-real"
         color = "#ef4444" if is_fake else "#22c55e"
-        icon = "🚨" if is_fake else "✅"
 
         st.markdown(f"""
             <div class="{card_class}">
-                <h1 style="color: {color}; margin: 0;">{icon} {res['final_label'].upper()}</h1>
+                <h1 style="color: {color}; margin: 0;">DETECTED: {res['final_label'].upper()}</h1>
                 <h3 style="color: {color}; margin-top: 5px;">Confidence: {res['final_conf']:.1f}%</h3>
             </div>
         """, unsafe_allow_html=True)
@@ -270,11 +269,11 @@ if uploaded_file:
         col2.metric("Real Frames", res["real_frames"])
         col3.metric("Fake Frames", res["fake_frames"])
 
-        st.markdown("### 📊 Frame-by-Frame Confidence Timeline")
+        st.markdown("### Frame-by-Frame Confidence Timeline")
         st.progress(min(int(res["final_conf"]), 100))
 
         if res["sample_outputs"]:
-            st.markdown("### 🖼️ Sample Face Crop Predictions & Grad-CAM Heatmaps")
+            st.markdown("### Sample Face Crop Predictions & Grad-CAM Analysis")
             cols = st.columns(len(res["sample_outputs"]))
             for col, (face_img, label, conf, prob) in zip(cols, res["sample_outputs"]):
                 with col:
@@ -288,6 +287,6 @@ if uploaded_file:
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown("""
             <p style='text-align: center; color: #64748b; font-size: 12px;'>
-            Powered by PyTorch 2.x & ONNX Runtime • Dual-Stream ConvNeXt + 2D FFT Spectrum Extractor • FaceForensics++ Verified
+            PyTorch 2.x & ONNX Runtime • Dual-Stream ConvNeXt + 2D FFT Spectrum Extractor • FaceForensics++ Verified
             </p>
         """, unsafe_allow_html=True)

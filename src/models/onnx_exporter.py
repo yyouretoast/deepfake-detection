@@ -56,8 +56,8 @@ def quantize_onnx_model(
     quant_path: Optional[str] = None
 ) -> str:
     """
-    Applies INT8 Dynamic Quantization to an ONNX model, cutting file size by 4x
-    and boosting CPU inference speed by 2x-3x.
+    Applies INT8 Dynamic Quantization to an ONNX model, reducing memory footprint
+    and enhancing CPU inference throughput.
     """
     if not HAS_ONNX:
         raise ImportError("onnxruntime is required for quantization.")

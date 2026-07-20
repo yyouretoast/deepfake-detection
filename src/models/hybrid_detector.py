@@ -10,7 +10,7 @@ class FFTFrequencyExtractor(nn.Module):
     """
     2D Real Fast Fourier Transform (FFT) Frequency Feature Extractor.
     Extracts 128-d frequency spectrum embeddings in FP32 precision.
-    Uses 1x1 Conv2d grayscale projection for 2.5x faster single-kernel GPU execution.
+    Uses 1x1 Conv2d grayscale projection for single-kernel GPU execution.
     """
     def __init__(self, out_features: int = 128) -> None:
         super().__init__()

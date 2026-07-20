@@ -1,3 +1,4 @@
+from typing import Optional
 import os
 import time
 import numpy as np
@@ -6,12 +7,12 @@ import torch
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.onnx_exporter import export_to_onnx, ONNXDeepfakePredictor, HAS_ONNX
 
-def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int = 224):
+def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int = 224) -> None:
     """
-    Empirical inference latency benchmarking script comparing PyTorch Native vs ONNX Runtime.
+    Inference latency benchmarking script comparing PyTorch Native vs ONNX Runtime.
     """
     print(f"\n==================================================")
-    print(f"🚀 DEEPFAKE DETECTION ENGINE - BENCHMARK SUITE")
+    print(f"INFERENCE LATENCY BENCHMARK SUITE")
     print(f"==================================================")
     print(f"• Iterations: {iterations}")
     print(f"• Batch Size: {batch_size}")
@@ -45,11 +46,11 @@ def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int
 
     pytorch_total_ms = (end_time - start_time) * 1000.0
     pytorch_avg_ms = pytorch_total_ms / (iterations * batch_size)
-    print(f"  ✓ PyTorch Native ({device.type.upper()}): {pytorch_avg_ms:.2f} ms / frame")
+    print(f"  PyTorch Native ({device.type.upper()}): {pytorch_avg_ms:.2f} ms / frame")
 
     # 2. Export & Benchmark ONNX Model
     onnx_path = "deepfake_convnext_v2.onnx"
-    onnx_avg_ms = None
+    onnx_avg_ms: Optional[float] = None
     if HAS_ONNX:
         try:
             if not os.path.exists(onnx_path):
@@ -71,21 +72,21 @@ def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int
             onnx_total_ms = (end_time - start_time) * 1000.0
             onnx_avg_ms = onnx_total_ms / (iterations * batch_size)
             speedup = pytorch_avg_ms / onnx_avg_ms if onnx_avg_ms > 0 else 1.0
-            print(f"  ✓ ONNX Runtime Acceleration: {onnx_avg_ms:.2f} ms / frame ({speedup:.1f}x Speedup ⚡)")
+            print(f"  ONNX Runtime: {onnx_avg_ms:.2f} ms / frame (Speedup Factor: {speedup:.2f}x)")
         except Exception as e:
-            print(f"  ⚠️ ONNX Benchmark Warning: {e}")
+            print(f"  ONNX Benchmark Warning: {e}")
     else:
-        print("  ⚠️ ONNX Runtime not installed. Skipping ONNX benchmark.")
+        print("  ONNX Runtime not installed. Skipping ONNX benchmark.")
 
     print(f"\n==================================================")
-    print(f"📊 SUMMARY LATENCY BENCHMARK RESULTS")
+    print(f"SUMMARY LATENCY BENCHMARK RESULTS")
     print(f"==================================================")
-    print(f"| Engine / Framework | Device | Latency per Frame | Speedup |")
+    print(f"| Engine / Framework | Device | Latency per Frame | Speedup Factor |")
     print(f"| :--- | :---: | :---: | :---: |")
-    print(f"| PyTorch Native | {device.type.upper()} | {pytorch_avg_ms:.2f} ms | 1.0x |")
+    print(f"| PyTorch Native | {device.type.upper()} | {pytorch_avg_ms:.2f} ms | 1.00x |")
     if onnx_avg_ms is not None:
         speedup = pytorch_avg_ms / onnx_avg_ms
-        print(f"| ONNX Runtime | {device.type.upper()} | {onnx_avg_ms:.2f} ms | **{speedup:.1f}x Faster** ⚡ |")
+        print(f"| ONNX Runtime | {device.type.upper()} | {onnx_avg_ms:.2f} ms | **{speedup:.2f}x** |")
     print(f"==================================================\n")
 
 if __name__ == "__main__":

@@ -102,7 +102,7 @@ class DeepfakeDataset(Dataset):
         path = self.file_paths[idx]
         label = self.labels[idx]
 
-        # Fast C++ OpenCV image decoding (3x faster than PIL Image.open)
+        # OpenCV image decoding for high-throughput I/O
         bgr = cv2.imread(path, cv2.IMREAD_COLOR)
         if bgr is not None:
             image = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
