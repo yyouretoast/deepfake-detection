@@ -1,6 +1,9 @@
 from typing import Dict, Any, Optional
 import os
 import yaml
+import logging
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "paths": {
@@ -57,6 +60,6 @@ def load_config(config_path: str = "config/default.yaml") -> Dict[str, Any]:
         if isinstance(cfg, dict):
             return cfg
     except Exception as e:
-        print(f"[Warning] Failed to parse config file {config_path}: {e}. Using DEFAULT_CONFIG.")
+        logger.warning("Failed to parse config file %s: %s. Using DEFAULT_CONFIG.", config_path, e)
 
     return DEFAULT_CONFIG

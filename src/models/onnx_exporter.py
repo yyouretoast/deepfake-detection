@@ -11,6 +11,10 @@ try:
 except ImportError:
     HAS_ONNX = False
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def export_to_onnx(
     model: torch.nn.Module,
     save_path: str = "deepfake_convnext_v2.onnx",
@@ -69,7 +73,7 @@ def quantize_onnx_model(
         model_output=quant_path,
         weight_type=QuantType.QUInt8
     )
-    print(f"[ONNX Quantization] Saved quantized INT8 model to: {quant_path}")
+    logger.info("Saved quantized INT8 model to: %s", quant_path)
     return quant_path
 
 class ONNXDeepfakePredictor:
