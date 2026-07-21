@@ -16,6 +16,10 @@ try:
 except ImportError:
     HAS_ONNX = False
 
+# Label convention: model trained with Real=1, Fake=0.
+# Sigmoid output > 0.5 → Real, ≤ 0.5 → Fake.
+LABEL_MAP = {1: "Real", 0: "Fake"}
+
 st.set_page_config(
     page_title="Deepfake Detector (PyTorch + ConvNeXt + ONNX)",
     page_icon="🎭",

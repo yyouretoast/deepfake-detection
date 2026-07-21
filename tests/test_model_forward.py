@@ -26,3 +26,15 @@ def test_hybrid_detector_spatial_only_forward():
 
     assert logits.shape == torch.Size([4]), f"Expected logits shape torch.Size([4]), got {logits.shape}"
     assert probs.shape == torch.Size([4]), f"Expected probs shape torch.Size([4]), got {probs.shape}"
+
+def test_use_fft_false_actually_disables_fft():
+    """Regression test for BUG-1: config must not override explicit use_fft_branch=False."""
+    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=False)
+    assert model.use_fft_branch is False, "use_fft_branch=False was overridden by config"
+    assert model.freq_extractor is None, "freq_extractor should be None when use_fft_branch=False"
+
+    # Verify classifier input dim is 768 (spatial only), not 896 (spatial + freq)
+    first_linear = model.classifier[0]
+    assert first_linear.in_features == model.spatial_backbone.num_features, (
+        f"Classifier input dim {first_linear.in_features} != spatial backbone dim {model.spatial_backbone.num_features}"
+    )

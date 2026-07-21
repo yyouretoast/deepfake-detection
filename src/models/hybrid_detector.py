@@ -40,10 +40,9 @@ class FFTFrequencyExtractor(nn.Module):
         gray = self.rgb_to_gray(x)
         gray_fp32 = gray.to(torch.float32)
         
-        fft_2d = torch.fft.fft2(gray_fp32)
-        fft_shift = torch.fft.fftshift(fft_2d, dim=(-2, -1))
+        fft_2d = torch.fft.rfft2(gray_fp32)
         
-        magnitude = torch.abs(fft_shift)
+        magnitude = torch.abs(fft_2d)
         eps = 1e-5
         log_spectrum = torch.log(magnitude + eps)
 
@@ -78,8 +77,6 @@ class HybridDeepfakeDetector(nn.Module):
         model_cfg = config.get("model", {})
         if backbone_name is None:
             backbone_name = model_cfg.get("backbone", "convnext_small")
-        use_fft_branch = model_cfg.get("use_fft_branch", use_fft_branch)
-        dropout = model_cfg.get("dropout", dropout)
 
         self.use_fft_branch = use_fft_branch
         self.spatial_backbone = timm.create_model(backbone_name, pretrained=pretrained, num_classes=0)
@@ -106,7 +103,7 @@ class HybridDeepfakeDetector(nn.Module):
         """Extracts intermediate feature representations (spatial, frequency, fused)."""
         spatial_feat = self.spatial_backbone(x)
         if self.use_fft_branch and self.freq_extractor is not None:
-            freq_feat = self.freq_extractor(x)
+            freq_feat = self.freq_extractor(x) * 0.1
             fused = torch.cat([spatial_feat, freq_feat], dim=1)
         else:
             freq_feat = torch.zeros((x.size(0), 0), device=x.device, dtype=x.dtype)

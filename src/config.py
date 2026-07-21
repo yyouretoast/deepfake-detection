@@ -27,18 +27,24 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "use_fft_branch": True,
         "spatial_embed_dim": 768,
         "freq_embed_dim": 128,
+        "freq_scale": 0.1,
         "dropout": 0.3
     },
     "training": {
         "batch_size": 64,
         "num_workers": 4,
-        "epochs_phase1": 8,
-        "epochs_phase2": 12,
-        "lr_phase1": 3.0e-4,
-        "lr_phase2": 3.0e-5,
+        "epochs_phase1": 3,
+        "epochs_phase2": 5,
+        "lr_phase1": 1.0e-3,
+        "lr_backbone": 1.0e-5,
+        "lr_head": 1.0e-4,
         "weight_decay": 1.0e-4,
         "use_amp": True,
         "seed": 42
+    },
+    "labels": {
+        "real": 1,
+        "fake": 0
     },
     "manipulation_types": {
         "all": ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter", "DeepFakeDetection"],
