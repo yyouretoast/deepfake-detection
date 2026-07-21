@@ -1,3 +1,15 @@
+---
+title: Deepfake Detection Engine
+emoji: 🎭
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: 1.30.0
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # Deepfake Detection Engine (PyTorch + ConvNeXt + 2D FFT)
 
 > Dual-stream PyTorch 2.x Deepfake Detection Engine combining **ConvNeXt-Small** spatial features and **2D FFT Log-Magnitude Frequency Spectrum** embeddings. Features **Group-based Video-ID Partitioning**, **ONNX Runtime Acceleration**, **PyTorch Grad-CAM Explainability**, and an interactive **Streamlit UI**.
