@@ -37,10 +37,14 @@ class FFTFrequencyExtractor(nn.Module):
         self.fc = nn.Linear(128, out_features)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        gray = self.rgb_to_gray(x)
-        gray_fp32 = gray.to(torch.float32)
+        # Cast to float32 and un-normalize ImageNet scaling back to raw [0, 1] RGB
+        x_fp32 = x.to(torch.float32)
+        mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
+        raw_x = (x_fp32 * std + mean).clamp(0.0, 1.0)
         
-        fft_2d = torch.fft.rfft2(gray_fp32)
+        gray = self.rgb_to_gray(raw_x)
+        fft_2d = torch.fft.rfft2(gray)
         
         magnitude = torch.abs(fft_2d)
         eps = 1e-5
@@ -60,7 +64,7 @@ class HybridDeepfakeDetector(nn.Module):
     """
     Dual-Stream Hybrid Deepfake Detector.
     Fuses Spatial Backbone (ConvNeXt-Small, 768-d) and Frequency Stream (2D FFT, 128-d)
-    into an 896-d feature representation for final binary classification.
+    via Adaptive Gated Fusion into an 896-d feature representation for binary classification.
     """
     def __init__(
         self,
@@ -86,9 +90,12 @@ class HybridDeepfakeDetector(nn.Module):
 
         if self.use_fft_branch:
             self.freq_extractor = FFTFrequencyExtractor(out_features=freq_embed_dim)
+            self.gate_fc = nn.Linear(spatial_in_features + freq_embed_dim, freq_embed_dim)
+            nn.init.constant_(self.gate_fc.bias, -2.0)  # Sigmoid(-2.0) ≈ 0.119 (Safe noise-free warmup)
             fusion_dim = spatial_in_features + freq_embed_dim
         else:
             self.freq_extractor = None
+            self.gate_fc = None
             fusion_dim = spatial_in_features
 
         self.classifier = nn.Sequential(
@@ -102,8 +109,10 @@ class HybridDeepfakeDetector(nn.Module):
     def extract_features(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Extracts intermediate feature representations (spatial, frequency, fused)."""
         spatial_feat = self.spatial_backbone(x)
-        if self.use_fft_branch and self.freq_extractor is not None:
-            freq_feat = self.freq_extractor(x) * 0.1
+        if self.use_fft_branch and self.freq_extractor is not None and self.gate_fc is not None:
+            freq_raw = self.freq_extractor(x)
+            gate = torch.sigmoid(self.gate_fc(torch.cat([spatial_feat, freq_raw], dim=1)))
+            freq_feat = freq_raw * gate
             fused = torch.cat([spatial_feat, freq_feat], dim=1)
         else:
             freq_feat = torch.zeros((x.size(0), 0), device=x.device, dtype=x.dtype)

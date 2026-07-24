@@ -19,6 +19,7 @@ model:
   backbone: "convnext_small"
   pretrained: true
   use_fft_branch: true  # Toggle for Frequency Stream Ablation Study
+  use_gated_fusion: true  # Adaptive Gated Fusion between spatial and frequency features
   spatial_embed_dim: 768
   freq_embed_dim: 128
   freq_scale: 0.1  # Residual scaling factor for FFT stream (prevents random init noise)

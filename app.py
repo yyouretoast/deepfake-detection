@@ -95,7 +95,15 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
     weights_path = "deepfake_convnext_v2.pth"
     has_weights = os.path.exists(weights_path)
     if has_weights:
-        state_dict = torch.load(weights_path, map_location=DEVICE)
+        checkpoint = torch.load(weights_path, map_location=DEVICE)
+        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+            state_dict = checkpoint["state_dict"]
+            opt_thresh = checkpoint.get("optimal_threshold", None)
+            if opt_thresh is not None:
+                global CLASSIFICATION_THRESHOLD
+                CLASSIFICATION_THRESHOLD = float(opt_thresh)
+        else:
+            state_dict = checkpoint
         pytorch_model.load_state_dict(state_dict)
     pytorch_model.to(DEVICE)
     pytorch_model.eval()
