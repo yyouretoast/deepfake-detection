@@ -28,11 +28,11 @@ training:
   batch_size: 64  # Distributed across 2x NVIDIA T4 GPUs (32 per GPU)
   num_workers: 4
   epochs_phase1: 3  # Frozen backbone warmup
-  epochs_phase2: 5  # End-to-end differential LR fine-tuning
+  epochs_phase2: 15  # End-to-end differential LR fine-tuning
   lr_phase1: 1.0e-3
   lr_backbone: 1.0e-5  # Phase 2 backbone learning rate
   lr_head: 1.0e-4  # Phase 2 classifier head learning rate
-  weight_decay: 1.0e-4
+  weight_decay: 1.0e-2
   use_amp: true  # PyTorch Automatic Mixed Precision (fp16)
   seed: 42
 
