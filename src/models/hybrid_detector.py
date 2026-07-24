@@ -96,7 +96,7 @@ class HybridDeepfakeDetector(nn.Module):
 
         self.classifier = nn.Sequential(
             nn.Linear(fusion_dim, 256),
-            nn.BatchNorm1d(256),
+            nn.LayerNorm(256),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
             nn.Linear(256, 1)
