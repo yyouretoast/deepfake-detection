@@ -125,7 +125,7 @@ class DynamicFaceCropper:
 
             for img_rgb, boxes in zip(images_rgb_list, boxes_list):
                 if boxes is None or len(boxes) == 0:
-                    all_cropped_faces.append([])
+                    all_cropped_faces.append([self._center_crop(img_rgb)])
                 else:
                     frame_crops = []
                     boxes = sorted(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
