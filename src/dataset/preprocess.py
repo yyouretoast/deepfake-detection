@@ -75,7 +75,7 @@ class DynamicFaceCropper:
         return self._crop_from_box(image_rgb, boxes)
 
     def crop_faces_batched(self, images_rgb_list: List[np.ndarray]) -> List[np.ndarray]:
-        """GPU batched face detection on a list of RGB image arrays."""
+        """GPU batched face detection returning single largest face crop per image."""
         if not images_rgb_list:
             return []
 
@@ -102,6 +102,74 @@ class DynamicFaceCropper:
                 cropped_faces.append(self._center_crop(img_rgb))
 
         return cropped_faces
+
+    def crop_all_faces_batched(self, images_rgb_list: List[np.ndarray]) -> List[List[np.ndarray]]:
+        """
+        GPU batched face detection returning ALL detected face crops for each image.
+        Returns a list of lists of face crops per frame.
+        """
+        if not images_rgb_list:
+            return []
+
+        all_cropped_faces: List[List[np.ndarray]] = []
+
+        if self.mtcnn is not None:
+            try:
+                pil_images = [Image.fromarray(img) for img in images_rgb_list]
+                boxes_list, _ = self.mtcnn.detect(pil_images)
+                if boxes_list is None:
+                    boxes_list = [None] * len(images_rgb_list)
+            except Exception as e:
+                logger.warning("MTCNN batched multi-face detection failed: %s", e)
+                boxes_list = [None] * len(images_rgb_list)
+
+            for img_rgb, boxes in zip(images_rgb_list, boxes_list):
+                if boxes is None or len(boxes) == 0:
+                    all_cropped_faces.append([self._center_crop(img_rgb)])
+                else:
+                    frame_crops = []
+                    for single_box in boxes:
+                        crop = self._crop_single_box(img_rgb, single_box)
+                        if crop is not None:
+                            frame_crops.append(crop)
+                    all_cropped_faces.append(frame_crops if frame_crops else [self._center_crop(img_rgb)])
+        else:
+            for img_rgb in images_rgb_list:
+                all_cropped_faces.append([self._center_crop(img_rgb)])
+
+        return all_cropped_faces
+
+    def _crop_single_box(self, image_rgb: np.ndarray, box) -> Optional[np.ndarray]:
+        """Crops and resizes a single bounding box."""
+        h, w, _ = image_rgb.shape
+        x1, y1, x2, y2 = box[:4]
+        bw, bh = x2 - x1, y2 - y1
+
+        if bw <= 5 or bh <= 5:
+            return None
+
+        cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        new_bw, new_bh = bw * self.scale_factor, bh * self.scale_factor
+
+        raw_x1, raw_y1 = cx - new_bw / 2.0, cy - new_bh / 2.0
+        raw_x2, raw_y2 = cx + new_bw / 2.0, cy + new_bh / 2.0
+
+        pad_left, pad_top = max(0, int(-raw_x1)), max(0, int(-raw_y1))
+        pad_right, pad_bottom = max(0, int(raw_x2 - w)), max(0, int(raw_y2 - h))
+
+        if pad_left > 0 or pad_top > 0 or pad_right > 0 or pad_bottom > 0:
+            padded_img = cv2.copyMakeBorder(
+                image_rgb, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_REFLECT
+            )
+            face = padded_img[int(raw_y1 + pad_top):int(raw_y2 + pad_top), int(raw_x1 + pad_left):int(raw_x2 + pad_left)]
+        else:
+            face = image_rgb[max(0, int(raw_y1)):min(h, int(raw_y2)), max(0, int(raw_x1)):min(w, int(raw_x2))]
+
+        if face.size == 0 or face.shape[0] < 10 or face.shape[1] < 10:
+            return None
+
+        interp = self._get_resize_interpolation(face.shape[0], self.target_size)
+        return cv2.resize(face, (self.target_size, self.target_size), interpolation=interp)
 
     def _get_resize_interpolation(self, src_h: int, target_h: int) -> int:
         """Selects optimal interpolation method based on upscaling vs downsampling."""

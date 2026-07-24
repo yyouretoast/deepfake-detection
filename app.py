@@ -93,6 +93,13 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
 
     pytorch_model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
     weights_path = "deepfake_convnext_v2.pth"
+    weights_url = CONFIG.get("paths", {}).get("weights_url", "")
+    if not os.path.exists(weights_path) and weights_url:
+        try:
+            torch.hub.download_url_to_file(weights_url, weights_path, progress=False)
+        except Exception:
+            pass
+
     has_weights = os.path.exists(weights_path)
     if has_weights:
         checkpoint = torch.load(weights_path, map_location=DEVICE)

@@ -5,6 +5,7 @@ paths:
   output_dir: "/kaggle/working/frames"
   processed_dir: "/kaggle/working/processed"
   model_save_path: "/kaggle/working/deepfake_convnext_v2.pth"
+  weights_url: "https://huggingface.co/spaces/yyouretoast/deepfake-detector/resolve/main/deepfake_convnext_v2.pth"
 
 preprocessing:
   img_size: 224

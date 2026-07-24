@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any
 import os
 import re
 import random
@@ -7,8 +7,12 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+try:
+    import albumentations as A
+    from albumentations.pytorch import ToTensorV2
+except ImportError:
+    A = None
+    ToTensorV2 = None
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -63,8 +67,10 @@ def group_video_split(
 
     return train_files, val_files, test_files
 
-def get_transforms(img_size: int = 224, is_train: bool = True) -> A.Compose:
+def get_transforms(img_size: int = 224, is_train: bool = True) -> Optional[Any]:
     """Albumentations pipeline with spatial & compression augmentations."""
+    if A is None:
+        return None
     if is_train:
         return A.Compose([
             A.Resize(img_size, img_size),
@@ -91,7 +97,7 @@ class DeepfakeDataset(Dataset):
         self,
         file_paths: List[str],
         labels: List[int],
-        transform: Optional[A.Compose] = None
+        transform: Optional[Any] = None
     ) -> None:
         self.file_paths = file_paths
         self.labels = labels
