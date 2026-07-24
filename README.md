@@ -31,12 +31,12 @@ license: mit
 - **Youden's J Threshold Calibration**: Computes the optimal decision boundary (`TPR - FPR`) on validation ROC curves and saves this threshold into checkpoint metadata.
 - **Robustness Augmentations**: Uses JPEG Compression, Affine transforms, Color Jitter, Downscaling, and Gaussian Blur during training to enhance cross-manipulation generalization.
 - **Stratified Group-Based Video-ID Partitioning**: Prevents identity leakage and class imbalance by guaranteeing zero video-ID overlap between splits while enforcing a 50/50 Real/Fake class distribution.
-- **Batched GPU Face Extraction**: Uses MTCNN with a 1.30x bounding box scale expansion. Extracts multiple faces per frame, sorting by bounding-box area and capping at `max_faces=3` to guarantee OOM safety. Empty frames are mathematically filtered.
-- **Dynamic Inference Chunking**: Chunks extracted tensors into mini-batches (`BATCH_SIZE=16`) to ensure absolute VRAM stability during heavy multi-face scene parsing.
+- **Batched GPU Face Extraction**: Uses MTCNN with a 1.30x bounding box scale expansion. Extracts multiple faces per frame, sorting by bounding-box area and capping at `max_faces=3` for memory safety. Empty frames are filtered out.
+- **Dynamic Inference Chunking**: Chunks extracted tensors into mini-batches (`BATCH_SIZE=16`) to maintain VRAM stability during multi-face scene parsing.
 - **Centralized Configuration**: Configured dynamically via `config/default.yaml`.
 - **ONNX Runtime Integration**: Supports exporting to ONNX format for accelerated CPU/GPU inference.
-- **Grad-CAM Visualizations (Triple-Zipping)**: All extracted faces are passed through inference, then triple-zipped with their probabilities and source tensors. The system targets the top 4 "Most Fake" faces, ensuring exact mathematical alignment between the visualized heatmap and the face it explains.
-- **Normalized Confidence Metrics**: The UI mathematically normalizes probability scores relative to the Youden's J dynamic threshold, guaranteeing that the decision boundary always represents exactly 50% confidence.
+- **Grad-CAM Visualizations**: Extracted faces, probabilities, and tensors are sorted to target the top 4 "Most Fake" faces, ensuring exact alignment between the heatmap overlay and the face image.
+- **Normalized Confidence Metrics**: The UI normalizes probability scores relative to the Youden's J dynamic threshold, mapping the decision boundary to 50% confidence.
 - **Automated `pytest` Integration Suite**: 7 integration test modules covering E2E Streamlit app execution, data leakage, Grad-CAM targeting, configuration loading, tensor shapes, cropper bounds safety, and ONNX parity.
 
 ---

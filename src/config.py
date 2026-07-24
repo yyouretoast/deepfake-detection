@@ -43,8 +43,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "seed": 42
     },
     "labels": {
-        "real": 1,
-        "fake": 0
+        "real": 0,
+        "fake": 1
     },
     "manipulation_types": {
         "all": ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter", "DeepFakeDetection"],

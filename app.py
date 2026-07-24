@@ -203,9 +203,9 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         
     all_tensors_concat = torch.cat(all_tensors, dim=0)
 
-    # Triple-Zipping and Sorting by Most Fake
+    # Triple-Zipping and Sorting by Most Fake (Fake=1, Real=0)
     zipped_data = list(zip(all_faces, all_probs, all_tensors_concat))
-    zipped_data.sort(key=lambda x: x[1])  # Ascending by prob (Fake=0, Real=1)
+    zipped_data.sort(key=lambda x: x[1], reverse=True)  # Highest prob P(Fake) first
     
     top_4 = zipped_data[:4]
     sample_faces = [item[0] for item in top_4]
@@ -231,7 +231,7 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
 
     sample_outputs = []
     for idx, (face, prob) in enumerate(zip(sample_faces, sample_probs)):
-        label = "Real" if prob > CLASSIFICATION_THRESHOLD else "Fake"
+        label = "Fake" if prob > CLASSIFICATION_THRESHOLD else "Real"
         conf = normalize_confidence(prob, CLASSIFICATION_THRESHOLD)
         
         heatmap = sample_heatmaps[idx] if idx < len(sample_heatmaps) else None
@@ -239,10 +239,10 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         sample_outputs.append((overlay_img, label, conf, prob))
 
     avg_prob = float(np.mean(all_probs))
-    final_label = "Real" if avg_prob > CLASSIFICATION_THRESHOLD else "Fake"
+    final_label = "Fake" if avg_prob > CLASSIFICATION_THRESHOLD else "Real"
     final_conf = normalize_confidence(avg_prob, CLASSIFICATION_THRESHOLD)
     
-    fake_faces_count = sum(1 for p in all_probs if p <= CLASSIFICATION_THRESHOLD)
+    fake_faces_count = sum(1 for p in all_probs if p > CLASSIFICATION_THRESHOLD)
     real_faces_count = len(all_probs) - fake_faces_count
 
     return {
