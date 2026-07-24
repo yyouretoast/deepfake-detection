@@ -84,12 +84,17 @@ def get_transforms(img_size: int = 224, is_train: bool = True) -> Optional[Any]:
     if A is None:
         return None
     if is_train:
+        try:
+            downscale_comp = A.Downscale(scale_range=(0.7, 0.9), p=0.3)
+        except Exception:
+            downscale_comp = A.Downscale(scale_min=0.7, scale_max=0.9, p=0.3)
+
         transforms = [
             A.Resize(img_size, img_size),
             A.HorizontalFlip(p=0.5),
             A.Affine(scale=(0.9, 1.1), translate_percent=(-0.05, 0.05), rotate=(-15, 15), p=0.5),
             A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.4),
-            A.Downscale(scale_min=0.7, scale_max=0.9, p=0.3),
+            downscale_comp,
         ]
         if hasattr(A, "JPEGCompression"):
             transforms.append(A.JPEGCompression(quality_lower=50, quality_upper=90, p=0.4))
