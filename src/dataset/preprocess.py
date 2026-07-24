@@ -3,6 +3,9 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
+import logging
+
+logger = logging.getLogger(__name__)
 
 from src.config import load_config
 
@@ -62,7 +65,8 @@ class DynamicFaceCropper:
             try:
                 pil_img = Image.fromarray(image_rgb)
                 boxes, _ = self.mtcnn.detect(pil_img)
-            except Exception:
+            except Exception as e:
+                logger.warning("MTCNN face detection failed: %s", e)
                 boxes = None
 
         if boxes is None or len(boxes) == 0:
@@ -83,7 +87,8 @@ class DynamicFaceCropper:
                 boxes_list, _ = self.mtcnn.detect(pil_images)
                 if boxes_list is None:
                     boxes_list = [None] * len(images_rgb_list)
-            except Exception:
+            except Exception as e:
+                logger.warning("MTCNN batched face detection failed: %s", e)
                 boxes_list = [None] * len(images_rgb_list)
 
             for img_rgb, boxes in zip(images_rgb_list, boxes_list):

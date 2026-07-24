@@ -43,3 +43,7 @@ labels:
 manipulation_types:
   all: ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter", "DeepFakeDetection"]
   held_out_loto: "FaceShifter"  # Target type for Leave-One-Type-Out generalization test
+
+app:
+  frames_to_sample: 10
+  classification_threshold: 0.5

@@ -10,6 +10,8 @@ from PIL import Image
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
 def extract_video_id(filename: str) -> str:
     """Extracts primary target video identifier from face filename."""
     basename = os.path.splitext(filename)[0]
@@ -69,13 +71,13 @@ def get_transforms(img_size: int = 224, is_train: bool = True) -> A.Compose:
             A.HorizontalFlip(p=0.5),
             A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, p=0.5),
             A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.4),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ToTensorV2()
         ])
     else:
         return A.Compose([
             A.Resize(img_size, img_size),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ToTensorV2()
         ])
 
@@ -113,8 +115,8 @@ class DeepfakeDataset(Dataset):
             image_tensor = augmented['image']
         else:
             image_tensor = torch.from_numpy(image.transpose(2, 0, 1)).float() / 255.0
-            mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+            mean = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
+            std = torch.tensor(IMAGENET_STD).view(3, 1, 1)
             image_tensor = (image_tensor - mean) / std
 
         return image_tensor, torch.tensor(label, dtype=torch.float32)

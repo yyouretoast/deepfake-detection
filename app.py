@@ -10,6 +10,7 @@ import streamlit as st
 from src.dataset.preprocess import DynamicFaceCropper
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.explainability.gradcam import PyTorchGradCAM, overlay_cam
+from src.config import load_config
 
 try:
     from src.models.onnx_exporter import ONNXDeepfakePredictor, HAS_ONNX
@@ -71,8 +72,12 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-IMG_SIZE: int = 224
-FRAMES_TO_SAMPLE: int = 10
+CONFIG = load_config()
+APP_CFG = CONFIG.get("app", {})
+IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 224)
+FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
+CLASSIFICATION_THRESHOLD: float = APP_CFG.get("classification_threshold", 0.5)
+
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @st.cache_resource
@@ -100,19 +105,23 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
 try:
     pytorch_model, onnx_predictor, has_pytorch_weights = load_models()
     cropper = DynamicFaceCropper(scale_factor=1.30, target_size=IMG_SIZE, device=DEVICE)
+    if not has_pytorch_weights:
+        st.error("⚠️ **Warning: Trained model weights not found!** (`deepfake_convnext_v2.pth`). Running with random initialization; predictions will be random.")
 except Exception as e:
     st.error(f"Model initialization error: {e}")
     st.stop()
 
 def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarray, torch.Tensor]:
     """Returns normalized numpy batch [B, 3, 224, 224] and PyTorch tensor batch."""
-    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(1, 1, 1, 3)
-    std = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(1, 1, 1, 3)
+    batch_arr = np.stack(faces_rgb_list)
+    batch_nchw = batch_arr.transpose(0, 3, 1, 2)
     
-    batch_arr = np.stack(faces_rgb_list).astype(np.float32) / 255.0
-    norm = (batch_arr - mean) / std
-    norm_nchw = norm.transpose(0, 3, 1, 2).astype(np.float32)
-    tensor = torch.from_numpy(norm_nchw).float().to(DEVICE)
+    tensor = torch.from_numpy(batch_nchw).float().to(DEVICE) / 255.0
+    mean = torch.tensor([0.485, 0.456, 0.406], device=DEVICE).view(1, 3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225], device=DEVICE).view(1, 3, 1, 1)
+    tensor = (tensor - mean) / std
+    
+    norm_nchw = tensor.cpu().numpy()
     return norm_nchw, tensor
 
 def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Optional[Dict[str, Any]]:
@@ -181,23 +190,23 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         try:
             with PyTorchGradCAM(pytorch_model) as gradcam_engine:
                 sample_tensors = torch_batch[:len(sample_faces)]
-                target_classes = [1 if p > 0.5 else 0 for p in sample_probs]
+                target_classes = [1 if p > CLASSIFICATION_THRESHOLD else 0 for p in sample_probs]
                 sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors, target_classes=target_classes)
         except Exception:
             sample_heatmaps = [None] * len(sample_faces)
 
     for idx, (face, prob) in enumerate(zip(sample_faces, sample_probs)):
-        label = "Real" if prob > 0.5 else "Fake"
-        conf = prob * 100 if prob > 0.5 else (1 - prob) * 100
+        label = "Real" if prob > CLASSIFICATION_THRESHOLD else "Fake"
+        conf = prob * 100 if prob > CLASSIFICATION_THRESHOLD else (1 - prob) * 100
         
         heatmap = sample_heatmaps[idx] if idx < len(sample_heatmaps) else None
         overlay_img = overlay_cam(face, heatmap) if heatmap is not None else face
         sample_outputs.append((overlay_img, label, conf, prob))
 
     avg_prob = float(np.mean(frame_preds))
-    final_label = "Real" if avg_prob > 0.5 else "Fake"
-    final_conf = avg_prob * 100 if avg_prob > 0.5 else (1 - avg_prob) * 100
-    fake_frames = sum(1 for p in frame_preds if p <= 0.5)
+    final_label = "Real" if avg_prob > CLASSIFICATION_THRESHOLD else "Fake"
+    final_conf = avg_prob * 100 if avg_prob > CLASSIFICATION_THRESHOLD else (1 - avg_prob) * 100
+    fake_frames = sum(1 for p in frame_preds if p <= CLASSIFICATION_THRESHOLD)
     real_frames = len(frame_preds) - fake_frames
 
     return {
