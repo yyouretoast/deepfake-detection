@@ -72,16 +72,22 @@ def get_transforms(img_size: int = 224, is_train: bool = True) -> Optional[Any]:
     if A is None:
         return None
     if is_train:
-        return A.Compose([
+        transforms = [
             A.Resize(img_size, img_size),
             A.HorizontalFlip(p=0.5),
             A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, p=0.5),
             A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.4),
-            A.JPEGCompression(quality_lower=50, quality_upper=90, p=0.4),
+        ]
+        if hasattr(A, "JPEGCompression"):
+            transforms.append(A.JPEGCompression(quality_lower=50, quality_upper=90, p=0.4))
+        elif hasattr(A, "ImageCompression"):
+            transforms.append(A.ImageCompression(quality_range=(50, 90), p=0.4))
+        transforms.extend([
             A.GaussianBlur(blur_limit=(3, 7), p=0.3),
             A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ToTensorV2()
         ])
+        return A.Compose(transforms)
     else:
         return A.Compose([
             A.Resize(img_size, img_size),
