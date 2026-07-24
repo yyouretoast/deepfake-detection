@@ -38,7 +38,7 @@ class FFTFrequencyExtractor(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Force FP32 computation via autocast(enabled=False) to prevent cuFFT FP16 power-of-two size errors (224x224)
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast(device_type="cuda", enabled=False):
             x_fp32 = x.to(torch.float32)
             mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
             std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
