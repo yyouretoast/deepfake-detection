@@ -22,10 +22,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "blur_threshold_fake": 20
     },
     "model": {
-        "backbone": "convnext_small",
+        "backbone": "convnext_base",
         "pretrained": True,
         "use_fft_branch": True,
-        "spatial_embed_dim": 768,
+        "spatial_embed_dim": 1024,
         "freq_embed_dim": 128,
         "freq_scale": 0.1,
         "dropout": 0.3

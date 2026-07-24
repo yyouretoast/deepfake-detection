@@ -17,9 +17,6 @@ try:
 except ImportError:
     HAS_ONNX = False
 
-# Label convention: model trained with Real=1, Fake=0.
-# Sigmoid output > 0.5 → Real, ≤ 0.5 → Fake.
-LABEL_MAP = {1: "Real", 0: "Fake"}
 
 st.set_page_config(
     page_title="Deepfake Detector (PyTorch + ConvNeXt + ONNX)",
@@ -67,7 +64,7 @@ st.markdown("""
     <div class="header-box">
         <h1 style='color: #60a5fa; margin-bottom: 5px;'>Deepfake Detection App</h1>
         <p style='color: #94a3b8; font-size: 14px;'>
-            PyTorch 2.x / ONNX Runtime • ConvNeXt-Small + 2D FFT Frequency Stream • GroupKFold Verified
+            PyTorch 2.x / ONNX Runtime • ConvNeXt-Base + 2D FFT Frequency Stream • GroupKFold Verified
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -91,7 +88,8 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
         except Exception:
             onnx_predictor = None
 
-    pytorch_model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    backbone_name = CONFIG.get("model", {}).get("backbone", "convnext_base")
+    pytorch_model = HybridDeepfakeDetector(backbone_name=backbone_name, pretrained=False, use_fft_branch=True)
     weights_path = "deepfake_convnext_v2.pth"
     weights_url = CONFIG.get("paths", {}).get("weights_url", "")
     if not os.path.exists(weights_path) and weights_url:
@@ -193,8 +191,9 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         else:
             with torch.no_grad():
                 with torch.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                    logits = pytorch_model(torch_batch)
-                    batch_probs = torch.sigmoid(logits.float()).cpu().numpy().tolist()
+                    p1 = torch.sigmoid(pytorch_model(torch_batch).float())
+                    p2 = torch.sigmoid(pytorch_model(torch.flip(torch_batch, dims=[-1])).float())
+                    batch_probs = ((p1 + p2) / 2.0).cpu().numpy().tolist()
         
         if isinstance(batch_probs, float):
             batch_probs = [batch_probs]
@@ -269,7 +268,7 @@ st.sidebar.markdown(f"""
 ---
 ### System Configuration
 - **Engine**: {'ONNX Runtime' if onnx_predictor else 'PyTorch Native'}
-- **Model**: ConvNeXt-Small + 2D FFT Frequency Stream
+- **Model**: {CONFIG.get('model', {}).get('backbone', 'ConvNeXt-Base').title()} + 2D FFT Frequency Stream
 - **Padding**: Relative 1.30x Scale Expansion
 - **Validation**: Video-ID GroupKFold Split
 """)

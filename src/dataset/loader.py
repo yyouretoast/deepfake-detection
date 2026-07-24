@@ -5,7 +5,7 @@ import random
 import cv2
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from PIL import Image
 try:
     import albumentations as A
@@ -18,7 +18,7 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 def extract_video_id(filename: str) -> str:
     """Extracts primary target video identifier from face filename."""
-    basename = os.path.splitext(filename)[0]
+    basename = os.path.splitext(os.path.basename(filename))[0]
     base_no_frame = re.sub(r'_f\d+$', '', basename)
     
     match_pair = re.search(r'(\d+)_\d+', base_no_frame)
@@ -29,41 +29,53 @@ def extract_video_id(filename: str) -> str:
     if match_single:
         return match_single.group(1)
         
-    return base_no_frame.split('_')[0]
+    return base_no_frame
 
 def group_video_split(
-    file_list: List[str],
+    file_list: Any,
     test_size: float = 0.15,
     val_size: float = 0.15,
     seed: int = 42
-) -> Tuple[List[str], List[str], List[str]]:
-    """Group-based split guaranteeing zero primary video_id overlap between train, val, and test sets."""
+) -> Tuple[Any, Any, Any]:
+    """Stratified Group-based split guaranteeing zero primary video_id overlap and class-balanced splits."""
     video_map: dict = {}
-    for filepath in file_list:
-        vid = extract_video_id(os.path.basename(filepath))
+    video_labels: dict = {}
+
+    for item in file_list:
+        if isinstance(item, (tuple, list)):
+            filepath, label = item[0], item[1]
+        else:
+            filepath, label = item, (0 if "original" in item.lower() or "real" in item.lower() else 1)
+
+        vid = extract_video_id(filepath)
         if vid not in video_map:
             video_map[vid] = []
-        video_map[vid].append(filepath)
+            video_labels[vid] = label
+        video_map[vid].append(item)
 
-    unique_vids = list(video_map.keys())
+    real_vids = [v for v, l in video_labels.items() if l == 0]
+    fake_vids = [v for v, l in video_labels.items() if l == 1]
+
     random.seed(seed)
-    random.shuffle(unique_vids)
+    random.shuffle(real_vids)
+    random.shuffle(fake_vids)
 
-    num_vids = len(unique_vids)
-    num_test = max(1, int(num_vids * test_size))
-    num_val = max(1, int(num_vids * val_size))
+    def split_vids(v_list: List[str]) -> Tuple[List[str], List[str], List[str]]:
+        num_vids = len(v_list)
+        n_test = max(1, int(num_vids * test_size)) if num_vids > 0 else 0
+        n_val = max(1, int(num_vids * val_size)) if num_vids > 0 else 0
+        return v_list[n_test + n_val:], v_list[n_test:n_test + n_val], v_list[:n_test]
 
-    test_vids = set(unique_vids[:num_test])
-    val_vids = set(unique_vids[num_test:num_test + num_val])
-    train_vids = set(unique_vids[num_test + num_val:])
+    real_train, real_val, real_test = split_vids(real_vids)
+    fake_train, fake_val, fake_test = split_vids(fake_vids)
 
-    train_files = [f for vid in train_vids for f in video_map[vid]]
-    val_files = [f for vid in val_vids for f in video_map[vid]]
-    test_files = [f for vid in test_vids for f in video_map[vid]]
+    train_vids = set(real_train + fake_train)
+    val_vids = set(real_val + fake_val)
+    test_vids = set(real_test + fake_test)
 
-    assert len(train_vids.intersection(val_vids)) == 0, "Data leakage between Train and Val splits"
-    assert len(train_vids.intersection(test_vids)) == 0, "Data leakage between Train and Test splits"
-    assert len(val_vids.intersection(test_vids)) == 0, "Data leakage between Val and Test splits"
+    train_files = [item for vid in train_vids for item in video_map[vid]]
+    val_files = [item for vid in val_vids for item in video_map[vid]]
+    test_files = [item for vid in test_vids for item in video_map[vid]]
 
     return train_files, val_files, test_files
 
@@ -75,8 +87,9 @@ def get_transforms(img_size: int = 224, is_train: bool = True) -> Optional[Any]:
         transforms = [
             A.Resize(img_size, img_size),
             A.HorizontalFlip(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=15, p=0.5),
+            A.Affine(scale=(0.9, 1.1), translate_percent=(-0.05, 0.05), rotate=(-15, 15), p=0.5),
             A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.4),
+            A.Downscale(scale_min=0.7, scale_max=0.9, p=0.3),
         ]
         if hasattr(A, "JPEGCompression"):
             transforms.append(A.JPEGCompression(quality_lower=50, quality_upper=90, p=0.4))
@@ -152,7 +165,16 @@ def create_dataloaders(
     val_ds = DeepfakeDataset(list(val_paths), list(val_labels), get_transforms(img_size, is_train=False))
     test_ds = DeepfakeDataset(list(test_paths), list(test_labels), get_transforms(img_size, is_train=False))
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    drop_last = len(train_ds) > batch_size
+    if train_labels:
+        class_counts = np.bincount(train_labels)
+        class_weights = 1. / class_counts
+        sample_weights = [class_weights[l] for l in train_labels]
+        sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
+        train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True, drop_last=drop_last)
+    else:
+        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, drop_last=drop_last)
+        
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 

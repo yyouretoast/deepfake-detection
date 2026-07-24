@@ -8,7 +8,7 @@ from src.models.onnx_exporter import export_to_onnx, ONNXDeepfakePredictor, HAS_
 
 @pytest.mark.skipif(not HAS_ONNX, reason="onnx / onnxruntime not installed in environment")
 def test_onnx_export_and_parity():
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=True)
     model.eval()
 
     with tempfile.TemporaryDirectory() as tmp_dir:

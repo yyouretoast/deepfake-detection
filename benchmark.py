@@ -23,7 +23,8 @@ def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int
     # 1. Initialize PyTorch Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[PyTorch] Initializing model on device: {device}...")
-    pytorch_model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    backbone_name = CONFIG.get("model", {}).get("backbone", "convnext_base")
+    pytorch_model = HybridDeepfakeDetector(backbone_name=backbone_name, pretrained=False, use_fft_branch=True)
     pytorch_model.to(device)
     pytorch_model.eval()
 

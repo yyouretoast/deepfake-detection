@@ -27,7 +27,7 @@ class PyTorchGradCAM:
     def __enter__(self: "PyTorchGradCAM") -> "PyTorchGradCAM":
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
         self._remove_hooks()
         self.feature_maps = None
         self.gradients = None
@@ -62,10 +62,10 @@ class PyTorchGradCAM:
             self.backward_handle.remove()
             self.backward_handle = None
 
-    def _forward_hook(self, module: nn.Module, input: Any, output: torch.Tensor) -> None:
+    def _forward_hook(self, _module: nn.Module, _input: Any, output: torch.Tensor) -> None:
         self.feature_maps = output.detach()
 
-    def _backward_hook(self, module: nn.Module, grad_in: Any, grad_out: Tuple[torch.Tensor, ...]) -> None:
+    def _backward_hook(self, _module: nn.Module, _grad_in: Any, grad_out: Tuple[torch.Tensor, ...]) -> None:
         self.gradients = grad_out[0].detach()
 
     def generate_heatmap(self, input_tensor: torch.Tensor, target_class: int = 1) -> np.ndarray:

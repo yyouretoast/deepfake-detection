@@ -6,13 +6,13 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.explainability.gradcam import PyTorchGradCAM, overlay_cam
 
 def test_gradcam_import_and_init():
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=True)
     gradcam = PyTorchGradCAM(model)
     assert gradcam is not None
     assert gradcam.target_layer is not None
 
 def test_gradcam_target_layer_spatial_redirection():
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=True)
     gradcam = PyTorchGradCAM(model)
     
     spatial_layers = set(dict(model.spatial_backbone.named_modules()).values())
@@ -22,7 +22,7 @@ def test_gradcam_target_layer_spatial_redirection():
     assert gradcam.target_layer not in freq_layers, "Grad-CAM target layer incorrectly resolved to freq_extractor!"
 
 def test_gradcam_heatmap_generation():
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=True)
     dummy_input = torch.randn(1, 3, 224, 224)
     
     with PyTorchGradCAM(model) as gradcam:
@@ -34,7 +34,7 @@ def test_gradcam_heatmap_generation():
     assert np.max(heatmap) <= 1.0 + 1e-6
 
 def test_gradcam_batched_heatmap_generation():
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=True)
     dummy_batch = torch.randn(4, 3, 224, 224)
     
     with PyTorchGradCAM(model) as gradcam:

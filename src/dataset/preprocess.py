@@ -52,7 +52,7 @@ class DynamicFaceCropper:
             self.mtcnn = None
 
     def crop_face(self, image_rgb: np.ndarray) -> Optional[np.ndarray]:
-        """Detects largest face in single RGB image, applies relative padding, crops and resizes."""
+        """[Public Utility] Detects largest face in single RGB image, applies relative padding, crops and resizes."""
         if image_rgb is None or image_rgb.size == 0:
             return None
 

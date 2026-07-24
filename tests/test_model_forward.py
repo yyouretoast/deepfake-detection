@@ -3,7 +3,7 @@ import pytest
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
 def test_hybrid_detector_dual_stream_forward():
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=True)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=True)
     model.eval()
 
     dummy_input = torch.randn(2, 3, 224, 224)
@@ -16,7 +16,7 @@ def test_hybrid_detector_dual_stream_forward():
     assert (probs >= 0.0).all() and (probs <= 1.0).all(), "Probabilities out of bounds [0, 1]"
 
 def test_hybrid_detector_spatial_only_forward():
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=False)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=False)
     model.eval()
 
     dummy_input = torch.randn(4, 3, 224, 224)
@@ -29,7 +29,7 @@ def test_hybrid_detector_spatial_only_forward():
 
 def test_use_fft_false_actually_disables_fft():
     """Regression test for BUG-1: config must not override explicit use_fft_branch=False."""
-    model = HybridDeepfakeDetector(backbone_name="convnext_small", pretrained=False, use_fft_branch=False)
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=False)
     assert model.use_fft_branch is False, "use_fft_branch=False was overridden by config"
     assert model.freq_extractor is None, "freq_extractor should be None when use_fft_branch=False"
 

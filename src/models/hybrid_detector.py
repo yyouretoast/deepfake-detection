@@ -50,12 +50,7 @@ class FFTFrequencyExtractor(nn.Module):
             magnitude = torch.abs(fft_2d)
             eps = 1e-5
             log_spectrum = torch.log(magnitude + eps)
-
-            flat_spectrum = log_spectrum.flatten(1)
-            min_val = flat_spectrum.min(dim=1, keepdim=True)[0].unsqueeze(-1).unsqueeze(-1)
-            max_val = flat_spectrum.max(dim=1, keepdim=True)[0].unsqueeze(-1).unsqueeze(-1)
-            
-            norm_spectrum = (log_spectrum - min_val) / (max_val - min_val + eps)
+            norm_spectrum = log_spectrum / 10.0
 
         norm_spectrum = norm_spectrum.to(x.dtype)
         feat = self.conv_net(norm_spectrum)
@@ -64,8 +59,8 @@ class FFTFrequencyExtractor(nn.Module):
 class HybridDeepfakeDetector(nn.Module):
     """
     Dual-Stream Hybrid Deepfake Detector.
-    Fuses Spatial Backbone (ConvNeXt-Small, 768-d) and Frequency Stream (2D FFT, 128-d)
-    via Adaptive Gated Fusion into an 896-d feature representation for binary classification.
+    Fuses Spatial Backbone (ConvNeXt-Base, 1024-d) and Frequency Stream (2D FFT, 128-d)
+    via Adaptive Gated Fusion into an 1152-d feature representation for binary classification.
     """
     def __init__(
         self,
@@ -81,7 +76,7 @@ class HybridDeepfakeDetector(nn.Module):
 
         model_cfg = config.get("model", {})
         if backbone_name is None:
-            backbone_name = model_cfg.get("backbone", "convnext_small")
+            backbone_name = model_cfg.get("backbone", "convnext_base")
 
         self.use_fft_branch = use_fft_branch
         self.spatial_backbone = timm.create_model(backbone_name, pretrained=pretrained, num_classes=0)
