@@ -25,7 +25,10 @@ license: mit
 
 ## Architectural Features
 
-- **Dual-Stream Neural Architecture**: Fuses 768-d spatial features from **ConvNeXt-Small** with 128-d frequency embeddings extracted via **2D Real FFT (`torch.fft.rfft2`)** with $0.1\times$ residual feature scaling (896-d combined feature vector).
+- **Dual-Stream Adaptive Gated Fusion Architecture**: Fuses 768-d spatial features from **ConvNeXt-Small** with 128-d frequency embeddings extracted via **Clean 2D Real FFT (`torch.fft.rfft2`)** using a learnable **Adaptive Gated Fusion** network ($g = \sigma(W [\mathbf{f}_{\text{spatial}}, \mathbf{f}_{\text{freq}}])$) to dynamically weight spatial vs. spectral cues per image (896-d combined vector).
+- **Clean FP32 Un-normalized FFT Branch**: Inverts ImageNet-normalized tensors back to raw $[0, 1]$ FP32 RGB prior to grayscale conversion, eliminating colorimetry distortion and artificial DC frequency spikes.
+- **Youden's J ROC Decision Threshold Calibration**: Dynamically computes optimal decision boundary $T^*$ ($J = \text{TPR} - \text{FPR}$) on validation ROC curves to eliminate model prediction bias. Saves $T^*$ into `.pth` checkpoint metadata for automated `app.py` production loading.
+- **Robustness Augmentations**: Incorporates **JPEG Compression ($Q \in [50, 90]$)** and **Gaussian Blur** to prevent spatial boundary edge overfitting and enhance cross-manipulation (LOTO) generalization.
 - **Group-Based Video-ID Partitioning**: Eliminates frame-level identity/background data leakage by performing a unified single-pass partition of underlying video IDs across Train, Validation, and Test sets.
 - **Batched GPU Face Extraction**: Uses `facenet-pytorch` MTCNN with dynamic **1.30x relative bounding box scale expansion** running in single-pass GPU batches.
 - **Centralized Configuration Management**: Configured via `config/default.yaml` and parsed through `src/config.py` for global parameter control.
@@ -67,16 +70,17 @@ streamlit run app.py
                             ┌───────────────────────────────┴──────────────────────────────┐
                             ▼                                                              ▼
               [ Spatial Stream (ConvNeXt) ]                              [ Frequency Stream (2D FFT) ]
-              • 768-d Feature Embeddings                                 • 2D Real FFT Log-Magnitude Spectrum
+              • 768-d Feature Embeddings                                 • FP32 Un-normalized Log Spectrum
                                                             │            • 128-d Frequency Embeddings
                                                             └───────────────┬──────────────┘
                                                                             ▼
-                                                                  [ Feature Concatenation ]
-                                                                  • 896-d Fused Representation
+                                                              [ Adaptive Gated Fusion ]
+                                                              • Learnable Gating Network (Bias Init -2.0)
+                                                              • 896-d Dynamic Representation
                                                                             │
                                                                             ▼
                                                                   [ Binary Classifier Head ]
-                                                                  • Sigmoid Probability (Real / Fake)
+                                                                  • Youden's J Calibrated Decision Threshold T*
 ```
 
 ---
@@ -103,7 +107,9 @@ deepfake_detection_v2_pytorch.ipynb
 The notebook pipeline executes:
 - **Phase 1**: Frozen backbone head warmup (3 epochs, `lr=1e-3`).
 - **Phase 2**: End-to-end differential LR fine-tuning with AMP fp16 (5 epochs, `lr_backbone=1e-5`, `lr_head=1e-4`).
-- **Ablation Study**: Spatial-Only vs Dual-Stream (Spatial + 2D FFT) accuracy comparison.
+- **Robustness Training**: JPEG Compression + Gaussian Blur Albumentations pipeline.
+- **Youden's J ROC Calibration**: Dynamically calculates optimal decision threshold $T^*$ on validation set and exports $T^*$ in checkpoint metadata.
+- **Ablation Study**: Spatial-Only vs Dual-Stream (Adaptive Gated Fusion) accuracy comparison.
 - **Generalization Benchmark**: Leave-One-Type-Out (LOTO) cross-manipulation evaluation.
 - **ONNX Export**: Saves verified model to `deepfake_convnext_v2.onnx`.
 
