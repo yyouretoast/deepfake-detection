@@ -10,16 +10,16 @@ paths:
 preprocessing:
   img_size: 224
   padding_scale: 1.30  # Relative bounding box expansion factor (1.30 = 30% expansion)
-  max_videos_per_type: 200
+  max_videos_per_type: 150
   frames_per_video: 15
   min_face_size: 20
 
 model:
-  backbone: "convnext_small"
+  backbone: "convnext_base"
   pretrained: true
   use_fft_branch: true  # Toggle for Frequency Stream Ablation Study
   use_gated_fusion: true  # Adaptive Gated Fusion between spatial and frequency features
-  spatial_embed_dim: 768
+  spatial_embed_dim: 1024
   freq_embed_dim: 128
   freq_scale: 0.1  # Residual scaling factor for FFT stream (prevents random init noise)
   dropout: 0.3
