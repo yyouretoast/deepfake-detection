@@ -37,26 +37,27 @@ class FFTFrequencyExtractor(nn.Module):
         self.fc = nn.Linear(128, out_features)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Cast to float32 and un-normalize ImageNet scaling back to raw [0, 1] RGB
-        x_fp32 = x.to(torch.float32)
-        mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
-        raw_x = (x_fp32 * std + mean).clamp(0.0, 1.0)
-        
-        gray = self.rgb_to_gray(raw_x)
-        fft_2d = torch.fft.rfft2(gray)
-        
-        magnitude = torch.abs(fft_2d)
-        eps = 1e-5
-        log_spectrum = torch.log(magnitude + eps)
+        # Force FP32 computation via autocast(enabled=False) to prevent cuFFT FP16 power-of-two size errors (224x224)
+        with torch.cuda.amp.autocast(enabled=False):
+            x_fp32 = x.to(torch.float32)
+            mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
+            raw_x = (x_fp32 * std + mean).clamp(0.0, 1.0)
+            
+            gray = self.rgb_to_gray(raw_x)
+            fft_2d = torch.fft.rfft2(gray)
+            
+            magnitude = torch.abs(fft_2d)
+            eps = 1e-5
+            log_spectrum = torch.log(magnitude + eps)
 
-        flat_spectrum = log_spectrum.flatten(1)
-        min_val = flat_spectrum.min(dim=1, keepdim=True)[0].unsqueeze(-1).unsqueeze(-1)
-        max_val = flat_spectrum.max(dim=1, keepdim=True)[0].unsqueeze(-1).unsqueeze(-1)
-        
-        norm_spectrum = (log_spectrum - min_val) / (max_val - min_val + eps)
+            flat_spectrum = log_spectrum.flatten(1)
+            min_val = flat_spectrum.min(dim=1, keepdim=True)[0].unsqueeze(-1).unsqueeze(-1)
+            max_val = flat_spectrum.max(dim=1, keepdim=True)[0].unsqueeze(-1).unsqueeze(-1)
+            
+            norm_spectrum = (log_spectrum - min_val) / (max_val - min_val + eps)
+
         norm_spectrum = norm_spectrum.to(x.dtype)
-
         feat = self.conv_net(norm_spectrum)
         return self.fc(feat)
 
