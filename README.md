@@ -10,9 +10,9 @@ pinned: false
 license: mit
 ---
 
-# Deepfake Detection Engine (PyTorch + ConvNeXt + 2D FFT)
+# Deepfake Detection System
 
-> Dual-stream PyTorch 2.x Deepfake Detection Engine combining **ConvNeXt-Small** spatial features and **2D FFT Log-Magnitude Frequency Spectrum** embeddings. Features **Group-based Video-ID Partitioning**, **ONNX Runtime Acceleration**, **PyTorch Grad-CAM Explainability**, and an interactive **Streamlit UI**.
+> Dual-stream PyTorch 2.x Deepfake Detection model combining **ConvNeXt-Small** spatial features and **2D FFT** frequency spectrum embeddings. Includes **Group-based Video-ID Partitioning**, **ONNX Runtime**, **Grad-CAM Visualizations**, and a **Streamlit UI**.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-Accelerated-005CED?style=flat&logo=onnx&logoColor=white)](https://onnxruntime.ai/)
@@ -23,17 +23,19 @@ license: mit
 
 ---
 
-## Architectural Features
+## Model Architecture
 
-- **Dual-Stream Adaptive Gated Fusion Architecture**: Fuses 768-d spatial features from **ConvNeXt-Small** with 128-d frequency embeddings extracted via **Clean 2D Real FFT (`torch.fft.rfft2`)** using a learnable **Adaptive Gated Fusion** network `g = σ(W · [f_spatial, f_freq])` to dynamically weight spatial vs. spectral cues per image (896-d combined vector).
-- **Clean FP32 Un-normalized FFT Branch**: Inverts ImageNet-normalized tensors back to raw `[0, 1]` FP32 RGB prior to grayscale conversion, eliminating colorimetry distortion and artificial DC frequency spikes.
-- **Youden's J ROC Decision Threshold Calibration**: Dynamically computes optimal decision boundary `T*` (`J = TPR - FPR`) on validation ROC curves to eliminate model prediction bias. Saves `T*` into `.pth` checkpoint metadata for automated `app.py` production loading.
-- **Robustness Augmentations**: Incorporates **JPEG Compression (Quality: 50-90)** and **Gaussian Blur** to prevent spatial boundary edge overfitting and enhance cross-manipulation (LOTO) generalization.
-- **Group-Based Video-ID Partitioning**: Eliminates frame-level identity/background data leakage by performing a unified single-pass partition of underlying video IDs across Train, Validation, and Test sets.
-- **Batched GPU Face Extraction**: Uses `facenet-pytorch` MTCNN with dynamic **1.30x relative bounding box scale expansion** running in single-pass GPU batches.
-- **Centralized Configuration Management**: Configured via `config/default.yaml` and parsed through `src/config.py` for global parameter control.
-- **ONNX Runtime Acceleration**: Supports single-click export to ONNX Runtime format (`deepfake_convnext_v2.onnx`) for high-throughput CPU/GPU web inference.
-- **PyTorch Grad-CAM Explainability**: Interactive heatmap overlay targeted specifically at `spatial_backbone` feature maps to reveal face manipulation artifacts on facial regions.
+- **Dual-Stream Adaptive Gated Fusion**: Fuses spatial features from ConvNeXt-Small with frequency embeddings extracted via 2D Real FFT using a learnable gating network to dynamically weight spatial vs. spectral cues.
+- **Un-normalized FFT Branch**: Inverts normalized tensors back to raw FP32 RGB prior to grayscale conversion to prevent artificial frequency spikes.
+- **Youden's J Threshold Calibration**: Computes the optimal decision boundary (`TPR - FPR`) on validation ROC curves. Saves this threshold into the checkpoint metadata.
+- **Robustness Augmentations**: Uses JPEG Compression and Gaussian Blur during training to enhance cross-manipulation generalization.
+- **Group-Based Video-ID Partitioning**: Prevents identity leakage by ensuring all frames from a single source video remain entirely within Train, Validation, or Test splits.
+- **Batched GPU Face Extraction**: Uses MTCNN with a 1.30x bounding box scale expansion. Extracts multiple faces per frame, sorting by bounding-box area and capping at `max_faces=3` to guarantee OOM safety. Empty frames are mathematically filtered.
+- **Dynamic Inference Chunking**: The prediction pipeline chunks extracted tensors into mini-batches (`BATCH_SIZE=16`) to ensure absolute VRAM stability during heavy multi-face scene parsing.
+- **Centralized Configuration**: Configured via `config/default.yaml`.
+- **ONNX Runtime Integration**: Supports exporting to ONNX format for fast inference.
+- **Grad-CAM Visualizations (Triple-Zipping)**: All extracted faces are passed through inference, then triple-zipped with their probabilities and source tensors. The system sorts and targets the top 4 "Most Fake" faces, ensuring exact mathematical alignment between the visualized heatmap and the face it explains.
+- **Normalized Confidence Metrics**: The UI mathematically normalizes the raw probability scores relative to the Youden's J dynamic threshold, guaranteeing that the decision boundary always represents exactly 50% confidence.
 - **Automated `pytest` Integration Suite**: 6 integration test modules covering data leakage, Grad-CAM targeting, configuration loading, tensor shapes, cropper bounds safety, and ONNX parity.
 
 ---

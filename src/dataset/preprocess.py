@@ -103,10 +103,10 @@ class DynamicFaceCropper:
 
         return cropped_faces
 
-    def crop_all_faces_batched(self, images_rgb_list: List[np.ndarray]) -> List[List[np.ndarray]]:
+    def crop_all_faces_batched(self, images_rgb_list: List[np.ndarray], max_faces: int = 3) -> List[List[np.ndarray]]:
         """
-        GPU batched face detection returning ALL detected face crops for each image.
-        Returns a list of lists of face crops per frame.
+        GPU batched face detection returning ALL detected face crops for each image (up to max_faces).
+        Returns a list of lists of face crops per frame. Empty frames return [].
         """
         if not images_rgb_list:
             return []
@@ -125,14 +125,15 @@ class DynamicFaceCropper:
 
             for img_rgb, boxes in zip(images_rgb_list, boxes_list):
                 if boxes is None or len(boxes) == 0:
-                    all_cropped_faces.append([self._center_crop(img_rgb)])
+                    all_cropped_faces.append([])
                 else:
                     frame_crops = []
-                    for single_box in boxes:
+                    boxes = sorted(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
+                    for single_box in boxes[:max_faces]:
                         crop = self._crop_single_box(img_rgb, single_box)
                         if crop is not None:
                             frame_crops.append(crop)
-                    all_cropped_faces.append(frame_crops if frame_crops else [self._center_crop(img_rgb)])
+                    all_cropped_faces.append(frame_crops)
         else:
             for img_rgb in images_rgb_list:
                 all_cropped_faces.append([self._center_crop(img_rgb)])
@@ -240,15 +241,3 @@ class DynamicFaceCropper:
         interp = self._get_resize_interpolation(crop.shape[0], self.target_size)
         return cv2.resize(crop, (self.target_size, self.target_size), interpolation=interp)
 
-def is_blurry(image_rgb: np.ndarray, threshold: Optional[float] = None, config: Optional[Dict[str, Any]] = None) -> bool:
-    """Checks image blurriness using Laplacian variance, ingesting config defaults."""
-    if threshold is None:
-        if config is None:
-            config = load_config()
-        threshold = config.get("preprocessing", {}).get("blur_threshold_real", 30.0)
-
-    if image_rgb is None or image_rgb.size == 0:
-        return True
-    gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
-    var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return float(var) < threshold

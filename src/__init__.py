@@ -11,10 +11,7 @@ try:
 except ImportError:
     DeepfakeDataset, group_video_split, extract_video_id, create_dataloaders = None, None, None, None
 
-try:
-    from src.dataset.preprocess import DynamicFaceCropper, is_blurry
-except ImportError:
-    DynamicFaceCropper, is_blurry = None, None
+    DynamicFaceCropper = None
 
 try:
     from src.explainability.gradcam import PyTorchGradCAM, overlay_cam
@@ -33,7 +30,6 @@ __all__ = [
     "extract_video_id",
     "create_dataloaders",
     "DynamicFaceCropper",
-    "is_blurry",
     "PyTorchGradCAM",
     "overlay_cam",
 ]

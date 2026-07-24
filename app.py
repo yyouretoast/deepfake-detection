@@ -65,7 +65,7 @@ st.markdown("""
 
 st.markdown("""
     <div class="header-box">
-        <h1 style='color: #60a5fa; margin-bottom: 5px;'>Deepfake Detection Engine</h1>
+        <h1 style='color: #60a5fa; margin-bottom: 5px;'>Deepfake Detection App</h1>
         <p style='color: #94a3b8; font-size: 14px;'>
             PyTorch 2.x / ONNX Runtime • ConvNeXt-Small + 2D FFT Frequency Stream • GroupKFold Verified
         </p>
@@ -87,7 +87,7 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
     if HAS_ONNX and os.path.exists(onnx_path):
         try:
             onnx_predictor = ONNXDeepfakePredictor(onnx_path)
-            st.toast("ONNX Runtime Acceleration Engine initialized successfully.")
+            st.toast("ONNX Runtime initialized.")
         except Exception:
             onnx_predictor = None
 
@@ -121,7 +121,8 @@ try:
     pytorch_model, onnx_predictor, has_pytorch_weights = load_models()
     cropper = DynamicFaceCropper(scale_factor=1.30, target_size=IMG_SIZE, device=DEVICE)
     if not has_pytorch_weights:
-        st.error("⚠️ **Warning: Trained model weights not found!** (`deepfake_convnext_v2.pth`). Running with random initialization; predictions will be random.")
+        st.error("🚨 **Critical Error: Trained model weights not found!** (`deepfake_convnext_v2.pth`). Cannot run inference with a randomly initialized model. Please download or train the weights.")
+        st.stop()
 except Exception as e:
     st.error(f"Model initialization error: {e}")
     st.stop()
@@ -173,64 +174,85 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
     if not frames_rgb:
         return None
 
-    faces = cropper.crop_faces_batched(frames_rgb)
-    if not faces:
+    faces_per_frame = cropper.crop_all_faces_batched(frames_rgb, max_faces=3)
+    all_faces = [face for sublist in faces_per_frame for face in sublist]
+    if not all_faces:
         return None
 
-    numpy_batch, torch_batch = preprocess_tensors_batch(faces)
+    # Dynamic Mini-Batching Inference
+    BATCH_SIZE = 16
+    all_probs = []
+    all_tensors = []
+    
+    for i in range(0, len(all_faces), BATCH_SIZE):
+        batch_faces = all_faces[i:i+BATCH_SIZE]
+        numpy_batch, torch_batch = preprocess_tensors_batch(batch_faces)
+        
+        if onnx_predictor is not None:
+            batch_probs = onnx_predictor.predict_batch(numpy_batch).tolist()
+        else:
+            with torch.no_grad():
+                with torch.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
+                    logits = pytorch_model(torch_batch)
+                    batch_probs = torch.sigmoid(logits.float()).cpu().numpy().tolist()
+        
+        if isinstance(batch_probs, float):
+            batch_probs = [batch_probs]
+            
+        all_probs.extend(batch_probs)
+        all_tensors.append(torch_batch)
+        
+    all_tensors_concat = torch.cat(all_tensors, dim=0)
 
-    # PyTorch AMP Autocast / ONNX Inference
-    if onnx_predictor is not None:
-        probs = onnx_predictor.predict_batch(numpy_batch).tolist()
-    else:
-        with torch.no_grad():
-            with torch.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                logits = pytorch_model(torch_batch)
-                probs = torch.sigmoid(logits.float()).cpu().numpy().tolist()
-
-    if isinstance(probs, float):
-        probs = [probs]
-
-    frame_preds = probs
-    sample_outputs = []
+    # Triple-Zipping and Sorting by Most Fake
+    zipped_data = list(zip(all_faces, all_probs, all_tensors_concat))
+    zipped_data.sort(key=lambda x: x[1])  # Ascending by prob (Fake=0, Real=1)
+    
+    top_4 = zipped_data[:4]
+    sample_faces = [item[0] for item in top_4]
+    sample_probs = [item[1] for item in top_4]
+    sample_tensors = torch.stack([item[2] for item in top_4])
     
     can_render_gradcam = enable_gradcam and has_pytorch_weights
-
-    # Batched Grad-CAM Generation for sample frames
-    sample_faces = faces[:4]
-    sample_probs = probs[:4]
     sample_heatmaps = []
 
     if can_render_gradcam:
         try:
             with PyTorchGradCAM(pytorch_model) as gradcam_engine:
-                sample_tensors = torch_batch[:len(sample_faces)]
                 target_classes = [1 if p > CLASSIFICATION_THRESHOLD else 0 for p in sample_probs]
                 sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors, target_classes=target_classes)
         except Exception:
             sample_heatmaps = [None] * len(sample_faces)
 
+    def normalize_confidence(prob: float, threshold: float) -> float:
+        if prob > threshold:
+            return 50.0 + 50.0 * ((prob - threshold) / (1.0 - threshold)) if threshold < 1.0 else 100.0
+        else:
+            return 50.0 + 50.0 * ((threshold - prob) / threshold) if threshold > 0.0 else 100.0
+
+    sample_outputs = []
     for idx, (face, prob) in enumerate(zip(sample_faces, sample_probs)):
         label = "Real" if prob > CLASSIFICATION_THRESHOLD else "Fake"
-        conf = prob * 100 if prob > CLASSIFICATION_THRESHOLD else (1 - prob) * 100
+        conf = normalize_confidence(prob, CLASSIFICATION_THRESHOLD)
         
         heatmap = sample_heatmaps[idx] if idx < len(sample_heatmaps) else None
         overlay_img = overlay_cam(face, heatmap) if heatmap is not None else face
         sample_outputs.append((overlay_img, label, conf, prob))
 
-    avg_prob = float(np.mean(frame_preds))
+    avg_prob = float(np.mean(all_probs))
     final_label = "Real" if avg_prob > CLASSIFICATION_THRESHOLD else "Fake"
-    final_conf = avg_prob * 100 if avg_prob > CLASSIFICATION_THRESHOLD else (1 - avg_prob) * 100
-    fake_frames = sum(1 for p in frame_preds if p <= CLASSIFICATION_THRESHOLD)
-    real_frames = len(frame_preds) - fake_frames
+    final_conf = normalize_confidence(avg_prob, CLASSIFICATION_THRESHOLD)
+    
+    fake_faces_count = sum(1 for p in all_probs if p <= CLASSIFICATION_THRESHOLD)
+    real_faces_count = len(all_probs) - fake_faces_count
 
     return {
         "final_label": final_label,
         "final_conf": final_conf,
-        "real_frames": real_frames,
-        "fake_frames": fake_frames,
+        "real_frames": real_faces_count,
+        "fake_frames": fake_faces_count,
         "sample_outputs": sample_outputs,
-        "frame_preds": frame_preds
+        "frame_preds": all_probs
     }
 
 st.markdown("### Upload Video File for Analysis")
@@ -246,7 +268,7 @@ if enable_gradcam and not has_pytorch_weights:
 st.sidebar.markdown(f"""
 ---
 ### System Configuration
-- **Engine**: {'ONNX Runtime (Accelerated)' if onnx_predictor else 'PyTorch Native (AMP Autocast)'}
+- **Engine**: {'ONNX Runtime' if onnx_predictor else 'PyTorch Native'}
 - **Model**: ConvNeXt-Small + 2D FFT Frequency Stream
 - **Padding**: Relative 1.30x Scale Expansion
 - **Validation**: Video-ID GroupKFold Split
@@ -266,7 +288,7 @@ if uploaded_file:
 
         st.video(content)
 
-        with st.spinner("Analyzing video frames with Spatial & Frequency Neural Engine..."):
+        with st.spinner("Running model inference..."):
             res = predict_video_sequence(tmp_path, enable_gradcam=enable_gradcam)
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -293,11 +315,11 @@ if uploaded_file:
         st.markdown("<br>", unsafe_allow_html=True)
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Analyzed Frames", res["real_frames"] + res["fake_frames"])
-        col2.metric("Real Frames", res["real_frames"])
-        col3.metric("Fake Frames", res["fake_frames"])
+        col1.metric("Analyzed Faces", res["real_frames"] + res["fake_frames"])
+        col2.metric("Real Faces", res["real_frames"])
+        col3.metric("Fake Faces", res["fake_frames"])
 
-        st.markdown("### Frame-by-Frame Confidence Timeline")
+        st.markdown("### Overall Confidence")
         st.progress(min(int(res["final_conf"]), 100))
 
         if res["sample_outputs"]:

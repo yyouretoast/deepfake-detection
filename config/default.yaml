@@ -1,4 +1,4 @@
-# Deepfake Detection Engine - Configuration
+# Deepfake Detection Configuration
 
 paths:
   kaggle_input: "/kaggle/input/datasets/xdxd003/ff-c23/FaceForensics++_C23"
@@ -13,8 +13,6 @@ preprocessing:
   max_videos_per_type: 200
   frames_per_video: 15
   min_face_size: 20
-  blur_threshold_real: 50
-  blur_threshold_fake: 20
 
 model:
   backbone: "convnext_small"

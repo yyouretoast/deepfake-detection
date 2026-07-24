@@ -1,5 +1,5 @@
 from src.dataset.loader import DeepfakeDataset, group_video_split, extract_video_id, get_transforms, create_dataloaders
-from src.dataset.preprocess import DynamicFaceCropper, is_blurry
+from src.dataset.preprocess import DynamicFaceCropper
 
 __all__ = [
     "DeepfakeDataset",
@@ -8,5 +8,4 @@ __all__ = [
     "get_transforms",
     "create_dataloaders",
     "DynamicFaceCropper",
-    "is_blurry",
 ]
