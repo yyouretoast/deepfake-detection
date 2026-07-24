@@ -41,7 +41,7 @@ labels:
   fake: 0  # Fake faces mapped to label 0
 
 manipulation_types:
-  all: ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter", "DeepFakeDetection"]
+  all: ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter"]
   held_out_loto: "FaceShifter"  # Target type for Leave-One-Type-Out generalization test
 
 app:
