@@ -68,7 +68,7 @@ streamlit run app.py
 ## System Architecture
 
 ```
-[ Input Video ] ──► [ GPU Batched MTCNN ] ──► [ Dynamic 1.30x Face Crops (224x224) ]
+[ Input Video ] ──► [ GPU Batched MTCNN ] ──► [ Dynamic 1.30x Face Crops (256x256) ]
                                                             │
                             ┌───────────────────────────────┴──────────────────────────────┐
                             ▼                                                              ▼
@@ -108,9 +108,11 @@ deepfake_detection_v2_pytorch.ipynb
 ```
 
 The notebook pipeline executes:
+- **Accelerated Multi-GPU Engine**: Powered by **HuggingFace `Accelerate` DDP** for process-isolated distributed training across 2x T4 GPUs.
+- **Resolution**: $256 \times 256$ input resolution for 30% enhanced high-frequency spectral detail extraction.
 - **Phase 1**: Frozen backbone head warmup (3 epochs, `lr=1e-3`).
-- **Phase 2**: End-to-end differential LR fine-tuning with AMP fp16 (5 epochs, `lr_backbone=1e-5`, `lr_head=1e-4`).
-- **Robustness Training**: Affine, Downscale, JPEG Compression, Color Jitter, and Gaussian Blur Albumentations pipeline.
+- **Phase 2**: End-to-end differential fine-tuning with **Layer-wise Learning Rate Decay (LLRD)** (`2e-6` stem $\rightarrow$ `5e-6` mid $\rightarrow$ `1e-5` deep $\rightarrow$ `1e-4` head) and AMP fp16.
+- **Stabilized Training**: Target label smoothing (`0.05`) and gradient norm clipping (`max_norm=1.0`).
 - **Youden's J ROC Calibration**: Dynamically calculates optimal decision threshold `T*` on validation set and exports `T*` in checkpoint metadata.
 - **Ablation Study**: Spatial-Only vs Dual-Stream (Adaptive Gated Fusion) accuracy comparison.
 - **Generalization Benchmark**: Leave-One-Type-Out (LOTO) cross-manipulation evaluation.
