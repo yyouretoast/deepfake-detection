@@ -1,6 +1,6 @@
 import os
 import pytest
-from src.config import load_config, DEFAULT_CONFIG
+from src.config import load_config
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
 def test_load_config_default():

@@ -1,11 +1,8 @@
 import os
-import sys
+import cv2
 import numpy as np
 import pytest
 from unittest.mock import MagicMock, patch
-
-# Append project root to sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app import predict_video_sequence
 
@@ -18,7 +15,6 @@ class MockVideoCapture:
         return self.frame_count < self.max_frames
 
     def get(self, propId):
-        import cv2
         if propId == cv2.CAP_PROP_FRAME_COUNT:
             return self.max_frames
         return 0
@@ -26,10 +22,7 @@ class MockVideoCapture:
     def read(self):
         if self.frame_count < self.max_frames:
             self.frame_count += 1
-            # Return a valid RGB image simulating a frame
             frame = np.ones((480, 640, 3), dtype=np.uint8) * 128
-            # Draw a simulated "face" so MTCNN/CenterCrop has something
-            import cv2
             cv2.rectangle(frame, (200, 150), (400, 350), (255, 200, 200), -1)
             return True, frame
         return False, None
