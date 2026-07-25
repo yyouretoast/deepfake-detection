@@ -31,8 +31,7 @@ class FFTFrequencyExtractor(nn.Module):
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten()
+            nn.AdaptiveAvgPool2d((1, 1))
         )
         self.fc = nn.Linear(128, out_features)
 
@@ -54,6 +53,7 @@ class FFTFrequencyExtractor(nn.Module):
 
         norm_spectrum = norm_spectrum.to(x.dtype)
         feat = self.conv_net(norm_spectrum)
+        feat = feat.view(feat.size(0), -1)
         return self.fc(feat)
 
 class HybridDeepfakeDetector(nn.Module):
