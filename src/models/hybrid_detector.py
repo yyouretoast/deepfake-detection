@@ -58,9 +58,9 @@ class FFTFrequencyExtractor(nn.Module):
 
 class HybridDeepfakeDetector(nn.Module):
     """
-    Dual-Stream Hybrid Deepfake Detector.
-    Fuses Spatial Backbone (ConvNeXt-Base, 1024-d) and Frequency Stream (2D FFT, 128-d)
-    via Adaptive Gated Fusion into an 1152-d feature representation for binary classification.
+    Dual-Stream Hybrid Deepfake Detector with Multi-Head Cross-Attention Fusion.
+    Spatial representations (ConvNeXt-Base) dynamically query 2D FFT Frequency representations
+    via a 4-Head Cross-Attention mechanism (`nn.MultiheadAttention`).
     """
     def __init__(
         self,
@@ -84,18 +84,27 @@ class HybridDeepfakeDetector(nn.Module):
 
         freq_embed_dim = model_cfg.get("freq_embed_dim", 128)
 
+        self.spatial_proj = nn.Sequential(
+            nn.Linear(spatial_in_features, 256),
+            nn.LayerNorm(256)
+        )
+
         if self.use_fft_branch:
             self.freq_extractor = FFTFrequencyExtractor(out_features=freq_embed_dim)
-            self.gate_fc = nn.Linear(spatial_in_features + freq_embed_dim, freq_embed_dim)
-            nn.init.constant_(self.gate_fc.bias, -2.0)  # Sigmoid(-2.0) ≈ 0.119 (Safe noise-free warmup)
-            fusion_dim = spatial_in_features + freq_embed_dim
+            self.freq_proj = nn.Sequential(
+                nn.Linear(freq_embed_dim, 256),
+                nn.LayerNorm(256)
+            )
+            self.cross_attn = nn.MultiheadAttention(embed_dim=256, num_heads=4, batch_first=True)
+            self.gate_fc = None
         else:
             self.freq_extractor = None
+            self.freq_proj = None
+            self.cross_attn = None
             self.gate_fc = None
-            fusion_dim = spatial_in_features
 
         self.classifier = nn.Sequential(
-            nn.Linear(fusion_dim, 256),
+            nn.Linear(256, 256),
             nn.LayerNorm(256),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
@@ -104,14 +113,20 @@ class HybridDeepfakeDetector(nn.Module):
 
     def extract_features(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Extracts intermediate feature representations (spatial, frequency, fused)."""
-        spatial_feat = self.spatial_backbone(x)
-        if self.use_fft_branch and self.freq_extractor is not None and self.gate_fc is not None:
+        raw_spatial = self.spatial_backbone(x)
+        spatial_feat = self.spatial_proj(raw_spatial)
+
+        if self.use_fft_branch and self.freq_extractor is not None and self.cross_attn is not None:
             freq_raw = self.freq_extractor(x)
-            gate = torch.sigmoid(self.gate_fc(torch.cat([spatial_feat, freq_raw], dim=1)))
-            freq_feat = freq_raw * gate
-            fused = torch.cat([spatial_feat, freq_feat], dim=1)
+            freq_feat = self.freq_proj(freq_raw)
+
+            s_q = spatial_feat.unsqueeze(1)
+            f_kv = freq_feat.unsqueeze(1)
+            attn_out, _ = self.cross_attn(query=s_q, key=f_kv, value=f_kv)
+
+            fused = (s_q + 0.1 * attn_out).squeeze(1)
         else:
-            freq_feat = torch.zeros((x.size(0), 0), device=x.device, dtype=x.dtype)
+            freq_feat = torch.zeros((x.size(0), 256), device=x.device, dtype=x.dtype)
             fused = spatial_feat
 
         return {
