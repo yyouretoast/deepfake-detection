@@ -31,7 +31,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "dropout": 0.3
     },
     "training": {
-        "batch_size": 64,
+        "batch_size": 32,
         "num_workers": 4,
         "epochs_phase1": 3,
         "epochs_phase2": 5,

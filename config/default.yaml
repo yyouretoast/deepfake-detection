@@ -25,7 +25,7 @@ model:
   dropout: 0.3
 
 training:
-  batch_size: 64  # Distributed across 2x NVIDIA T4 GPUs (32 per GPU)
+  batch_size: 32  # Distributed across 2x NVIDIA T4 GPUs (16 per GPU)
   num_workers: 4
   epochs_phase1: 3  # Frozen backbone warmup
   epochs_phase2: 15  # End-to-end differential LR fine-tuning
