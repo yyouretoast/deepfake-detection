@@ -146,10 +146,6 @@ def build_model(
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     model = HybridDeepfakeDetector(pretrained=pretrained, use_fft_branch=use_fft, config=config)
-    
-    if torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model)
-
     model = model.to(device)
 
     if compile_model and hasattr(torch, "compile"):
