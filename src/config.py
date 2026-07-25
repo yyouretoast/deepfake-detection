@@ -13,7 +13,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "model_save_path": "/kaggle/working/deepfake_convnext_v2.pth"
     },
     "preprocessing": {
-        "img_size": 224,
+        "img_size": 256,
         "padding_scale": 1.30,
         "max_videos_per_type": 200,
         "frames_per_video": 15,

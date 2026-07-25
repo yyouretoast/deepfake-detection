@@ -8,7 +8,7 @@ paths:
   weights_url: "https://huggingface.co/spaces/yyouretoast/deepfake-detector/resolve/main/deepfake_convnext_v2.pth"
 
 preprocessing:
-  img_size: 224
+  img_size: 256
   padding_scale: 1.30  # Relative bounding box expansion factor (1.30 = 30% expansion)
   max_videos_per_type: 150
   frames_per_video: 15
