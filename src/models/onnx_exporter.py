@@ -26,7 +26,7 @@ def export_to_onnx(
         model = model.module
 
     device = next(model.parameters()).device
-    dummy_input = torch.randn(1, 3, img_size, img_size, device=device)
+    dummy_input = torch.randn(2, 3, img_size, img_size, device=device)
 
     dynamic_axes = {
         'input': {0: 'batch_size'},

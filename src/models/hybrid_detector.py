@@ -117,7 +117,7 @@ class HybridDeepfakeDetector(nn.Module):
             f_kv = self.freq_proj(freq_raw).unsqueeze(1)
             attn_out, _ = self.cross_attn(query=s_q, key=f_kv, value=f_kv)
 
-            freq_enhanced = freq_raw + 0.1 * attn_out.squeeze(1)
+            freq_enhanced = freq_raw + 0.1 * attn_out[:, 0, :]
             fused = torch.cat([spatial_raw, freq_enhanced], dim=1)
         else:
             freq_raw = torch.zeros((x.size(0), 0), device=x.device, dtype=x.dtype)
@@ -132,7 +132,7 @@ class HybridDeepfakeDetector(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.extract_features(x)
         logits = self.classifier(features["fused"])
-        return logits.squeeze(-1)
+        return logits.view(-1)
 
 def build_model(
     use_fft: bool = True,
