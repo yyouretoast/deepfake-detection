@@ -116,8 +116,18 @@ class PyTorchGradCAM:
 
                 heatmaps: List[np.ndarray] = []
                 for b in range(batch_size):
-                    weights = torch.mean(self.gradients[b], dim=(1, 2), keepdim=True)
-                    cam = torch.sum(weights * self.feature_maps[b], dim=0)
+                    grad_b = self.gradients[b]
+                    feat_b = self.feature_maps[b]
+
+                    # Detect channel-last tensor layout ([H, W, C]) and permute to [C, H, W] before mean pooling
+                    if grad_b.ndim == 3 and (grad_b.shape[2] > grad_b.shape[0] or (grad_b.shape[0] == grad_b.shape[1] and grad_b.shape[2] != grad_b.shape[0])):
+                        grad_b = grad_b.permute(2, 0, 1)
+
+                    if feat_b.ndim == 3 and (feat_b.shape[2] > feat_b.shape[0] or (feat_b.shape[0] == feat_b.shape[1] and feat_b.shape[2] != feat_b.shape[0])):
+                        feat_b = feat_b.permute(2, 0, 1)
+
+                    weights = torch.mean(grad_b, dim=(1, 2), keepdim=True)
+                    cam = torch.sum(weights * feat_b, dim=0)
                     cam = F.relu(cam)
                     
                     # Bilinear Upsampling to match input image spatial resolution (e.g. 224x224)

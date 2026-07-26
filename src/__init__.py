@@ -7,9 +7,9 @@ except ImportError:
     ONNXDeepfakePredictor, export_to_onnx, quantize_onnx_model = None, None, None
 
 try:
-    from src.dataset.loader import DeepfakeDataset, group_video_split, extract_video_id, create_dataloaders
+    from src.dataset.loader import DeepfakeDataset, group_video_split, extract_video_id, extract_identities, perform_graph_split, create_dataloaders
 except ImportError:
-    DeepfakeDataset, group_video_split, extract_video_id, create_dataloaders = None, None, None, None
+    DeepfakeDataset, group_video_split, extract_video_id, extract_identities, perform_graph_split, create_dataloaders = None, None, None, None, None, None
 
     DynamicFaceCropper = None
 
@@ -28,6 +28,8 @@ __all__ = [
     "DeepfakeDataset",
     "group_video_split",
     "extract_video_id",
+    "extract_identities",
+    "perform_graph_split",
     "create_dataloaders",
     "DynamicFaceCropper",
     "PyTorchGradCAM",

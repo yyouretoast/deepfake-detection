@@ -44,7 +44,7 @@ class FFTFrequencyExtractor(nn.Module):
             raw_x = (x_fp32 * std + mean).clamp(0.0, 1.0)
             
             gray = self.rgb_to_gray(raw_x)
-            fft_2d = torch.fft.rfft2(gray)
+            fft_2d = torch.fft.rfft2(gray, norm="ortho")
             
             magnitude = torch.abs(fft_2d)
             eps = 1e-5

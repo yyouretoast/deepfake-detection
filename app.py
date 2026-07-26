@@ -1,3 +1,4 @@
+import gc
 from typing import List, Tuple, Dict, Any, Optional
 import os
 import tempfile
@@ -168,6 +169,9 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
             curr_frame += 1
     finally:
         cap.release()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     if not frames_rgb:
         return None
@@ -186,9 +190,14 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         batch_faces = all_faces[i:i+BATCH_SIZE]
         numpy_batch, torch_batch = preprocess_tensors_batch(batch_faces)
         
+        batch_probs = None
         if onnx_predictor is not None:
-            batch_probs = onnx_predictor.predict_batch(numpy_batch).tolist()
-        else:
+            try:
+                batch_probs = onnx_predictor.predict_batch(numpy_batch).tolist()
+            except Exception:
+                batch_probs = None
+
+        if batch_probs is None:
             with torch.no_grad():
                 with torch.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
                     p1 = torch.sigmoid(pytorch_model(torch_batch).float())
@@ -244,6 +253,10 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
     
     fake_faces_count = sum(1 for p in all_probs if p > CLASSIFICATION_THRESHOLD)
     real_faces_count = len(all_probs) - fake_faces_count
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     return {
         "final_label": final_label,

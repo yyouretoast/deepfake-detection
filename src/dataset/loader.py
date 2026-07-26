@@ -31,6 +31,76 @@ def extract_video_id(filename: str) -> str:
         
     return base_no_frame
 
+def extract_identities(filename: str) -> Tuple[str, str]:
+    """Extracts source and target video identifiers from face filename."""
+    basename = os.path.splitext(os.path.basename(filename))[0]
+    base_no_frame = re.sub(r'_f\d+$', '', basename)
+    
+    match_pair = re.search(r'(\d+)_(\d+)', base_no_frame)
+    if match_pair:
+        return match_pair.group(1), match_pair.group(2)
+        
+    match_single = re.search(r'(\d+)', base_no_frame)
+    if match_single:
+        return match_single.group(1), match_single.group(1)
+        
+    base = base_no_frame.split('_')[0]
+    return base, base
+
+def perform_graph_split(
+    file_list: Any,
+    test_size: float = 0.15,
+    val_size: float = 0.15,
+    seed: int = 42
+) -> Tuple[Any, Any, Any]:
+    """
+    Graph-based connected component split using networkx parsing both source and target video IDs (id1, id2).
+    """
+    import networkx as nx
+
+    samples = []
+    for item in file_list:
+        if isinstance(item, (tuple, list)):
+            samples.append((item[0], item[1]))
+        else:
+            label = 0 if ("original" in str(item).lower() or "real" in str(item).lower()) else 1
+            samples.append((item, label))
+
+    G = nx.Graph()
+    for filepath, _ in samples:
+        id1, id2 = extract_identities(os.path.basename(filepath))
+        G.add_node(id1)
+        G.add_node(id2)
+        G.add_edge(id1, id2)
+
+    components = list(nx.connected_components(G))
+    random.seed(seed)
+    random.shuffle(components)
+
+    n_total = len(components)
+    n_test = max(1, int(n_total * test_size)) if n_total > 0 else 0
+    n_val = max(1, int(n_total * val_size)) if n_total > 0 else 0
+
+    test_comps = components[:n_test]
+    val_comps = components[n_test:n_test + n_val]
+    train_comps = components[n_test + n_val:]
+
+    def get_samples_for_comps(comp_list):
+        comp_nodes = set.union(*comp_list) if comp_list else set()
+        res = []
+        for idx, (filepath, label) in enumerate(samples):
+            id1, id2 = extract_identities(os.path.basename(filepath))
+            if id1 in comp_nodes or id2 in comp_nodes:
+                res.append(file_list[idx])
+        return res
+
+    train_files = get_samples_for_comps(train_comps)
+    val_files = get_samples_for_comps(val_comps)
+    test_files = get_samples_for_comps(test_comps)
+
+    return train_files, val_files, test_files
+
+
 def group_video_split(
     file_list: Any,
     test_size: float = 0.15,
