@@ -11,7 +11,7 @@ license: mit
 
 # Deepfake Detection System
 
-> Dual-stream PyTorch 2.x Deepfake Detection model combining **ConvNeXt-Base** spatial features and **2D Real FFT** frequency spectrum embeddings. Includes **Stratified Group-based Video-ID Partitioning**, **Layer-wise Learning Rate Decay (LLRD)**, **HuggingFace Accelerate DDP**, **Test-Time Augmentation (TTA)**, **ONNX Runtime**, **Grad-CAM Visualizations**, and a **Streamlit UI**.
+> Dual-stream PyTorch 2.x Deepfake Detection model combining **ConvNeXt-Base** spatial features and **2D Real FFT** frequency spectrum embeddings. Includes **Graph-Connected Component Partitioning**, **4-Head Cross-Attention Fusion**, **Layer-wise Learning Rate Decay (LLRD)**, **Macro F1 Threshold Calibration**, **Test-Time Augmentation (TTA)**, **ONNX Runtime**, **Grad-CAM Visualizations**, and a **Streamlit UI**.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-Accelerated-005CED?style=flat&logo=onnx&logoColor=white)](https://onnxruntime.ai/)
@@ -37,7 +37,7 @@ Performance comparison on the FaceForensics++ (C23 compression) benchmark under 
 | **Standard CNNs (ResNet-50 / VGG16)** | $224 \times 224$ | `0.810 - 0.850` | `75.0% - 81.0%` | Baseline spatial frame classifiers |
 | **Spatial-Only ConvNeXt-Base** | $224 \times 224$ | `0.932` | `87.5%` | Spatial stream only (no FFT branch) |
 | **Xception Baseline** | $299 \times 299$ | `0.950` | `89.3%` | *Rossler et al., ICCV 2019* (FF++ Benchmark Paper) |
-| **Dual-Stream ConvNeXt + 2D FFT (This Work)** | $256 \times 256$ | *[ Training Run ]* | *[ Training Run ]* | **ConvNeXt-Base + 2D FFT + LLRD + Accelerate DDP** |
+| **Dual-Stream ConvNeXt + 2D FFT (This Work)** | $256 \times 256$ | *[ Training Run ]* | *[ Training Run ]* | **ConvNeXt-Base + 2D FFT + Cross-Attention + LLRD** |
 
 ---
 
@@ -49,31 +49,31 @@ Performance comparison on the FaceForensics++ (C23 compression) benchmark under 
                             ┌───────────────────────────────┴──────────────────────────────┐
                             ▼                                                              ▼
                [ Spatial Stream (ConvNeXt-Base) ]               [ Frequency Stream (2D FFT) ]
-               • 1024-d Feature Embeddings                        • 2D Real FFT Log-Spectrum (log/10.0)
+               • 1024-d Feature Embeddings                        • 2D Real FFT Spectrum (norm="ortho")
                                                             │     • 128-d Frequency Embeddings
                                                             └───────────────┬──────────────┘
                                                                             ▼
-                                                              [ Adaptive Gated Fusion ]
-                                                              • Learnable Gating Network (Bias Init -2.0)
-                                                              • 1152-d Dynamic Representation
+                                                              [ 4-Head Cross-Attention Fusion ]
+                                                              • Spatial Query (128-d) ◄► Freq Key/Value (128-d)
+                                                              • 0.1x Residual Connection + 1152-d Fusion
                                                                             │
                                                                             ▼
                                                                   [ Binary Classifier Head ]
                                                                   • nn.LayerNorm(256) + Dropout(0.3)
-                                                                  • Youden's J Calibrated Threshold T*
+                                                                  • Macro F1 Calibrated Threshold T*
 ```
 
 ---
 
 ## Key Engineering Innovations
 
-1. **Dual-Stream Adaptive Gated Fusion**: Fuses spatial features from ConvNeXt-Base (1024-d) with frequency embeddings (128-d) extracted via 2D Real FFT. A learnable gating network dynamically weights frequency contributions per sample.
+1. **Multi-Head Cross-Attention Spatial-Frequency Fusion**: Fuses spatial features from ConvNeXt-Base (1024-d) with frequency embeddings (128-d) extracted via orthogonal 2D Real FFT (`rfft2`, `norm="ortho"`). A 4-head cross-attention mechanism (`nn.MultiheadAttention`) allows spatial query features to dynamically attend to frequency key/value representations with a $0.1\times$ scaled residual connection.
 2. **`LayerNorm(256)` Head Stability**: Uses `nn.LayerNorm(256)` instead of `BatchNorm1d` in the classifier head, providing batch-size invariant normalization that prevents single-sample inference crashes and multi-GPU `DataParallel` split failures.
 3. **Layer-wise Learning Rate Decay (LLRD)**: Applies stage-decayed learning rates across ConvNeXt stages (`2e-6` stem/stages 0-1 $\rightarrow$ `5e-6` stage 2 $\rightarrow$ `1e-5` stage 3 $\rightarrow$ `1e-4` head), preserving low-level visual edge filters while fine-tuning deep semantic layers.
-4. **HuggingFace `Accelerate` DDP Engine**: Built using `accelerate.Accelerator` for process-isolated Distributed Data Parallel (DDP) execution across 2x T4 GPUs in interactive notebooks without multi-processing kernel deadlocks.
+4. **Single-GPU PCIe Overhead Elimination**: Optimized execution on a single T4 GPU (`cuda:0`), eliminating PyTorch `DataParallel` 350 MB PCIe weight broadcast latency per iteration and accelerating throughput to 6.83 it/s (~0.14s per batch).
 5. **Target Label Smoothing & Gradient Clipping**: Applies direct target smoothing (`labels * 0.95 + 0.025`) and AMP gradient norm capping (`max_norm=1.0`) to stabilize FP16 training and calibrate decision confidence.
 6. **Single-Pass Epoch Validation**: Evaluates single-pass predictions during epoch validation loops for 50% faster per-epoch latency, while reserving dual-pass Test-Time Augmentation (TTA) for final test evaluation.
-7. **Stratified Group-Based Video-ID Partitioning**: Guarantees zero video-ID overlap between Train/Val/Test splits while enforcing a 50/50 Real/Fake class ratio to eliminate identity leakage.
+7. **Graph-Connected Component Identity Partitioning**: Uses `networkx.Graph` to parse both source and target actor video IDs (`id1`, `id2`), isolating connected component clusters to guarantee **0% identity leakage** between Train/Val/Test splits.
 
 ---
 
@@ -101,14 +101,14 @@ streamlit run app.py
 
 ---
 
-## GPU Training Execution (2x NVIDIA T4 GPUs)
+## GPU Training Execution (NVIDIA T4 GPU)
 
 The training pipeline is self-contained in `deepfake_detection_v2_pytorch.ipynb`.
 
 Execution Pipeline:
 - **Phase 1**: Frozen backbone warmup (3 epochs, `lr=1e-3`).
 - **Phase 2**: End-to-end differential fine-tuning with LLRD and AMP fp16 (15 epochs with early stopping `patience=4`).
-- **Youden's J ROC Calibration**: Calculates optimal decision threshold `T*` on validation ROC curves and embeds `T*` in model metadata.
+- **Macro F1 & Equal Error Rate (EER) Calibration**: Calculates optimal decision threshold `T*` by maximizing validation Macro F1-score and reports Equal Error Rate ($\text{FPR} = \text{FNR}$).
 - **Ablation Study**: Compares Spatial-Only vs Dual-Stream performance.
 - **Leave-One-Type-Out (LOTO)**: Evaluates cross-manipulation generalization on held-out forgery types.
 - **ONNX Export**: Exports verified model to `deepfake_convnext_v2.onnx`.
