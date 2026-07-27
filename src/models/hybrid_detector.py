@@ -52,9 +52,31 @@ class FFTFrequencyExtractor(nn.Module):
             norm_spectrum = log_spectrum / 10.0
 
         norm_spectrum = norm_spectrum.to(x.dtype)
-        feat = self.conv_net(norm_spectrum)
+        conv_features = self.conv_net[:-1](norm_spectrum)
+        feat = self.conv_net[-1](conv_features)
         feat = feat.view(feat.size(0), -1)
         return self.fc(feat)
+
+    def forward_grid(self, x: torch.Tensor, target_h: int = 8, target_w: int = 8) -> torch.Tensor:
+        """Extracts spatial frequency feature grid dynamically adaptive-pooled to (target_h, target_w)."""
+        with torch.amp.autocast(device_type="cuda", enabled=False):
+            x_fp32 = x.to(torch.float32)
+            mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
+            raw_x = (x_fp32 * std + mean).clamp(0.0, 1.0)
+            
+            gray = self.rgb_to_gray(raw_x)
+            fft_2d = torch.fft.rfft2(gray, norm="ortho")
+            
+            magnitude = torch.abs(fft_2d)
+            eps = 1e-5
+            log_spectrum = torch.log(magnitude + eps)
+            norm_spectrum = log_spectrum / 10.0
+
+        norm_spectrum = norm_spectrum.to(x.dtype)
+        conv_features = self.conv_net[:-1](norm_spectrum)
+        grid_pooled = nn.functional.adaptive_avg_pool2d(conv_features, (target_h, target_w))
+        return grid_pooled
 
 class HybridDeepfakeDetector(nn.Module):
     """
@@ -108,17 +130,25 @@ class HybridDeepfakeDetector(nn.Module):
 
     def extract_features(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Extracts intermediate feature representations (spatial, frequency, fused)."""
-        spatial_raw = self.spatial_backbone(x)
+        spatial_grid = self.spatial_backbone.forward_features(x)
+        if spatial_grid.ndim == 4 and spatial_grid.shape[1] != self.spatial_backbone.num_features:
+            spatial_grid = spatial_grid.permute(0, 3, 1, 2)
+        spatial_raw = self.spatial_backbone.forward_head(spatial_grid, pre_logits=True)
 
         if self.use_fft_branch and self.freq_extractor is not None and self.cross_attn is not None:
-            freq_raw = self.freq_extractor(x)
+            B, C_s, H_s, W_s = spatial_grid.shape
+            spatial_tokens = spatial_grid.flatten(2).transpose(1, 2)
+            
+            freq_grid = self.freq_extractor.forward_grid(x, target_h=H_s, target_w=W_s)
+            freq_tokens = freq_grid.flatten(2).transpose(1, 2)
 
-            s_q = self.spatial_proj(spatial_raw).unsqueeze(1)
-            f_kv = self.freq_proj(freq_raw).unsqueeze(1)
+            s_q = self.spatial_proj(spatial_tokens)
+            f_kv = self.freq_proj(freq_tokens)
             attn_out, _ = self.cross_attn(query=s_q, key=f_kv, value=f_kv)
 
-            freq_enhanced = freq_raw + 0.1 * attn_out[:, 0, :]
-            fused = torch.cat([spatial_raw, freq_enhanced], dim=1)
+            freq_enhanced_tokens = freq_tokens + 0.1 * attn_out
+            freq_raw = freq_enhanced_tokens.mean(dim=1)
+            fused = torch.cat([spatial_raw, freq_raw], dim=1)
         else:
             freq_raw = torch.zeros((x.size(0), 0), device=x.device, dtype=x.dtype)
             fused = spatial_raw
