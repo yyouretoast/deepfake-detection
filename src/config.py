@@ -10,7 +10,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "output_dir": "models",
     },
     "preprocessing": {
-        "img_size": 256,
+        "img_size": 512,
         "face_scale_factor": 1.30,
         "frames_per_video": 30,
     },

@@ -9,7 +9,7 @@ class PyTorchGradCAM:
     """
     Gradient-Weighted Class Activation Mapping (Grad-CAM) for Dual-Stream Deepfake Detector.
     Visualizes spatial feature maps responsible for manipulation classification decisions.
-    Fully vectorized for GPU batch execution.
+    Fully vectorized for GPU batch execution. Scales heatmaps to input tensor resolution (512x512).
     """
     def __init__(self, model: nn.Module, target_layer: Optional[nn.Module] = None) -> None:
         self.model = model.eval()
@@ -90,11 +90,13 @@ class PyTorchGradCAM:
         if self.feature_maps is None or self.gradients is None:
             raise RuntimeError("Grad-CAM hooks failed to capture feature maps or gradients.")
 
+        target_h, target_w = input_tensor_batch.shape[2], input_tensor_batch.shape[3]
+
         weights = torch.mean(self.gradients, dim=(2, 3), keepdim=True)  # [B, C, 1, 1]
         cams = F.relu(torch.sum(weights * self.feature_maps, dim=1, keepdim=True))  # [B, 1, H, W]
         cams_upsampled = F.interpolate(
             cams,
-            size=(input_tensor_batch.shape[2], input_tensor_batch.shape[3]),
+            size=(target_h, target_w),
             mode='bilinear',
             align_corners=False
         )

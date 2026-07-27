@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Any
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.fft
 import timm
 
@@ -11,7 +12,7 @@ class FFTFrequencyExtractor(nn.Module):
     """
     2D Real Fast Fourier Transform (FFT) Frequency Feature Extractor.
     Extracts 128-d frequency spectrum embeddings in FP32 precision.
-    Uses 1x1 Conv2d grayscale projection and registered ImageNet buffers.
+    Supports native 512x512 full-resolution inputs with adaptive Nyquist grid pooling.
     """
     def __init__(self, out_features: int = 128) -> None:
         super().__init__()
@@ -56,13 +57,14 @@ class FFTFrequencyExtractor(nn.Module):
     def forward_grid(self, x: torch.Tensor, target_h: int = 8, target_w: int = 8) -> torch.Tensor:
         """Extracts spatial frequency feature grid dynamically adaptive-pooled to (target_h, target_w)."""
         conv_features = self._extract_norm_spectrum(x)
-        return nn.functional.adaptive_avg_pool2d(conv_features, (target_h, target_w))
+        return F.adaptive_avg_pool2d(conv_features, (target_h, target_w))
 
 class HybridDeepfakeDetector(nn.Module):
     """
     Dual-Stream Hybrid Deepfake Detector with Multi-Head Cross-Attention.
     Fuses Spatial Backbone (ConvNeXt-Base, 1024-d) and Frequency Stream (2D FFT, 128-d)
     via 4-Head Cross-Attention into an 1152-d feature representation.
+    Supports Pre-Downsample 512x512 FFT Frequency Extraction with GPU bilinear downscaling.
     """
     def __init__(
         self,
@@ -108,8 +110,28 @@ class HybridDeepfakeDetector(nn.Module):
             nn.Linear(256, 1)
         )
 
-    def extract_features(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
-        """Extracts intermediate feature representations (spatial, frequency, fused)."""
+    def extract_features(
+        self,
+        x: torch.Tensor,
+        x_full: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Extracts intermediate feature representations (spatial, frequency, fused).
+        Performs GPU-side bilinear downscaling to 256x256 for ConvNeXt while evaluating 
+        512x512 native FFT frequency spectra.
+        """
+        if x_full is None:
+            if x.ndim == 4 and x.shape[-1] > 256:
+                x_full = x
+                x = F.interpolate(x_full, size=(256, 256), mode='bilinear', align_corners=False)
+            else:
+                x_full = x
+        else:
+            if x.shape[-1] > 256 and (x_full is None or x_full.shape[-1] == x.shape[-1]):
+                x_spatial = F.interpolate(x, size=(256, 256), mode='bilinear', align_corners=False)
+                x_full = x
+                x = x_spatial
+
         spatial_grid = self.spatial_backbone.forward_features(x)
         if spatial_grid.ndim == 4 and spatial_grid.shape[1] != self.spatial_backbone.num_features:
             spatial_grid = spatial_grid.permute(0, 3, 1, 2)
@@ -119,7 +141,7 @@ class HybridDeepfakeDetector(nn.Module):
             B, C_s, H_s, W_s = spatial_grid.shape
             spatial_tokens = spatial_grid.view(B, C_s, H_s * W_s).transpose(1, 2)
             
-            freq_grid = self.freq_extractor.forward_grid(x, target_h=H_s, target_w=W_s)
+            freq_grid = self.freq_extractor.forward_grid(x_full, target_h=H_s, target_w=W_s)
             freq_tokens = freq_grid.view(B, freq_grid.shape[1], H_s * W_s).transpose(1, 2)
 
             s_q = self.spatial_proj(spatial_tokens)
@@ -139,8 +161,8 @@ class HybridDeepfakeDetector(nn.Module):
             "fused": fused
         }
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        features = self.extract_features(x)
+    def forward(self, x: torch.Tensor, x_full: Optional[torch.Tensor] = None) -> torch.Tensor:
+        features = self.extract_features(x, x_full=x_full)
         logits = self.classifier(features["fused"])
         return logits.view(-1)
 

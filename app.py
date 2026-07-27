@@ -70,7 +70,7 @@ st.markdown("""
 
 CONFIG = load_config()
 APP_CFG = CONFIG.get("app", {})
-IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 256)
+IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
 DEFAULT_THRESHOLD: float = APP_CFG.get("classification_threshold", 0.5)
 

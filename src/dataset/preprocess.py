@@ -16,11 +16,11 @@ class DynamicFaceCropper:
     """
     High-performance MTCNN GPU-accelerated dynamic face extractor.
     Extracts face bounding boxes with 1.30x bounding box scaling factor.
-    Slices valid crop regions prior to border reflection padding.
+    Supports native 512x512 full-resolution face crop extraction.
     """
     def __init__(
         self,
-        target_size: int = 256,
+        target_size: int = 512,
         scale_factor: float = 1.30,
         device: Optional[torch.device] = None,
         margin: int = 20
@@ -43,8 +43,9 @@ class DynamicFaceCropper:
         else:
             self.detector = None
 
-    def _crop_single_box(self, image_rgb: np.ndarray, box: np.ndarray) -> np.ndarray:
+    def _crop_single_box(self, image_rgb: np.ndarray, box: np.ndarray, target_size: Optional[int] = None) -> np.ndarray:
         """Crops a face box with 1.30x scaling, slicing image bounds before applying reflection padding."""
+        out_size = target_size if target_size is not None else self.target_size
         h_img, w_img, _ = image_rgb.shape
         x1, y1, x2, y2 = box[:4]
         
@@ -71,7 +72,7 @@ class DynamicFaceCropper:
         pad_bottom = crop_y2 - src_y2
 
         if src_x2 <= src_x1 or src_y2 <= src_y1:
-            return self._center_crop(image_rgb)
+            return self._center_crop(image_rgb, target_size=out_size)
 
         valid_crop = image_rgb[src_y1:src_y2, src_x1:src_x2]
 
@@ -84,26 +85,27 @@ class DynamicFaceCropper:
         else:
             padded_crop = valid_crop
 
-        resized = cv2.resize(padded_crop, (self.target_size, self.target_size), interpolation=cv2.INTER_AREA)
+        resized = cv2.resize(padded_crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
         return resized
 
-    def _crop_from_box(self, image_rgb: np.ndarray, boxes) -> np.ndarray:
+    def _crop_from_box(self, image_rgb: np.ndarray, boxes, target_size: Optional[int] = None) -> np.ndarray:
         """Selects the largest detected bounding box and delegates to _crop_single_box."""
         if boxes is None or len(boxes) == 0:
-            return self._center_crop(image_rgb)
+            return self._center_crop(image_rgb, target_size=target_size)
         
         best_box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
-        return self._crop_single_box(image_rgb, best_box)
+        return self._crop_single_box(image_rgb, best_box, target_size=target_size)
 
-    def _center_crop(self, image_rgb: np.ndarray) -> np.ndarray:
+    def _center_crop(self, image_rgb: np.ndarray, target_size: Optional[int] = None) -> np.ndarray:
         """Fallback center crop when no face bounding box is detected."""
+        out_size = target_size if target_size is not None else self.target_size
         h, w, _ = image_rgb.shape
         side = min(h, w)
         cy, cx = h // 2, w // 2
         crop = image_rgb[cy - side // 2 : cy + side // 2, cx - side // 2 : cx + side // 2]
-        return cv2.resize(crop, (self.target_size, self.target_size), interpolation=cv2.INTER_AREA)
+        return cv2.resize(crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
 
-    def crop_face(self, image_input: Union[str, np.ndarray]) -> np.ndarray:
+    def crop_face(self, image_input: Union[str, np.ndarray], target_size: Optional[int] = None) -> np.ndarray:
         """Extracts 1.30x scaled face crop from image filepath or RGB numpy array."""
         if isinstance(image_input, str):
             img_bgr = cv2.imread(image_input)
@@ -116,21 +118,21 @@ class DynamicFaceCropper:
         if self.detector is not None:
             try:
                 boxes, _ = self.detector.detect(image_rgb)
-                return self._crop_from_box(image_rgb, boxes)
+                return self._crop_from_box(image_rgb, boxes, target_size=target_size)
             except Exception:
                 pass
 
-        return self._center_crop(image_rgb)
+        return self._center_crop(image_rgb, target_size=target_size)
 
-    def crop_faces_batched(self, images_rgb: List[np.ndarray]) -> List[np.ndarray]:
+    def crop_faces_batched(self, images_rgb: List[np.ndarray], target_size: Optional[int] = None) -> List[np.ndarray]:
         """Batched face extraction returning one face crop per image."""
-        return [self.crop_face(img) for img in images_rgb]
+        return [self.crop_face(img, target_size=target_size) for img in images_rgb]
 
-    def crop_all_faces_batched(self, images_rgb: List[np.ndarray], max_faces: int = 3) -> List[List[np.ndarray]]:
+    def crop_all_faces_batched(self, images_rgb: List[np.ndarray], max_faces: int = 3, target_size: Optional[int] = None) -> List[List[np.ndarray]]:
         """Batched face extraction returning a list of face crops per image frame."""
-        return [[self.crop_face(img)] for img in images_rgb]
+        return [[self.crop_face(img, target_size=target_size)] for img in images_rgb]
 
-    def extract_faces_from_video(self, video_path: str, output_dir: str, max_frames: int = 30) -> List[str]:
+    def extract_faces_from_video(self, video_path: str, output_dir: str, max_frames: int = 30, target_size: Optional[int] = None) -> List[str]:
         """Extracts face crops from video MP4 file into output directory."""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -153,7 +155,7 @@ class DynamicFaceCropper:
                 continue
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            crop = self.crop_face(rgb)
+            crop = self.crop_face(rgb, target_size=target_size)
             out_path = os.path.join(output_dir, f"{video_name}_frame{i:03d}.jpg")
             cv2.imwrite(out_path, cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
             saved_paths.append(out_path)
