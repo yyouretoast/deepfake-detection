@@ -7,6 +7,7 @@ import timm
 
 from src.config import load_config
 from src.models.temporal import TemporalSequenceEncoder
+from src.models.lora import apply_lora_to_model, merge_all_lora_weights
 
 class FFTFrequencyExtractor(nn.Module):
     """
@@ -64,13 +65,15 @@ class HybridDeepfakeDetector(nn.Module):
     Dual-Stream Hybrid Deepfake Detector with Multi-Head Cross-Attention.
     Fuses Spatial Backbone (ConvNeXt-Base, 1024-d) and Frequency Stream (2D FFT, 128-d)
     via 4-Head Cross-Attention into an 1152-d feature representation.
-    Supports Pre-Downsample 512x512 FFT Frequency Extraction with GPU bilinear downscaling.
+    Supports Pre-Downsample 512x512 FFT Extraction and LoRA Parameter-Efficient Fine-Tuning.
     """
     def __init__(
         self,
         backbone_name: Optional[str] = None,
         pretrained: bool = True,
         use_fft_branch: bool = True,
+        use_lora: bool = False,
+        lora_rank: int = 8,
         dropout: float = 0.3,
         config: Optional[Dict[str, Any]] = None
     ) -> None:
@@ -83,9 +86,15 @@ class HybridDeepfakeDetector(nn.Module):
             backbone_name = model_cfg.get("backbone", "convnext_base")
 
         self.use_fft_branch = use_fft_branch
+        self.use_lora = use_lora or model_cfg.get("use_lora", False)
+        self.lora_rank = lora_rank if lora_rank != 8 else model_cfg.get("lora_rank", 8)
+
         self.spatial_backbone = timm.create_model(backbone_name, pretrained=pretrained, num_classes=0)
         spatial_in_features: int = self.spatial_backbone.num_features
         freq_embed_dim = model_cfg.get("freq_embed_dim", 128)
+
+        if self.use_lora:
+            apply_lora_to_model(self.spatial_backbone, rank=self.lora_rank)
 
         if self.use_fft_branch:
             self.freq_extractor = FFTFrequencyExtractor(out_features=freq_embed_dim)
@@ -109,6 +118,11 @@ class HybridDeepfakeDetector(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(256, 1)
         )
+
+    def merge_lora_weights(self) -> None:
+        """Folds all LoRA weights into base parameters for 0ms inference latency penalty."""
+        if self.use_lora:
+            merge_all_lora_weights(self.spatial_backbone)
 
     def extract_features(
         self,
@@ -188,6 +202,8 @@ class HybridDeepfakeDetector(nn.Module):
 
 def build_model(
     use_fft: bool = True,
+    use_lora: bool = False,
+    lora_rank: int = 8,
     device: Optional[torch.device] = None,
     pretrained: bool = True,
     compile_model: bool = False,
@@ -198,7 +214,14 @@ def build_model(
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model = HybridDeepfakeDetector(backbone_name=backbone_name, pretrained=pretrained, use_fft_branch=use_fft, config=config)
+    model = HybridDeepfakeDetector(
+        backbone_name=backbone_name,
+        pretrained=pretrained,
+        use_fft_branch=use_fft,
+        use_lora=use_lora,
+        lora_rank=lora_rank,
+        config=config
+    )
     model = model.to(device)
 
     if compile_model and hasattr(torch, "compile"):
