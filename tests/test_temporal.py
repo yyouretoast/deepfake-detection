@@ -1,0 +1,29 @@
+import torch
+from src.models.temporal import TemporalSequenceEncoder
+from src.models.hybrid_detector import build_model
+
+def test_temporal_sequence_encoder_shape_and_grad():
+    encoder = TemporalSequenceEncoder(embed_dim=1152, max_len=32, num_heads=8, num_layers=2)
+    dummy_seq = torch.randn(2, 8, 1152, requires_grad=True)  # [B=2, T=8, D=1152]
+    
+    out = encoder(dummy_seq)
+    assert out.shape == (2, 1152)
+
+    loss = out.sum()
+    loss.backward()
+    assert dummy_seq.grad is not None
+    assert not torch.isnan(dummy_seq.grad).any()
+
+def test_hybrid_detector_forward_sequence_parity():
+    model = build_model(use_fft=True, pretrained=False)
+    model.eval()
+
+    # Single-frame input [B=2, C=3, H=256, W=256]
+    single_frame = torch.randn(2, 3, 256, 256)
+    out_single = model(single_frame)
+    assert out_single.shape == (2,)
+
+    # Video sequence input [B=2, T=4, C=3, H=256, W=256]
+    video_seq = torch.randn(2, 4, 3, 256, 256)
+    out_seq = model.forward_sequence(video_seq)
+    assert out_seq.shape == (2,)

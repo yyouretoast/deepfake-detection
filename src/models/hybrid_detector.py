@@ -5,6 +5,7 @@ import torch.fft
 import timm
 
 from src.config import load_config
+from src.models.temporal import TemporalSequenceEncoder
 
 class FFTFrequencyExtractor(nn.Module):
     """
@@ -120,6 +121,8 @@ class HybridDeepfakeDetector(nn.Module):
             self.gate_fc = None
             fusion_dim = spatial_in_features
 
+        self.temporal_encoder = TemporalSequenceEncoder(embed_dim=fusion_dim)
+
         self.classifier = nn.Sequential(
             nn.Linear(fusion_dim, 256),
             nn.LayerNorm(256),
@@ -162,6 +165,30 @@ class HybridDeepfakeDetector(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.extract_features(x)
         logits = self.classifier(features["fused"])
+        return logits.view(-1)
+
+    def forward_sequence(self, x_seq: torch.Tensor) -> torch.Tensor:
+        """
+        Processes 5D video sequence tensors [B, T, 3, H, W] via 1-pass spatial-frequency
+        extraction and Temporal Transformer sequence modeling.
+        """
+        if x_seq.ndim == 4:
+            return self.forward(x_seq)
+
+        B, T, C, H, W = x_seq.shape
+        x_flat = x_seq.view(B * T, C, H, W)
+
+        feats = self.extract_features(x_flat)
+        fused_frames = feats["fused"]  # [B * T, 1152]
+
+        fused_seq = fused_frames.view(B, T, -1)  # [B, T, 1152]
+
+        if hasattr(self, "temporal_encoder") and self.temporal_encoder is not None:
+            pooled_seq = self.temporal_encoder(fused_seq)  # [B, 1152]
+        else:
+            pooled_seq = fused_seq.mean(dim=1)
+
+        logits = self.classifier(pooled_seq)
         return logits.view(-1)
 
 def build_model(
