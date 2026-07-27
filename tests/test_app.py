@@ -19,6 +19,9 @@ class MockVideoCapture:
             return self.max_frames
         return 0
 
+    def set(self, propId, value):
+        pass
+
     def read(self):
         if self.frame_count < self.max_frames:
             self.frame_count += 1

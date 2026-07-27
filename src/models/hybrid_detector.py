@@ -11,7 +11,7 @@ class FFTFrequencyExtractor(nn.Module):
     """
     2D Real Fast Fourier Transform (FFT) Frequency Feature Extractor.
     Extracts 128-d frequency spectrum embeddings in FP32 precision.
-    Uses 1x1 Conv2d grayscale projection for single-kernel GPU execution.
+    Uses 1x1 Conv2d grayscale projection and registered ImageNet buffers.
     """
     def __init__(self, out_features: int = 128) -> None:
         super().__init__()
@@ -29,55 +29,34 @@ class FFTFrequencyExtractor(nn.Module):
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((1, 1))
+            nn.Conv2d(64, out_features, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(out_features),
+            nn.ReLU(inplace=True)
         )
-        self.fc = nn.Linear(128, out_features)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Force FP32 computation via autocast(enabled=False) to prevent cuFFT FP16 power-of-two size errors (224x224)
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+
+    def _extract_norm_spectrum(self, x: torch.Tensor) -> torch.Tensor:
+        """Extracts normalized FP32 log-magnitude frequency spectrum feature map."""
         with torch.amp.autocast(device_type="cuda", enabled=False):
             x_fp32 = x.to(torch.float32)
-            mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
-            raw_x = (x_fp32 * std + mean).clamp(0.0, 1.0)
-            
+            raw_x = (x_fp32 * self.std + self.mean).clamp(0.0, 1.0)
             gray = self.rgb_to_gray(raw_x)
             fft_2d = torch.fft.rfft2(gray, norm="ortho")
-            
             magnitude = torch.abs(fft_2d)
-            eps = 1e-5
-            log_spectrum = torch.log(magnitude + eps)
+            log_spectrum = torch.log(magnitude + 1e-5)
             norm_spectrum = log_spectrum / 10.0
+        return self.conv_net(norm_spectrum.to(x.dtype))
 
-        norm_spectrum = norm_spectrum.to(x.dtype)
-        conv_features = self.conv_net[:-1](norm_spectrum)
-        feat = self.conv_net[-1](conv_features)
-        feat = feat.view(feat.size(0), -1)
-        return self.fc(feat)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        conv_features = self._extract_norm_spectrum(x)
+        return conv_features.mean(dim=(-2, -1))
 
     def forward_grid(self, x: torch.Tensor, target_h: int = 8, target_w: int = 8) -> torch.Tensor:
         """Extracts spatial frequency feature grid dynamically adaptive-pooled to (target_h, target_w)."""
-        with torch.amp.autocast(device_type="cuda", enabled=False):
-            x_fp32 = x.to(torch.float32)
-            mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
-            std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=torch.float32).view(1, 3, 1, 1)
-            raw_x = (x_fp32 * std + mean).clamp(0.0, 1.0)
-            
-            gray = self.rgb_to_gray(raw_x)
-            fft_2d = torch.fft.rfft2(gray, norm="ortho")
-            
-            magnitude = torch.abs(fft_2d)
-            eps = 1e-5
-            log_spectrum = torch.log(magnitude + eps)
-            norm_spectrum = log_spectrum / 10.0
-
-        norm_spectrum = norm_spectrum.to(x.dtype)
-        conv_features = self.conv_net[:-1](norm_spectrum)
-        grid_pooled = nn.functional.adaptive_avg_pool2d(conv_features, (target_h, target_w))
-        return grid_pooled
+        conv_features = self._extract_norm_spectrum(x)
+        return nn.functional.adaptive_avg_pool2d(conv_features, (target_h, target_w))
 
 class HybridDeepfakeDetector(nn.Module):
     """
@@ -111,14 +90,12 @@ class HybridDeepfakeDetector(nn.Module):
             self.spatial_proj = nn.Linear(spatial_in_features, 128)
             self.freq_proj = nn.Linear(freq_embed_dim, 128)
             self.cross_attn = nn.MultiheadAttention(embed_dim=128, num_heads=4, batch_first=True)
-            self.gate_fc = None
             fusion_dim = spatial_in_features + freq_embed_dim
         else:
             self.freq_extractor = None
             self.spatial_proj = None
             self.freq_proj = None
             self.cross_attn = None
-            self.gate_fc = None
             fusion_dim = spatial_in_features
 
         self.temporal_encoder = TemporalSequenceEncoder(embed_dim=fusion_dim)
@@ -140,10 +117,10 @@ class HybridDeepfakeDetector(nn.Module):
 
         if self.use_fft_branch and self.freq_extractor is not None and self.cross_attn is not None:
             B, C_s, H_s, W_s = spatial_grid.shape
-            spatial_tokens = spatial_grid.flatten(2).transpose(1, 2)
+            spatial_tokens = spatial_grid.view(B, C_s, H_s * W_s).transpose(1, 2)
             
             freq_grid = self.freq_extractor.forward_grid(x, target_h=H_s, target_w=W_s)
-            freq_tokens = freq_grid.flatten(2).transpose(1, 2)
+            freq_tokens = freq_grid.view(B, freq_grid.shape[1], H_s * W_s).transpose(1, 2)
 
             s_q = self.spatial_proj(spatial_tokens)
             f_kv = self.freq_proj(freq_tokens)
@@ -179,14 +156,10 @@ class HybridDeepfakeDetector(nn.Module):
         x_flat = x_seq.view(B * T, C, H, W)
 
         feats = self.extract_features(x_flat)
-        fused_frames = feats["fused"]  # [B * T, 1152]
+        fused_frames = feats["fused"]
 
-        fused_seq = fused_frames.view(B, T, -1)  # [B, T, 1152]
-
-        if hasattr(self, "temporal_encoder") and self.temporal_encoder is not None:
-            pooled_seq = self.temporal_encoder(fused_seq)  # [B, 1152]
-        else:
-            pooled_seq = fused_seq.mean(dim=1)
+        fused_seq = fused_frames.view(B, T, -1)
+        pooled_seq = self.temporal_encoder(fused_seq)
 
         logits = self.classifier(pooled_seq)
         return logits.view(-1)
@@ -196,13 +169,14 @@ def build_model(
     device: Optional[torch.device] = None,
     pretrained: bool = True,
     compile_model: bool = False,
+    backbone_name: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None
 ) -> nn.Module:
-    """Factory function to build, wrap in DataParallel, and optionally JIT compile model."""
+    """Factory function to build and optionally compile model."""
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model = HybridDeepfakeDetector(pretrained=pretrained, use_fft_branch=use_fft, config=config)
+    model = HybridDeepfakeDetector(backbone_name=backbone_name, pretrained=pretrained, use_fft_branch=use_fft, config=config)
     model = model.to(device)
 
     if compile_model and hasattr(torch, "compile"):

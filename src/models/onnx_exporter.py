@@ -1,5 +1,6 @@
 from typing import List, Optional
 import os
+import logging
 import numpy as np
 import torch
 
@@ -11,50 +12,36 @@ try:
 except ImportError:
     HAS_ONNX = False
 
-import logging
-
 logger = logging.getLogger(__name__)
 
 def export_to_onnx(
     model: torch.nn.Module,
     save_path: str = "deepfake_convnext_v2.onnx",
-    img_size: int = 224
+    img_size: int = 256
 ) -> str:
     """Exports PyTorch HybridDeepfakeDetector model to ONNX runtime format with dynamic batching."""
     model.eval()
-    if hasattr(model, 'module'):
-        model = model.module
+    unwrapped = model.module if isinstance(model, torch.nn.DataParallel) else model
 
-    device = next(model.parameters()).device
+    device = next(unwrapped.parameters()).device
     dummy_input = torch.randn(2, 3, img_size, img_size, device=device)
 
-    try:
-        # PyTorch 2.x dynamic_shapes syntax
-        torch.onnx.export(
-            model,
-            dummy_input,
-            save_path,
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=['input'],
-            output_names=['output'],
-            dynamic_shapes={'input': {0: torch.onnx.Dim('batch_size')}, 'output': {0: torch.onnx.Dim('batch_size')}}
-        )
-    except Exception:
-        # Legacy dynamic_axes fallback
-        dynamic_axes = {'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
-        torch.onnx.export(
-            model,
-            dummy_input,
-            save_path,
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=['input'],
-            output_names=['output'],
-            dynamic_axes=dynamic_axes
-        )
+    dynamic_axes = {
+        'input': {0: 'batch_size'},
+        'output': {0: 'batch_size'}
+    }
+
+    torch.onnx.export(
+        unwrapped,
+        dummy_input,
+        save_path,
+        export_params=True,
+        opset_version=17,
+        do_constant_folding=True,
+        input_names=['input'],
+        output_names=['output'],
+        dynamic_axes=dynamic_axes
+    )
 
     if HAS_ONNX:
         onnx_model = onnx.load(save_path)
@@ -68,7 +55,7 @@ def quantize_onnx_model(
 ) -> str:
     """
     Applies INT8 Dynamic Quantization to an ONNX model, reducing memory footprint
-    and enhancing CPU inference throughput.
+    and enhancing CPU inference throughput via QInt8 signed integer quantization.
     """
     if not HAS_ONNX:
         raise ImportError("onnxruntime is required for quantization.")
@@ -82,7 +69,7 @@ def quantize_onnx_model(
     quantize_dynamic(
         model_input=onnx_path,
         model_output=quant_path,
-        weight_type=QuantType.QUInt8
+        weight_type=QuantType.QInt8
     )
     logger.info("Saved quantized INT8 model to: %s", quant_path)
     return quant_path
@@ -109,7 +96,7 @@ class ONNXDeepfakePredictor:
         if numpy_batch.ndim == 3:
             numpy_batch = np.expand_dims(numpy_batch, axis=0)
 
-        numpy_batch = numpy_batch.astype(np.float32)
+        numpy_batch = np.asarray(numpy_batch, dtype=np.float32)
         logits = self.session.run([self.output_name], {self.input_name: numpy_batch})[0]
         
         clipped_logits = np.clip(logits, -88.0, 88.0)

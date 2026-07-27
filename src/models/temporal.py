@@ -4,7 +4,7 @@ import torch.nn as nn
 
 class TemporalSequenceEncoder(nn.Module):
     """
-    2-Layer Temporal Transformer Encoder for modeling inter-frame dependencies,
+    2-Layer Pre-LN Temporal Transformer Encoder for modeling inter-frame dependencies,
     eye-blinking glitches, and boundary temporal flickering across video frames [B, T, D].
     """
     def __init__(
@@ -16,7 +16,6 @@ class TemporalSequenceEncoder(nn.Module):
         dropout: float = 0.1
     ) -> None:
         super().__init__()
-        self.embed_dim = embed_dim
         self.max_len = max_len
         self.pos_embed = nn.Parameter(torch.zeros(1, max_len, embed_dim))
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
@@ -27,12 +26,12 @@ class TemporalSequenceEncoder(nn.Module):
             dim_feedforward=2048,
             dropout=dropout,
             activation="gelu",
-            batch_first=True
+            batch_first=True,
+            norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.norm = nn.LayerNorm(embed_dim)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Input: x of shape [B, T, D] where T <= max_len
         Output: Pooled sequence feature vector of shape [B, D]
@@ -43,6 +42,5 @@ class TemporalSequenceEncoder(nn.Module):
 
         pos = self.pos_embed[:, :T, :]
         x_pos = x + pos
-        out = self.transformer(x_pos)
-        out = self.norm(out)
+        out = self.transformer(x_pos, mask=mask)
         return out.mean(dim=1)

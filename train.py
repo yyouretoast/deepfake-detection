@@ -1,12 +1,10 @@
-from typing import Optional
 import argparse
 import logging
 import os
 import torch
-from torch.utils.data import DataLoader
 
 from src.config import load_config
-from src.dataset.loader import build_dataloaders, get_eval_transforms
+from src.dataset.loader import build_dataloaders
 from src.models.hybrid_detector import build_model
 from src.models.onnx_exporter import export_to_onnx
 from src.training.trainer import TwoPhaseTrainer
@@ -29,13 +27,13 @@ def main() -> None:
 
     config = load_config(args.config)
     if args.data_dir:
-        config.setdefault("dataset", {})["cropped_frames_dir"] = args.data_dir
+        config.setdefault("preprocessing", {})["cropped_frames_dir"] = args.data_dir
     if args.epochs_p1:
         config.setdefault("training", {})["epochs_phase1"] = args.epochs_p1
     if args.epochs_p2:
         config.setdefault("training", {})["epochs_phase2"] = args.epochs_p2
     if args.batch_size:
-        config.setdefault("dataset", {})["batch_size"] = args.batch_size
+        config.setdefault("training", {})["batch_size"] = args.batch_size
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Initializing Training on Device: %s", device)
@@ -46,7 +44,7 @@ def main() -> None:
     val_loader = dataloaders["val"]
 
     # 2. Build Model Architecture
-    model = build_model(use_fft=True, device=device, pretrained=True)
+    model = build_model(use_fft=True, device=device, pretrained=True, config=config)
 
     # 3. Execute Two-Phase Training Pipeline
     trainer = TwoPhaseTrainer(model=model, train_loader=train_loader, val_loader=val_loader, config=config, device=device)
@@ -61,7 +59,7 @@ def main() -> None:
     # 5. Optional ONNX Export
     if args.export_onnx:
         onnx_path = os.path.splitext(args.save_path)[0] + ".onnx"
-        export_to_onnx(model=model, save_path=onnx_path, img_size=config.get("dataset", {}).get("img_size", 256))
+        export_to_onnx(model=model, save_path=onnx_path, img_size=config.get("preprocessing", {}).get("img_size", 256))
         logger.info("Exported ONNX model to: %s", onnx_path)
 
 if __name__ == "__main__":

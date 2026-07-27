@@ -5,19 +5,17 @@ import tempfile
 import cv2
 import numpy as np
 import torch
-from PIL import Image
 import streamlit as st
 
 from src.dataset.preprocess import DynamicFaceCropper
 from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.explainability.gradcam import PyTorchGradCAM, overlay_cam
+from src.explainability.gradcam import PyTorchGradCAM
 from src.config import load_config
 
 try:
     from src.models.onnx_exporter import ONNXDeepfakePredictor, HAS_ONNX
 except ImportError:
     HAS_ONNX = False
-
 
 st.set_page_config(
     page_title="Deepfake Detector (PyTorch + ConvNeXt + ONNX)",
@@ -72,15 +70,18 @@ st.markdown("""
 
 CONFIG = load_config()
 APP_CFG = CONFIG.get("app", {})
-IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 224)
+IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 256)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
-CLASSIFICATION_THRESHOLD: float = APP_CFG.get("classification_threshold", 0.5)
+DEFAULT_THRESHOLD: float = APP_CFG.get("classification_threshold", 0.5)
 
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 @st.cache_resource
-def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
-    onnx_path = "deepfake_convnext_v2.onnx"
+def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool, float]:
+    onnx_path = "models/deepfake_convnext_v2.onnx"
+    if not os.path.exists(onnx_path):
+        onnx_path = "deepfake_convnext_v2.onnx"
+
     onnx_predictor: Optional[Any] = None
     if HAS_ONNX and os.path.exists(onnx_path):
         try:
@@ -90,44 +91,43 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool]:
             onnx_predictor = None
 
     backbone_name = CONFIG.get("model", {}).get("backbone", "convnext_base")
-    pytorch_model = HybridDeepfakeDetector(backbone_name=backbone_name, pretrained=False, use_fft_branch=True)
-    weights_path = "deepfake_convnext_v2.pth"
-    weights_url = CONFIG.get("paths", {}).get("weights_url", "")
-    if not os.path.exists(weights_path) and weights_url:
-        try:
-            torch.hub.download_url_to_file(weights_url, weights_path, progress=False)
-        except Exception:
-            pass
+    pytorch_model = HybridDeepfakeDetector(backbone_name=backbone_name, pretrained=False, use_fft_branch=True, config=CONFIG)
+    
+    weights_path = "models/deepfake_convnext_v2.pt"
+    if not os.path.exists(weights_path):
+        weights_path = "deepfake_convnext_v2.pth"
 
+    opt_threshold = DEFAULT_THRESHOLD
     has_weights = os.path.exists(weights_path)
+    
     if has_weights:
         checkpoint = torch.load(weights_path, map_location=DEVICE)
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             state_dict = checkpoint["state_dict"]
-            opt_thresh = checkpoint.get("optimal_threshold", None)
-            if opt_thresh is not None:
-                global CLASSIFICATION_THRESHOLD
-                CLASSIFICATION_THRESHOLD = float(opt_thresh)
+            opt_thresh_val = checkpoint.get("optimal_threshold", None)
+            if opt_thresh_val is not None:
+                opt_threshold = float(opt_thresh_val)
         else:
             state_dict = checkpoint
         pytorch_model.load_state_dict(state_dict)
+
     pytorch_model.to(DEVICE)
     pytorch_model.eval()
 
-    return pytorch_model, onnx_predictor, has_weights
+    return pytorch_model, onnx_predictor, has_weights, opt_threshold
 
 try:
-    pytorch_model, onnx_predictor, has_pytorch_weights = load_models()
+    pytorch_model, onnx_predictor, has_pytorch_weights, CLASSIFICATION_THRESHOLD = load_models()
     cropper = DynamicFaceCropper(scale_factor=1.30, target_size=IMG_SIZE, device=DEVICE)
     if not has_pytorch_weights:
-        st.error("🚨 **Critical Error: Trained model weights not found!** (`deepfake_convnext_v2.pth`). Cannot run inference with a randomly initialized model. Please download or train the weights.")
+        st.error("🚨 **Critical Error: Trained model weights not found!** (`models/deepfake_convnext_v2.pt`). Cannot run inference with a randomly initialized model.")
         st.stop()
 except Exception as e:
     st.error(f"Model initialization error: {e}")
     st.stop()
 
 def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarray, torch.Tensor]:
-    """Returns normalized numpy batch [B, 3, 224, 224] and PyTorch tensor batch."""
+    """Returns normalized numpy batch [B, 3, 256, 256] and PyTorch tensor batch."""
     batch_arr = np.stack(faces_rgb_list)
     batch_nchw = batch_arr.transpose(0, 3, 1, 2)
     
@@ -141,7 +141,7 @@ def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarr
 
 def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Optional[Dict[str, Any]]:
     """
-    Video inference engine with PyTorch AMP autocast and batched Grad-CAM.
+    Video inference engine with direct OpenCV frame seeking, AMP autocast, and batched Grad-CAM.
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -152,21 +152,15 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         if total <= 0:
             return None
 
-        step = max(total // FRAMES_TO_SAMPLE, 1)
+        frame_indices = np.linspace(0, total - 1, min(FRAMES_TO_SAMPLE, total), dtype=int)
         frames_rgb: List[np.ndarray] = []
 
-        curr_frame = 0
-        target_frames = set(i * step for i in range(FRAMES_TO_SAMPLE))
-
-        while cap.isOpened() and len(frames_rgb) < FRAMES_TO_SAMPLE and curr_frame <= max(target_frames):
-            if curr_frame in target_frames:
-                ret, frame = cap.read()
-                if ret and frame is not None:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frames_rgb.append(rgb)
-            else:
-                cap.grab()
-            curr_frame += 1
+        for idx in frame_indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames_rgb.append(rgb)
     finally:
         cap.release()
         gc.collect()
@@ -176,12 +170,11 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
     if not frames_rgb:
         return None
 
-    faces_per_frame = cropper.crop_all_faces_batched(frames_rgb, max_faces=3)
-    all_faces = [face for sublist in faces_per_frame for face in sublist]
+    faces_per_frame = [cropper.crop_face(f) for f in frames_rgb]
+    all_faces = [f for f in faces_per_frame if f is not None]
     if not all_faces:
         return None
 
-    # Dynamic Mini-Batching Inference
     BATCH_SIZE = 16
     all_probs = []
     all_tensors = []
@@ -199,22 +192,18 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
 
         if batch_probs is None:
             with torch.no_grad():
-                with torch.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
+                with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
                     p1 = torch.sigmoid(pytorch_model(torch_batch).float())
                     p2 = torch.sigmoid(pytorch_model(torch.flip(torch_batch, dims=[-1])).float())
                     batch_probs = ((p1 + p2) / 2.0).cpu().numpy().tolist()
-        
-        if isinstance(batch_probs, float):
-            batch_probs = [batch_probs]
-            
+
         all_probs.extend(batch_probs)
         all_tensors.append(torch_batch)
         
     all_tensors_concat = torch.cat(all_tensors, dim=0)
 
-    # Triple-Zipping and Sorting by Most Fake (Fake=1, Real=0)
     zipped_data = list(zip(all_faces, all_probs, all_tensors_concat))
-    zipped_data.sort(key=lambda x: x[1], reverse=True)  # Highest prob P(Fake) first
+    zipped_data.sort(key=lambda x: x[1], reverse=True)
     
     top_4 = zipped_data[:4]
     sample_faces = [item[0] for item in top_4]
@@ -226,9 +215,8 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
 
     if can_render_gradcam:
         try:
-            with PyTorchGradCAM(pytorch_model) as gradcam_engine:
-                target_classes = [1 if p > CLASSIFICATION_THRESHOLD else 0 for p in sample_probs]
-                sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors, target_classes=target_classes)
+            gradcam_engine = PyTorchGradCAM(pytorch_model)
+            sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors)
         except Exception:
             sample_heatmaps = [None] * len(sample_faces)
 
@@ -244,7 +232,7 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         conf = normalize_confidence(prob, CLASSIFICATION_THRESHOLD)
         
         heatmap = sample_heatmaps[idx] if idx < len(sample_heatmaps) else None
-        overlay_img = overlay_cam(face, heatmap) if heatmap is not None else face
+        overlay_img = PyTorchGradCAM.overlay_heatmap(face, heatmap) if heatmap is not None else face
         sample_outputs.append((overlay_img, label, conf, prob))
 
     avg_prob = float(np.mean(all_probs))
@@ -275,7 +263,7 @@ uploaded_file = st.file_uploader(
 
 enable_gradcam = st.sidebar.checkbox("Enable Grad-CAM Explainability Heatmaps", value=True)
 if enable_gradcam and not has_pytorch_weights:
-    st.sidebar.warning("Trained PyTorch weights missing (`deepfake_convnext_v2.pth`). Heatmaps disabled.")
+    st.sidebar.warning("Trained PyTorch weights missing (`models/deepfake_convnext_v2.pt`). Heatmaps disabled.")
 
 st.sidebar.markdown(f"""
 ---
@@ -283,7 +271,7 @@ st.sidebar.markdown(f"""
 - **Engine**: {'ONNX Runtime' if onnx_predictor else 'PyTorch Native'}
 - **Model**: {CONFIG.get('model', {}).get('backbone', 'ConvNeXt-Base').title()} + 2D FFT Frequency Stream
 - **Padding**: Relative 1.30x Scale Expansion
-- **Validation**: Video-ID GroupKFold Split
+- **Threshold (T*)**: {CLASSIFICATION_THRESHOLD:.4f}
 """)
 
 if uploaded_file:

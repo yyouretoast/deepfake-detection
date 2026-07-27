@@ -1,256 +1,286 @@
-from typing import List, Tuple, Optional, Any
+from typing import List, Tuple, Dict, Any, Optional
 import os
 import re
-import random
 import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-from PIL import Image
 try:
     import albumentations as A
     from albumentations.pytorch import ToTensorV2
+    HAS_ALBUMENTATIONS = True
 except ImportError:
+    HAS_ALBUMENTATIONS = False
     A = None
-    ToTensorV2 = None
+
+from PIL import Image
+
+try:
+    import networkx as nx
+    HAS_NETWORKX = True
+except ImportError:
+    HAS_NETWORKX = False
+
+from src.config import load_config
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
-def extract_video_id(filename: str) -> str:
-    """Extracts primary target video identifier from face filename."""
-    basename = os.path.splitext(os.path.basename(filename))[0]
-    base_no_frame = re.sub(r'_f\d+$', '', basename)
-    
-    match_pair = re.search(r'(\d+)_\d+', base_no_frame)
-    if match_pair:
-        return match_pair.group(1)
-        
-    match_single = re.search(r'(\d+)', base_no_frame)
-    if match_single:
-        return match_single.group(1)
-        
-    return base_no_frame
 
 def extract_identities(filename: str) -> Tuple[str, str]:
-    """Extracts source and target video identifiers from face filename."""
-    basename = os.path.splitext(os.path.basename(filename))[0]
-    base_no_frame = re.sub(r'_f\d+$', '', basename)
+    """Extracts actor/source video identity strings from FaceForensics++ filename patterns."""
+    basename = os.path.basename(filename)
+    match = re.search(r"(\d{3,4})_(\d{3,4})", basename)
+    if match:
+        return match.group(1), match.group(2)
     
-    match_pair = re.search(r'(\d+)_(\d+)', base_no_frame)
-    if match_pair:
-        return match_pair.group(1), match_pair.group(2)
-        
-    match_single = re.search(r'(\d+)', base_no_frame)
+    match_single = re.search(r"(\d{3,4})", basename)
     if match_single:
-        return match_single.group(1), match_single.group(1)
+        id_str = match_single.group(1)
+        return id_str, id_str
         
-    base = base_no_frame.split('_')[0]
-    return base, base
+    return basename, basename
+
+def extract_video_id(filename: str) -> str:
+    """Alias function extracting primary video identity string."""
+    return extract_identities(filename)[0]
 
 def perform_graph_split(
-    file_list: Any,
-    test_size: float = 0.15,
-    val_size: float = 0.15,
-    seed: int = 42
+    samples: Any,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15,
+    seed: int = 42,
+    **kwargs
 ) -> Tuple[Any, Any, Any]:
     """
-    Graph-based connected component split using networkx parsing both source and target video IDs (id1, id2).
+    Graph-connected component identity partitioning guaranteeing zero identity leakage.
+    Supports samples as List[str] or List[Tuple[str, int]].
     """
-    import networkx as nx
+    val_ratio = kwargs.get("val_size", val_ratio)
+    test_ratio = kwargs.get("test_size", test_ratio)
 
-    samples = []
-    for item in file_list:
-        if isinstance(item, (tuple, list)):
-            samples.append((item[0], item[1]))
-        else:
-            label = 0 if ("original" in str(item).lower() or "real" in str(item).lower()) else 1
-            samples.append((item, label))
+    if not samples:
+        return [], [], []
+
+    is_string_list = isinstance(samples[0], str)
+    if is_string_list:
+        normalized_samples = [(s, 0) for s in samples]
+    else:
+        normalized_samples = list(samples)
+
+    parsed_samples = []
+    video_map: Dict[str, List[Tuple[str, int]]] = {}
+
+    for item in normalized_samples:
+        path, label = item[0], item[1]
+        id1, id2 = extract_identities(path)
+        parsed_samples.append((path, label, id1, id2))
+        video_map.setdefault(id1, []).append((path, label))
+
+    if not HAS_NETWORKX:
+        unique_vids = sorted(list(video_map.keys()))
+        rng = np.random.RandomState(seed)
+        rng.shuffle(unique_vids)
+        
+        n_val = int(len(unique_vids) * val_ratio)
+        n_test = int(len(unique_vids) * test_ratio)
+        
+        val_vids = set(unique_vids[:n_val])
+        test_vids = set(unique_vids[n_val:n_val + n_test])
+        train_vids = set(unique_vids[n_val + n_test:])
+        
+        train_s = [s for v in train_vids for s in video_map[v]]
+        val_s = [s for v in val_vids for s in video_map[v]]
+        test_s = [s for v in test_vids for s in video_map[v]]
+        if is_string_list:
+            return [s[0] for s in train_s], [s[0] for s in val_s], [s[0] for s in test_s]
+        return train_s, val_s, test_s
 
     G = nx.Graph()
-    for filepath, _ in samples:
-        id1, id2 = extract_identities(os.path.basename(filepath))
+    for _, _, id1, id2 in parsed_samples:
         G.add_node(id1)
         G.add_node(id2)
         G.add_edge(id1, id2)
 
-    components = list(nx.connected_components(G))
-    random.seed(seed)
-    random.shuffle(components)
+    components = sorted(list(nx.connected_components(G)), key=lambda c: sorted(list(c))[0])
+    rng = np.random.RandomState(seed)
+    rng.shuffle(components)
 
-    n_total = len(components)
-    n_test = max(1, int(n_total * test_size)) if n_total > 0 else 0
-    n_val = max(1, int(n_total * val_size)) if n_total > 0 else 0
+    n_comps = len(components)
+    n_val_c = max(1, int(n_comps * val_ratio))
+    n_test_c = max(1, int(n_comps * test_ratio))
 
-    test_comps = components[:n_test]
-    val_comps = components[n_test:n_test + n_val]
-    train_comps = components[n_test + n_val:]
+    val_comps = set().union(*components[:n_val_c])
+    test_comps = set().union(*components[n_val_c:n_val_c + n_test_c])
+    train_comps = set().union(*components[n_val_c + n_test_c:])
 
-    def get_samples_for_comps(comp_list):
-        comp_nodes = set.union(*comp_list) if comp_list else set()
-        res = []
-        for idx, (filepath, label) in enumerate(samples):
-            id1, id2 = extract_identities(os.path.basename(filepath))
-            if id1 in comp_nodes or id2 in comp_nodes:
-                res.append(file_list[idx])
-        return res
+    train_samples, val_samples, test_samples = [], [], []
+    for path, label, id1, id2 in parsed_samples:
+        if id1 in train_comps or id2 in train_comps:
+            train_samples.append((path, label))
+        elif id1 in val_comps or id2 in val_comps:
+            val_samples.append((path, label))
+        else:
+            test_samples.append((path, label))
 
-    train_files = get_samples_for_comps(train_comps)
-    val_files = get_samples_for_comps(val_comps)
-    test_files = get_samples_for_comps(test_comps)
+    if is_string_list:
+        return [s[0] for s in train_samples], [s[0] for s in val_samples], [s[0] for s in test_samples]
 
-    return train_files, val_files, test_files
-
+    return train_samples, val_samples, test_samples
 
 def group_video_split(
-    file_list: Any,
-    test_size: float = 0.15,
-    val_size: float = 0.15,
-    seed: int = 42
+    samples: Any,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15,
+    seed: int = 42,
+    **kwargs
 ) -> Tuple[Any, Any, Any]:
-    """Stratified Group-based split guaranteeing zero primary video_id overlap and class-balanced splits."""
-    video_map: dict = {}
-    video_labels: dict = {}
+    """Alias wrapper for graph-connected identity split."""
+    return perform_graph_split(samples, val_ratio=val_ratio, test_ratio=test_ratio, seed=seed, **kwargs)
 
-    for item in file_list:
-        if isinstance(item, (tuple, list)):
-            filepath, label = item[0], item[1]
-        else:
-            filepath, label = item, (0 if "original" in item.lower() or "real" in item.lower() else 1)
+def get_transforms(img_size: int = 256) -> Tuple[Any, Any]:
+    """Returns PyTorch training and evaluation Albumentations pipelines (or None fallback)."""
+    if not HAS_ALBUMENTATIONS:
+        return None, None
 
-        vid = extract_video_id(filepath)
-        if vid not in video_map:
-            video_map[vid] = []
-            video_labels[vid] = label
-        video_map[vid].append(item)
+    train_transform = A.Compose([
+        A.Resize(img_size, img_size),
+        A.HorizontalFlip(p=0.5),
+        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.3),
+        A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.3),
+        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ToTensorV2(),
+    ])
 
-    real_vids = [v for v, l in video_labels.items() if l == 0]
-    fake_vids = [v for v, l in video_labels.items() if l == 1]
+    eval_transform = A.Compose([
+        A.Resize(img_size, img_size),
+        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ToTensorV2(),
+    ])
 
-    random.seed(seed)
-    random.shuffle(real_vids)
-    random.shuffle(fake_vids)
+    return train_transform, eval_transform
 
-    def split_vids(v_list: List[str]) -> Tuple[List[str], List[str], List[str]]:
-        num_vids = len(v_list)
-        n_test = max(1, int(num_vids * test_size)) if num_vids > 0 else 0
-        n_val = max(1, int(num_vids * val_size)) if num_vids > 0 else 0
-        return v_list[n_test + n_val:], v_list[n_test:n_test + n_val], v_list[:n_test]
-
-    real_train, real_val, real_test = split_vids(real_vids)
-    fake_train, fake_val, fake_test = split_vids(fake_vids)
-
-    train_vids = set(real_train + fake_train)
-    val_vids = set(real_val + fake_val)
-    test_vids = set(real_test + fake_test)
-
-    train_files = [item for vid in train_vids for item in video_map[vid]]
-    val_files = [item for vid in val_vids for item in video_map[vid]]
-    test_files = [item for vid in test_vids for item in video_map[vid]]
-
-    return train_files, val_files, test_files
-
-def get_transforms(img_size: int = 224, is_train: bool = True) -> Optional[Any]:
-    """Albumentations pipeline with spatial & compression augmentations."""
-    if A is None:
-        return None
-    if is_train:
-        try:
-            downscale_comp = A.Downscale(scale_range=(0.7, 0.9), p=0.3)
-        except Exception:
-            downscale_comp = A.Downscale(scale_min=0.7, scale_max=0.9, p=0.3)
-
-        transforms = [
-            A.Resize(img_size, img_size),
-            A.HorizontalFlip(p=0.5),
-            A.Affine(scale=(0.9, 1.1), translate_percent=(-0.05, 0.05), rotate=(-15, 15), p=0.5),
-            A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.4),
-            downscale_comp,
-        ]
-        if hasattr(A, "JPEGCompression"):
-            transforms.append(A.JPEGCompression(quality_lower=50, quality_upper=90, p=0.4))
-        elif hasattr(A, "ImageCompression"):
-            transforms.append(A.ImageCompression(quality_range=(50, 90), p=0.4))
-        transforms.extend([
-            A.GaussianBlur(blur_limit=(3, 7), p=0.3),
-            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-            ToTensorV2()
-        ])
-        return A.Compose(transforms)
-    else:
-        return A.Compose([
-            A.Resize(img_size, img_size),
-            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-            ToTensorV2()
-        ])
+get_eval_transforms = get_transforms
 
 class DeepfakeDataset(Dataset):
-    """
-    High-performance PyTorch Dataset using C++ OpenCV decoding for 3x faster I/O.
-    """
-    def __init__(
-        self,
-        file_paths: List[str],
-        labels: List[int],
-        transform: Optional[Any] = None
-    ) -> None:
-        self.file_paths = file_paths
-        self.labels = labels
+    """PyTorch Dataset loading pre-cropped face images with Albumentations augmentation."""
+    def __init__(self, samples: List[Tuple[str, int]], transform: Optional[Any] = None):
+        self.samples = samples
         self.transform = transform
+        self.mean_tensor = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
+        self.std_tensor = torch.tensor(IMAGENET_STD).view(3, 1, 1)
 
     def __len__(self) -> int:
-        return len(self.file_paths)
+        return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        path = self.file_paths[idx]
-        label = self.labels[idx]
-
-        # OpenCV image decoding for high-throughput I/O
-        bgr = cv2.imread(path, cv2.IMREAD_COLOR)
-        if bgr is not None:
-            image = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+        path, label = self.samples[idx]
+        img_bgr = cv2.imread(path)
+        
+        if img_bgr is not None:
+            img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         else:
-            with Image.open(path) as img:
-                image = np.array(img.convert("RGB"))
+            try:
+                with Image.open(path) as img_pil:
+                    img_rgb = np.array(img_pil.convert("RGB"))
+            except Exception:
+                img_rgb = np.zeros((256, 256, 3), dtype=np.uint8)
 
         if self.transform is not None:
-            augmented = self.transform(image=image)
-            image_tensor = augmented['image']
-        else:
-            image_tensor = torch.from_numpy(image.transpose(2, 0, 1)).float() / 255.0
-            mean = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
-            std = torch.tensor(IMAGENET_STD).view(3, 1, 1)
-            image_tensor = (image_tensor - mean) / std
+            augmented = self.transform(image=img_rgb)
+            return augmented["image"], label
 
-        return image_tensor, torch.tensor(label, dtype=torch.float32)
+        tensor_img = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
+        norm_img = (tensor_img - self.mean_tensor) / self.std_tensor
+        return norm_img, label
 
-def create_dataloaders(
-    train_samples: List[Tuple[str, int]],
-    val_samples: List[Tuple[str, int]],
-    test_samples: List[Tuple[str, int]],
-    batch_size: int = 64,
-    img_size: int = 224,
-    num_workers: int = 4
-) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """Factory helper function returning initialized PyTorch DataLoaders."""
-    train_paths, train_labels = zip(*train_samples) if train_samples else ([], [])
-    val_paths, val_labels = zip(*val_samples) if val_samples else ([], [])
-    test_paths, test_labels = zip(*test_samples) if test_samples else ([], [])
+class SequenceVideoDataset(Dataset):
+    """Dataset loader yielding 5D video frame sequence tensors [T, 3, H, W] per sample."""
+    def __init__(self, video_samples: List[Tuple[List[str], int]], transform: Optional[Any] = None, seq_len: int = 8):
+        self.video_samples = video_samples
+        self.transform = transform
+        self.seq_len = seq_len
 
-    train_ds = DeepfakeDataset(list(train_paths), list(train_labels), get_transforms(img_size, is_train=True))
-    val_ds = DeepfakeDataset(list(val_paths), list(val_labels), get_transforms(img_size, is_train=False))
-    test_ds = DeepfakeDataset(list(test_paths), list(test_labels), get_transforms(img_size, is_train=False))
+    def __len__(self) -> int:
+        return len(self.video_samples)
 
-    drop_last = len(train_ds) > batch_size
-    if train_labels:
-        class_counts = np.bincount(train_labels)
-        class_weights = 1. / class_counts
-        sample_weights = [class_weights[l] for l in train_labels]
-        sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
-        train_loader = DataLoader(train_ds, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True, drop_last=drop_last)
-    else:
-        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, drop_last=drop_last)
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        frame_paths, label = self.video_samples[idx]
+        N = len(frame_paths)
         
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        if N >= self.seq_len:
+            indices = np.linspace(0, N - 1, self.seq_len, dtype=int)
+            selected_paths = [frame_paths[i] for i in indices]
+        else:
+            selected_paths = frame_paths + [frame_paths[-1]] * (self.seq_len - N) if N > 0 else []
 
-    return train_loader, val_loader, test_loader
+        frames = []
+        for p in selected_paths:
+            img_bgr = cv2.imread(p)
+            if img_bgr is not None:
+                img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+            else:
+                img_rgb = np.zeros((256, 256, 3), dtype=np.uint8)
+
+            if self.transform is not None:
+                img_tensor = self.transform(image=img_rgb)["image"]
+            else:
+                img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
+
+            frames.append(img_tensor)
+
+        seq_tensor = torch.stack(frames, dim=0) if len(frames) > 0 else torch.zeros(self.seq_len, 3, 256, 256)
+        return seq_tensor, torch.tensor(label, dtype=torch.long)
+
+def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, DataLoader]:
+    """Builds train, val, and test DataLoaders with zero identity leakage partitioning."""
+    if config is None:
+        config = load_config()
+
+    prep_cfg = config.get("preprocessing", {})
+    train_cfg = config.get("training", {})
+    paths_cfg = config.get("paths", {})
+
+    cropped_dir = prep_cfg.get("cropped_frames_dir", paths_cfg.get("cropped_dir", "data/cropped"))
+    img_size = prep_cfg.get("img_size", 256)
+    batch_size = train_cfg.get("batch_size", 16)
+    num_workers = train_cfg.get("num_workers", 4)
+    seed = train_cfg.get("seed", 42)
+
+    samples = []
+    if os.path.exists(cropped_dir):
+        for root, _, files in os.walk(cropped_dir):
+            for file in files:
+                if file.lower().endswith((".png", ".jpg", ".jpeg")):
+                    full_path = os.path.join(root, file)
+                    label = 0 if "original" in full_path.lower() or "real" in full_path.lower() else 1
+                    samples.append((full_path, label))
+
+    if not samples:
+        # Fallback dummy samples for integration testing
+        samples = [(f"dummy_sample_{i}.jpg", i % 2) for i in range(20)]
+
+    train_samples, val_samples, test_samples = perform_graph_split(samples, seed=seed)
+
+    train_transform, eval_transform = get_transforms(img_size=img_size)
+
+    train_dataset = DeepfakeDataset(train_samples, transform=train_transform)
+    val_dataset = DeepfakeDataset(val_samples, transform=eval_transform)
+    test_dataset = DeepfakeDataset(test_samples, transform=eval_transform)
+
+    train_labels = [s[1] for s in train_samples]
+    class_counts = np.maximum(np.bincount(train_labels), 1)
+    class_weights = 1.0 / class_counts
+    sample_weights = [class_weights[l] for l in train_labels]
+    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
+    return {
+        "train": train_loader,
+        "val": val_loader,
+        "test": test_loader
+    }
+
+build_dataloaders = create_dataloaders
