@@ -19,11 +19,24 @@ from src.config import load_config
 
 logger = logging.getLogger(__name__)
 
+def get_grad_scaler(device_type: str = "cuda"):
+    """PyTorch 2.6+ compatible GradScaler helper."""
+    if hasattr(torch.amp, "GradScaler"):
+        return torch.amp.GradScaler(device_type, enabled=torch.cuda.is_available())
+    return torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
+
+def get_autocast(device_type: str = "cuda"):
+    """PyTorch 2.6+ compatible autocast helper."""
+    if hasattr(torch.amp, "autocast"):
+        return torch.amp.autocast(device_type, enabled=torch.cuda.is_available())
+    return torch.cuda.amp.autocast(enabled=torch.cuda.is_available())
+
 class TwoPhaseTrainer:
     """
     Modular Two-Phase Training Engine for Hybrid Deepfake Detector.
     Encapsulates Phase 1 (Warmup Classifier Head), Phase 2 (LLRD Fine-Tuning),
     AMP FP16 scaling, Macro F1 threshold calibration, and EER evaluation.
+    Supports both 4D single-frame and 5D video sequence inputs [B, T, 3, H, W].
     """
     def __init__(
         self,
@@ -41,7 +54,14 @@ class TwoPhaseTrainer:
         
         self.model.to(self.device)
         self.criterion = nn.BCEWithLogitsLoss()
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = get_grad_scaler("cuda" if self.device.type == "cuda" else "cpu")
+
+    def _forward_step(self, imgs: torch.Tensor) -> torch.Tensor:
+        """DataParallel-invariant model forward step handling 4D and 5D sequence tensors."""
+        unwrapped = self.model.module if hasattr(self.model, "module") else self.model
+        if imgs.ndim == 5 and hasattr(unwrapped, "forward_sequence"):
+            return unwrapped.forward_sequence(imgs)
+        return self.model(imgs)
 
     def _get_llrd_param_groups(self, lr_backbone: float, lr_head: float) -> list:
         unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
@@ -79,8 +99,8 @@ class TwoPhaseTrainer:
         with torch.no_grad():
             for imgs, labels in self.val_loader:
                 imgs, labels = imgs.to(self.device), labels.to(self.device)
-                with torch.cuda.amp.autocast():
-                    logits = self.model(imgs)
+                with get_autocast("cuda" if self.device.type == "cuda" else "cpu"):
+                    logits = self._forward_step(imgs)
                     loss = self.criterion(logits, labels.float())
 
                 running_loss += loss.item() * imgs.size(0)
@@ -142,6 +162,7 @@ class TwoPhaseTrainer:
         best_opt_thresh = 0.5
 
         unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
+        device_type = "cuda" if self.device.type == "cuda" else "cpu"
 
         # --- Phase 1: Classifier Head Warmup ---
         logger.info("Phase 1: Training classifier head (backbone frozen)")
@@ -158,8 +179,8 @@ class TwoPhaseTrainer:
             for imgs, labels in pbar:
                 imgs, labels = imgs.to(self.device), labels.to(self.device)
                 optimizer_p1.zero_grad()
-                with torch.cuda.amp.autocast():
-                    logits = self.model(imgs)
+                with get_autocast(device_type):
+                    logits = self._forward_step(imgs)
                     smooth_labels = labels * 0.95 + 0.025
                     loss = self.criterion(logits, smooth_labels)
                 
@@ -200,8 +221,8 @@ class TwoPhaseTrainer:
             for imgs, labels in pbar:
                 imgs, labels = imgs.to(self.device), labels.to(self.device)
                 optimizer_p2.zero_grad()
-                with torch.cuda.amp.autocast():
-                    logits = self.model(imgs)
+                with get_autocast(device_type):
+                    logits = self._forward_step(imgs)
                     smooth_labels = labels * 0.95 + 0.025
                     loss = self.criterion(logits, smooth_labels)
 

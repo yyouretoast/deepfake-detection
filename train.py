@@ -21,6 +21,7 @@ def main() -> None:
     parser.add_argument("--epochs_p1", type=int, default=None, help="Phase 1 head warmup epochs")
     parser.add_argument("--epochs_p2", type=int, default=None, help="Phase 2 LLRD fine-tuning epochs")
     parser.add_argument("--batch_size", type=int, default=None, help="Training batch size")
+    parser.add_argument("--sequence", action="store_true", help="Enable 5D video sequence dataset loading")
     parser.add_argument("--save_path", type=str, default="models/deepfake_convnext_v2.pt", help="Checkpoint save path")
     parser.add_argument("--export_onnx", action="store_true", help="Export model to ONNX format after training")
 

@@ -28,22 +28,33 @@ def export_to_onnx(
     device = next(model.parameters()).device
     dummy_input = torch.randn(2, 3, img_size, img_size, device=device)
 
-    dynamic_axes = {
-        'input': {0: 'batch_size'},
-        'output': {0: 'batch_size'}
-    }
-
-    torch.onnx.export(
-        model,
-        dummy_input,
-        save_path,
-        export_params=True,
-        opset_version=17,
-        do_constant_folding=True,
-        input_names=['input'],
-        output_names=['output'],
-        dynamic_axes=dynamic_axes
-    )
+    try:
+        # PyTorch 2.x dynamic_shapes syntax
+        torch.onnx.export(
+            model,
+            dummy_input,
+            save_path,
+            export_params=True,
+            opset_version=17,
+            do_constant_folding=True,
+            input_names=['input'],
+            output_names=['output'],
+            dynamic_shapes={'input': {0: torch.onnx.Dim('batch_size')}, 'output': {0: torch.onnx.Dim('batch_size')}}
+        )
+    except Exception:
+        # Legacy dynamic_axes fallback
+        dynamic_axes = {'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
+        torch.onnx.export(
+            model,
+            dummy_input,
+            save_path,
+            export_params=True,
+            opset_version=17,
+            do_constant_folding=True,
+            input_names=['input'],
+            output_names=['output'],
+            dynamic_axes=dynamic_axes
+        )
 
     if HAS_ONNX:
         onnx_model = onnx.load(save_path)
