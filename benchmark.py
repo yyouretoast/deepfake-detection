@@ -4,10 +4,13 @@ import time
 import numpy as np
 import torch
 
+from src.config import load_config
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.onnx_exporter import export_to_onnx, ONNXDeepfakePredictor, HAS_ONNX
 
-def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int = 224) -> None:
+CONFIG = load_config()
+
+def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int = 256) -> None:
     """
     Inference latency benchmarking script comparing PyTorch Native vs ONNX Runtime.
     """
