@@ -60,16 +60,27 @@ Application Interface: **[https://huggingface.co/spaces/yyouretoast/deepfake-det
 
 ### Technical Formulation
 
-1. **Pre-Downsample 512x512 2D Real FFT Spectrum Extraction**:
-   $$\mathcal{F}_{\text{norm}} = \frac{1}{10} \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{gray}})| + 10^{-5} \right)$$
-   Computes frequency representations on uncompressed 512x512 face crops prior to spatial downsampling, preserving high-frequency grid noise up to native Nyquist resolution ($f_{N,\text{native}} = 256 \text{ cycles}$).
+**1. Pre-Downsample 512x512 2D Real FFT Spectrum Extraction**:
 
-2. **LoRA Low-Rank Adaptation (Weight Folding)**:
-   $$W_{\text{effective}} = W_0 + \frac{\alpha}{r} (B \cdot A)$$
-   Injects trainable rank $r=8$ matrices $A \in \mathbb{R}^{r \times k}$ and $B \in \mathbb{R}^{d \times r}$ into ConvNeXt depthwise and pointwise conv blocks, reducing Phase 2 trainable parameters by 98.6% with zero inference latency overhead (`merge_weights()`).
+$$
+\mathcal{F}_{\text{norm}} = \frac{1}{10} \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{gray}})| + 10^{-5} \right)
+$$
 
-3. **4-Head Cross-Attention Residual Fusion**:
-   $$\mathbf{f}_{\text{enhanced}} = \mathbf{f}_{\text{freq}} + 0.1 \times \text{Attention}(Q_{\text{spatial}}, K_{\text{freq}}, V_{\text{freq}})$$
+Computes frequency representations on uncompressed 512x512 face crops prior to spatial downsampling, preserving high-frequency grid noise up to native Nyquist resolution ($f_{N} = 256 \text{ cycles}$).
+
+**2. LoRA Low-Rank Adaptation (Weight Folding)**:
+
+$$
+W_{\text{effective}} = W_0 + \frac{\alpha}{r} (B \cdot A)
+$$
+
+Injects trainable rank $r=8$ matrices $A \in \mathbb{R}^{r \times k}$ and $B \in \mathbb{R}^{d \times r}$ into ConvNeXt depthwise and pointwise conv blocks, reducing Phase 2 trainable parameters by 98.6% with zero inference latency overhead (`merge_weights()`).
+
+**3. 4-Head Cross-Attention Residual Fusion**:
+
+$$
+\mathbf{f}_{\text{enhanced}} = \mathbf{f}_{\text{freq}} + 0.1 \times \text{Attention}(Q_{\text{spatial}}, K_{\text{freq}}, V_{\text{freq}})
+$$
 
 ---
 
