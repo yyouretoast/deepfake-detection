@@ -107,7 +107,8 @@ class HybridDeepfakeDetector(nn.Module):
             self.cross_attn = None
             fusion_dim = spatial_in_features
 
-        self.temporal_encoder = TemporalSequenceEncoder(embed_dim=fusion_dim)
+        self.fusion_dim = fusion_dim
+        self.temporal_encoder = TemporalSequenceEncoder(embed_dim=self.fusion_dim)
 
         self.classifier = nn.Sequential(
             nn.Linear(fusion_dim, 256),
@@ -177,14 +178,21 @@ class HybridDeepfakeDetector(nn.Module):
         }
 
     def forward(self, x: torch.Tensor, x_full: Optional[torch.Tensor] = None) -> torch.Tensor:
+        if x.ndim == 5:
+            return self.forward_sequence(x)
         features = self.extract_features(x, x_full=x_full)
         logits = self.classifier(features["fused"])
         return logits.view(-1)
 
-    def forward_sequence(self, x_seq: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward_sequence(
+        self,
+        x_seq: torch.Tensor,
+        padding_mask: Optional[torch.Tensor] = None,
+        chunk_size: int = 8
+    ) -> torch.Tensor:
         """
-        Processes 5D video sequence tensors [B, T, 3, H, W] via 1-pass spatial-frequency
-        extraction and Temporal Transformer sequence modeling.
+        Processes 5D video sequence tensors [B, T, 3, H, W] via mini-batched spatial-frequency
+        extraction (chunk_size=8) to cap VRAM under 600MB, followed by Temporal Transformer sequence modeling.
         padding_mask: optional bool tensor [B, T], True = padded frame (to be ignored).
         """
         if x_seq.ndim == 4:
@@ -193,9 +201,14 @@ class HybridDeepfakeDetector(nn.Module):
         B, T, C, H, W = x_seq.shape
         x_flat = x_seq.view(B * T, C, H, W)
 
-        feats = self.extract_features(x_flat)
-        fused_frames = feats["fused"]
+        fused_list = []
+        total_frames = B * T
+        for i in range(0, total_frames, chunk_size):
+            chunk = x_flat[i : i + chunk_size]
+            feats = self.extract_features(chunk)
+            fused_list.append(feats["fused"])
 
+        fused_frames = torch.cat(fused_list, dim=0)
         fused_seq = fused_frames.view(B, T, -1)
         pooled_seq = self.temporal_encoder(fused_seq, padding_mask=padding_mask)
 

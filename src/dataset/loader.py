@@ -27,15 +27,24 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 def extract_identities(filename: str) -> Tuple[str, str]:
-    """Extracts actor/source video identity strings from FaceForensics++ filename patterns."""
+    """Extracts actor/source video identity strings (id1 source, id2 target) from FaceForensics++ filename or path patterns."""
     basename = os.path.basename(filename)
-    match = re.search(r"(\d{3,4})_(\d{3,4})", basename)
+    match = re.search(r"(\d+)_(\d+)", basename)
     if match:
         return match.group(1), match.group(2)
-    
-    match_single = re.search(r"(\d{3,4})", basename)
+        
+    match_path = re.search(r"(\d+)_(\d+)", filename)
+    if match_path:
+        return match_path.group(1), match_path.group(2)
+
+    match_single = re.search(r"(\d+)", basename)
     if match_single:
         id_str = match_single.group(1)
+        return id_str, id_str
+
+    match_single_path = re.search(r"(\d+)", filename)
+    if match_single_path:
+        id_str = match_single_path.group(1)
         return id_str, id_str
         
     return basename, basename
@@ -323,7 +332,8 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
     class_counts = np.maximum(np.bincount(train_labels), 1)
     class_weights = 1.0 / class_counts
     sample_weights = [class_weights[l] for l in train_labels]
-    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
+    generator = torch.Generator().manual_seed(seed)
+    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True, generator=generator)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)

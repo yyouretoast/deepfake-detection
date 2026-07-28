@@ -123,7 +123,7 @@ class TwoPhaseTrainer:
         ]
 
     def evaluate(self) -> Dict[str, Any]:
-        """Evaluates single-pass predictions over validation loader."""
+        """Evaluates predictions over validation loader using Test-Time Augmentation (horizontal flip)."""
         self.model.eval()
         running_loss = 0.0
         val_probs, val_targets = [], []
@@ -134,17 +134,20 @@ class TwoPhaseTrainer:
                     imgs, labels, padding_mask = batch
                     imgs, labels = imgs.to(self.device), labels.to(self.device)
                     fwd_input = (imgs, padding_mask)
+                    fwd_input_flip = (torch.flip(imgs, dims=[-1]), padding_mask)
                 else:
                     imgs, labels = batch
                     imgs, labels = imgs.to(self.device), labels.to(self.device)
                     fwd_input = imgs
+                    fwd_input_flip = torch.flip(imgs, dims=[-1])
 
                 with get_autocast("cuda" if self.device.type == "cuda" else "cpu", enabled=self.use_amp):
                     logits = self._forward_step(fwd_input)
+                    logits_flip = self._forward_step(fwd_input_flip)
                     loss = self.criterion(logits, labels.float())
 
                 running_loss += loss.item() * imgs.size(0)
-                probs = torch.sigmoid(logits)
+                probs = (torch.sigmoid(logits) + torch.sigmoid(logits_flip)) / 2.0
                 val_probs.extend(probs.cpu().numpy())
                 val_targets.extend(labels.cpu().numpy())
 
@@ -215,6 +218,11 @@ class TwoPhaseTrainer:
         head_params = [p for n, p in self.model.named_parameters() if "spatial_backbone" not in n and p.requires_grad]
         optimizer_p1 = torch.optim.AdamW(head_params, lr=lr_p1, weight_decay=weight_decay)
 
+        warmup_steps = 500
+        scheduler_p1 = torch.optim.lr_scheduler.LinearLR(
+            optimizer_p1, start_factor=1e-3, end_factor=1.0, total_iters=warmup_steps
+        )
+
         for epoch in range(epochs_p1):
             self.model.train()
             running_loss = 0.0
@@ -235,11 +243,17 @@ class TwoPhaseTrainer:
                     smooth_labels = labels * 0.95 + 0.025
                     loss = self.criterion(logits, smooth_labels)
                 
+                scale_before = self.scaler.get_scale()
                 self.scaler.scale(loss).backward()
                 self.scaler.unscale_(optimizer_p1)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.scaler.step(optimizer_p1)
                 self.scaler.update()
+                scale_after = self.scaler.get_scale()
+
+                if scale_before <= scale_after:
+                    scheduler_p1.step()
+
                 running_loss += loss.item()
 
             val_metrics = self.evaluate()
@@ -260,7 +274,9 @@ class TwoPhaseTrainer:
 
         param_groups = self._get_llrd_param_groups(lr_backbone=lr_backbone, lr_head=lr_head)
         optimizer_p2 = torch.optim.AdamW(param_groups, weight_decay=weight_decay)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_p2, T_max=epochs_p2, eta_min=1e-6)
+
+        total_steps = epochs_p2 * max(1, len(self.train_loader))
+        scheduler_p2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_p2, T_max=total_steps, eta_min=1e-6)
 
         patience_counter = 0
 
@@ -284,14 +300,19 @@ class TwoPhaseTrainer:
                     smooth_labels = labels * 0.95 + 0.025
                     loss = self.criterion(logits, smooth_labels)
 
+                scale_before = self.scaler.get_scale()
                 self.scaler.scale(loss).backward()
                 self.scaler.unscale_(optimizer_p2)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 self.scaler.step(optimizer_p2)
                 self.scaler.update()
+                scale_after = self.scaler.get_scale()
+
+                if scale_before <= scale_after:
+                    scheduler_p2.step()
+
                 running_loss += loss.item()
 
-            scheduler.step()
             val_metrics = self.evaluate()
             logger.info("Phase 2 - Epoch %d/%d Complete | Val Acc: %.2f%% | Val AUC: %.4f | Opt T*: %.4f",
                         epoch + 1, epochs_p2, val_metrics["val_acc"] * 100, val_metrics["val_auc"], val_metrics["optimal_threshold"])

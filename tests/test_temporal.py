@@ -27,3 +27,15 @@ def test_hybrid_detector_forward_sequence_parity():
     video_seq = torch.randn(2, 4, 3, 256, 256)
     out_seq = model.forward_sequence(video_seq)
     assert out_seq.shape == (2,)
+
+def test_hybrid_detector_forward_sequence_chunking():
+    """Verifies that forward_sequence handles long sequences (T=18) via mini-batches of size 8."""
+    model = build_model(use_fft=True, pretrained=False)
+    model.eval()
+
+    # Video sequence with T=18 (spans 3 chunks: 8 + 8 + 2)
+    video_seq = torch.randn(1, 18, 3, 256, 256)
+    with torch.inference_mode():
+        out_seq = model.forward_sequence(video_seq)
+    assert out_seq.shape == (1,)
+

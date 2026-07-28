@@ -28,8 +28,21 @@ wheels/
 *.pth
 *.pt
 *.onnx
+deepfake_convnext_v2.onnx.data
+*.onnx.data
+*.onnx_data
 *.bin
 *.h5
+
+# Heavy Binary Blobs & Data Artifacts
+*.dat
+*.data
+*.blob
+*.npz
+*.npy
+*.pkl
+*.pickle
+models/*.onnx.data
 
 # Dataset / Extracted Frames
 frames/

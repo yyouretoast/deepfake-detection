@@ -144,6 +144,8 @@ def preprocess_tensors_batch(faces_rgb_list: List[np.ndarray]) -> Tuple[np.ndarr
 def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Optional[Dict[str, Any]]:
     """
     Video inference engine with direct OpenCV frame seeking, AMP autocast, and batched Grad-CAM.
+    Constructs 5D sequence tensor [1, T, 3, H, W] and invokes unwrapped.forward_sequence(sequence_tensor)
+    wrapped in torch.inference_mode(), so TemporalSequenceEncoder is actively used during video inference.
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -177,34 +179,41 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
     if not all_faces:
         return None
 
+    numpy_batch, torch_batch = preprocess_tensors_batch(all_faces)
+    sequence_tensor = torch_batch.unsqueeze(0)  # [1, T, 3, H, W]
+
+    unwrapped = pytorch_model.module if isinstance(pytorch_model, torch.nn.DataParallel) else pytorch_model
+
+    with torch.inference_mode():
+        with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
+            seq_logits = unwrapped.forward_sequence(sequence_tensor)
+            video_prob = float(torch.sigmoid(seq_logits.float()).mean().item())
+
+    # Per-frame predictions for breakdown & ranking
     BATCH_SIZE = 16
     all_probs = []
-    all_tensors = []
     
     for i in range(0, len(all_faces), BATCH_SIZE):
         batch_faces = all_faces[i:i+BATCH_SIZE]
-        numpy_batch, torch_batch = preprocess_tensors_batch(batch_faces)
+        sub_numpy, sub_torch = preprocess_tensors_batch(batch_faces)
         
         batch_probs = None
         if onnx_predictor is not None:
             try:
-                batch_probs = onnx_predictor.predict_batch(numpy_batch).tolist()
+                batch_probs = onnx_predictor.predict_batch(sub_numpy).tolist()
             except Exception:
                 batch_probs = None
 
         if batch_probs is None:
-            with torch.no_grad():
+            with torch.inference_mode():
                 with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                    p1 = torch.sigmoid(pytorch_model(torch_batch).float())
-                    p2 = torch.sigmoid(pytorch_model(torch.flip(torch_batch, dims=[-1])).float())
+                    p1 = torch.sigmoid(pytorch_model(sub_torch).float())
+                    p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float())
                     batch_probs = ((p1 + p2) / 2.0).cpu().numpy().tolist()
 
         all_probs.extend(batch_probs)
-        all_tensors.append(torch_batch)
-        
-    all_tensors_concat = torch.cat(all_tensors, dim=0)
 
-    zipped_data = list(zip(all_faces, all_probs, all_tensors_concat))
+    zipped_data = list(zip(all_faces, all_probs, torch_batch))
     zipped_data.sort(key=lambda x: x[1], reverse=True)
     
     top_4 = zipped_data[:4]
@@ -237,9 +246,8 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
         overlay_img = PyTorchGradCAM.overlay_heatmap(face, heatmap) if heatmap is not None else face
         sample_outputs.append((overlay_img, label, conf, prob))
 
-    avg_prob = float(np.mean(all_probs))
-    final_label = "Fake" if avg_prob > CLASSIFICATION_THRESHOLD else "Real"
-    final_conf = normalize_confidence(avg_prob, CLASSIFICATION_THRESHOLD)
+    final_label = "Fake" if video_prob > CLASSIFICATION_THRESHOLD else "Real"
+    final_conf = normalize_confidence(video_prob, CLASSIFICATION_THRESHOLD)
     
     fake_faces_count = sum(1 for p in all_probs if p > CLASSIFICATION_THRESHOLD)
     real_faces_count = len(all_probs) - fake_faces_count

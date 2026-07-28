@@ -17,19 +17,27 @@ logger = logging.getLogger(__name__)
 def export_to_onnx(
     model: torch.nn.Module,
     save_path: str = "deepfake_convnext_v2.onnx",
-    img_size: int = 256
+    img_size: int = 256,
+    dummy_input: Optional[torch.Tensor] = None
 ) -> str:
-    """Exports PyTorch HybridDeepfakeDetector model to ONNX runtime format with dynamic batching."""
+    """Exports PyTorch HybridDeepfakeDetector model to ONNX format with dynamic batching and dynamic sequence length support."""
     model.eval()
     unwrapped = model.module if isinstance(model, torch.nn.DataParallel) else model
 
     device = next(unwrapped.parameters()).device
-    dummy_input = torch.randn(2, 3, img_size, img_size, device=device)
+    if dummy_input is None:
+        dummy_input = torch.randn(2, 3, img_size, img_size, device=device)
 
-    dynamic_axes = {
-        'input': {0: 'batch_size'},
-        'output': {0: 'batch_size'}
-    }
+    if dummy_input.ndim == 5:
+        dynamic_axes = {
+            'input': {0: 'batch_size', 1: 'sequence_length', 3: 'height', 4: 'width'},
+            'output': {0: 'batch_size'}
+        }
+    else:
+        dynamic_axes = {
+            'input': {0: 'batch_size', 2: 'height', 3: 'width'},
+            'output': {0: 'batch_size'}
+        }
 
     torch.onnx.export(
         unwrapped,
