@@ -58,6 +58,11 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     """Loads configuration from YAML file and merges missing keys from DEFAULT_CONFIG."""
     if config_path is None or not os.path.exists(config_path):
         config_path = "config/default.yaml"
+        if not os.path.exists(config_path):
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            alt_path = os.path.join(repo_root, "config", "default.yaml")
+            if os.path.exists(alt_path):
+                config_path = alt_path
 
     if os.path.exists(config_path):
         try:
