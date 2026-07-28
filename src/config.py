@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional
 import os
 import yaml
 import copy
+import logging
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "paths": {
@@ -10,7 +11,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "output_dir": "models",
     },
     "preprocessing": {
-        "img_size": 512,
+        "img_size": 256,
         "face_scale_factor": 1.30,
         "frames_per_video": 30,
     },
@@ -25,14 +26,16 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "training": {
         "seed": 42,
-        "batch_size": 16,
+        "batch_size": 32,
         "epochs_phase1": 3,
         "epochs_phase2": 15,
-        "lr_phase1": 1e-4,
+        "lr_phase1": 1e-3,
         "lr_backbone": 1e-5,
         "lr_head": 1e-4,
         "weight_decay": 1e-2,
-        "patience": 2,
+        "patience": 4,
+        "use_amp": True,
+        "seq_len": 8,
         "num_workers": 4,
     },
     "explainability": {
@@ -62,7 +65,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
                 user_cfg = yaml.safe_load(f)
             if isinstance(user_cfg, dict):
                 return _deep_merge_dict(DEFAULT_CONFIG, user_cfg)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning("Failed to parse config file '%s': %s. Using DEFAULT_CONFIG.", config_path, e)
 
     return copy.deepcopy(DEFAULT_CONFIG)

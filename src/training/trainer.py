@@ -19,17 +19,19 @@ from src.config import load_config
 
 logger = logging.getLogger(__name__)
 
-def get_grad_scaler(device_type: str = "cuda"):
+def get_grad_scaler(device_type: str = "cuda", enabled: bool = True):
     """PyTorch 2.6+ compatible GradScaler helper."""
+    use = enabled and torch.cuda.is_available()
     if hasattr(torch.amp, "GradScaler"):
-        return torch.amp.GradScaler(device_type, enabled=torch.cuda.is_available())
-    return torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
+        return torch.amp.GradScaler(device_type, enabled=use)
+    return torch.cuda.amp.GradScaler(enabled=use)
 
-def get_autocast(device_type: str = "cuda"):
+def get_autocast(device_type: str = "cuda", enabled: bool = True):
     """PyTorch 2.6+ compatible autocast helper."""
+    use = enabled and torch.cuda.is_available()
     if hasattr(torch.amp, "autocast"):
-        return torch.amp.autocast(device_type, enabled=torch.cuda.is_available())
-    return torch.cuda.amp.autocast(enabled=torch.cuda.is_available())
+        return torch.amp.autocast(device_type, enabled=use)
+    return torch.cuda.amp.autocast(enabled=use)
 
 class TwoPhaseTrainer:
     """
@@ -51,22 +53,49 @@ class TwoPhaseTrainer:
         self.val_loader = val_loader
         self.config = config if config is not None else load_config()
         self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.use_amp = self.config.get("training", {}).get("use_amp", True)
         
         self.model.to(self.device)
+        if torch.cuda.device_count() > 1:
+            logger.info("DataParallel: distributing across %d GPUs", torch.cuda.device_count())
+            self.model = nn.DataParallel(self.model)
         self.criterion = nn.BCEWithLogitsLoss()
-        self.scaler = get_grad_scaler("cuda" if self.device.type == "cuda" else "cpu")
+        self.scaler = get_grad_scaler("cuda" if self.device.type == "cuda" else "cpu", enabled=self.use_amp)
 
-    def _forward_step(self, imgs: torch.Tensor) -> torch.Tensor:
-        """DataParallel-invariant model forward step handling 4D and 5D sequence tensors."""
+    def _forward_step(self, batch) -> torch.Tensor:
+        """DataParallel-invariant model forward step handling 4D/5D tensors and optional padding masks."""
+        if isinstance(batch, (tuple, list)):
+            imgs = batch[0]
+            padding_mask = batch[1] if len(batch) > 1 else None
+        else:
+            imgs, padding_mask = batch, None
+
+        imgs = imgs.to(self.device)
+        if padding_mask is not None:
+            padding_mask = padding_mask.to(self.device)
+
         unwrapped = self.model.module if hasattr(self.model, "module") else self.model
         if imgs.ndim == 5 and hasattr(unwrapped, "forward_sequence"):
-            return unwrapped.forward_sequence(imgs)
+            return unwrapped.forward_sequence(imgs, padding_mask=padding_mask)
         return self.model(imgs)
 
     def _get_llrd_param_groups(self, lr_backbone: float, lr_head: float) -> list:
+        """Layer-wise LR decay with 5 tiers:
+        - Tier 0: stem + stages 0-1 (lr_backbone * 0.2)
+        - Tier 1: stage 2          (lr_backbone * 0.5)
+        - Tier 2: stage 3          (lr_backbone * 1.0)
+        - Tier 3: fusion/freq layers (lr_backbone * 1.0) — NOT head LR
+        - Tier 4: classifier head  (lr_head)
+        """
         unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
-        stem_s01, s2, s3, head_params = [], [], [], []
-        
+        stem_s01, s2, s3, fusion_params, head_params = [], [], [], [], []
+
+        # Fusion/frequency layer prefixes — these are feature extractors, not the head
+        FUSION_PREFIXES = (
+            "freq_extractor", "cross_attn", "spatial_proj",
+            "freq_proj", "temporal_encoder", "attn_out_proj",
+        )
+
         for name, p in unwrapped.named_parameters():
             if not p.requires_grad:
                 continue
@@ -80,14 +109,17 @@ class TwoPhaseTrainer:
                     s3.append(p)
                 else:
                     stem_s01.append(p)
+            elif any(clean_name.startswith(pfx) for pfx in FUSION_PREFIXES):
+                fusion_params.append(p)
             else:
                 head_params.append(p)
 
         return [
-            {'params': stem_s01, 'lr': lr_backbone * 0.2},
-            {'params': s2,       'lr': lr_backbone * 0.5},
-            {'params': s3,       'lr': lr_backbone * 1.0},
-            {'params': head_params, 'lr': lr_head}
+            {'params': stem_s01,      'lr': lr_backbone * 0.2},
+            {'params': s2,            'lr': lr_backbone * 0.5},
+            {'params': s3,            'lr': lr_backbone * 1.0},
+            {'params': fusion_params, 'lr': lr_backbone * 1.0},
+            {'params': head_params,   'lr': lr_head},
         ]
 
     def evaluate(self) -> Dict[str, Any]:
@@ -97,10 +129,18 @@ class TwoPhaseTrainer:
         val_probs, val_targets = [], []
 
         with torch.no_grad():
-            for imgs, labels in self.val_loader:
-                imgs, labels = imgs.to(self.device), labels.to(self.device)
-                with get_autocast("cuda" if self.device.type == "cuda" else "cpu"):
-                    logits = self._forward_step(imgs)
+            for batch in self.val_loader:
+                if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                    imgs, labels, padding_mask = batch
+                    imgs, labels = imgs.to(self.device), labels.to(self.device)
+                    fwd_input = (imgs, padding_mask)
+                else:
+                    imgs, labels = batch
+                    imgs, labels = imgs.to(self.device), labels.to(self.device)
+                    fwd_input = imgs
+
+                with get_autocast("cuda" if self.device.type == "cuda" else "cpu", enabled=self.use_amp):
+                    logits = self._forward_step(fwd_input)
                     loss = self.criterion(logits, labels.float())
 
                 running_loss += loss.item() * imgs.size(0)
@@ -125,8 +165,9 @@ class TwoPhaseTrainer:
             if f1 > best_f1:
                 best_f1, opt_thresh = f1, float(t)
 
-        val_preds = (probs_arr >= opt_thresh).astype(int)
-        val_acc = float(np.mean(val_preds == targets_arr))
+        # Report accuracy at fixed 0.5 threshold (honest metric — opt_thresh is for deployment only)
+        val_preds_fixed = (probs_arr >= 0.5).astype(int)
+        val_acc = float(np.mean(val_preds_fixed == targets_arr))
 
         # Equal Error Rate (EER) Calculation
         eer = 0.50
@@ -156,6 +197,8 @@ class TwoPhaseTrainer:
         lr_p1 = training_cfg.get("lr_phase1", 1e-3)
         lr_backbone = training_cfg.get("lr_backbone", 1e-5)
         lr_head = training_cfg.get("lr_head", 1e-4)
+        weight_decay = training_cfg.get("weight_decay", 1e-2)
+        patience = training_cfg.get("patience", 4)
 
         best_val_auc = 0.0
         best_weights = None
@@ -170,17 +213,25 @@ class TwoPhaseTrainer:
             p.requires_grad = False
 
         head_params = [p for n, p in self.model.named_parameters() if "spatial_backbone" not in n and p.requires_grad]
-        optimizer_p1 = torch.optim.AdamW(head_params, lr=lr_p1, weight_decay=1e-2)
+        optimizer_p1 = torch.optim.AdamW(head_params, lr=lr_p1, weight_decay=weight_decay)
 
         for epoch in range(epochs_p1):
             self.model.train()
             running_loss = 0.0
             pbar = tqdm(self.train_loader, desc=f"Phase 1 - Epoch {epoch+1}/{epochs_p1} [Train]")
-            for imgs, labels in pbar:
-                imgs, labels = imgs.to(self.device), labels.to(self.device)
+            for batch in pbar:
+                if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                    imgs, labels, padding_mask = batch
+                    imgs, labels = imgs.to(self.device), labels.to(self.device)
+                    fwd_input = (imgs, padding_mask)
+                else:
+                    imgs, labels = batch
+                    imgs, labels = imgs.to(self.device), labels.to(self.device)
+                    fwd_input = imgs
+
                 optimizer_p1.zero_grad()
-                with get_autocast(device_type):
-                    logits = self._forward_step(imgs)
+                with get_autocast(device_type, enabled=self.use_amp):
+                    logits = self._forward_step(fwd_input)
                     smooth_labels = labels * 0.95 + 0.025
                     loss = self.criterion(logits, smooth_labels)
                 
@@ -208,21 +259,28 @@ class TwoPhaseTrainer:
             p.requires_grad = True
 
         param_groups = self._get_llrd_param_groups(lr_backbone=lr_backbone, lr_head=lr_head)
-        optimizer_p2 = torch.optim.AdamW(param_groups, weight_decay=1e-2)
+        optimizer_p2 = torch.optim.AdamW(param_groups, weight_decay=weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_p2, T_max=epochs_p2, eta_min=1e-6)
 
-        patience = 4
         patience_counter = 0
 
         for epoch in range(epochs_p2):
             self.model.train()
             running_loss = 0.0
             pbar = tqdm(self.train_loader, desc=f"Phase 2 - Epoch {epoch+1}/{epochs_p2} [Train]")
-            for imgs, labels in pbar:
-                imgs, labels = imgs.to(self.device), labels.to(self.device)
+            for batch in pbar:
+                if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                    imgs, labels, padding_mask = batch
+                    imgs, labels = imgs.to(self.device), labels.to(self.device)
+                    fwd_input = (imgs, padding_mask)
+                else:
+                    imgs, labels = batch
+                    imgs, labels = imgs.to(self.device), labels.to(self.device)
+                    fwd_input = imgs
+
                 optimizer_p2.zero_grad()
-                with get_autocast(device_type):
-                    logits = self._forward_step(imgs)
+                with get_autocast(device_type, enabled=self.use_amp):
+                    logits = self._forward_step(fwd_input)
                     smooth_labels = labels * 0.95 + 0.025
                     loss = self.criterion(logits, smooth_labels)
 

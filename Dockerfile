@@ -24,6 +24,10 @@ COPY config ./config
 COPY src ./src
 COPY tests ./tests
 
+# Run as non-root user for security
+RUN useradd -m -u 1000 appuser
+USER appuser
+
 EXPOSE 8501
 
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health

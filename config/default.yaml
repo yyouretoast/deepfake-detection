@@ -34,6 +34,7 @@ training:
   lr_head: 1.0e-4  # Phase 2 classifier head learning rate
   weight_decay: 1.0e-2
   use_amp: true  # PyTorch Automatic Mixed Precision (fp16)
+  seq_len: 8
   seed: 42
 
 labels:

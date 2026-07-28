@@ -77,20 +77,54 @@ def perform_graph_split(
         video_map.setdefault(id1, []).append((path, label))
 
     if not HAS_NETWORKX:
-        unique_vids = sorted(list(video_map.keys()))
+        # Union-Find to group identities connected via (id1, id2) pairs
+        parent: Dict[str, str] = {}
+
+        def _find(x: str) -> str:
+            while parent.get(x, x) != x:
+                parent[x] = parent.get(parent.get(x, x), parent.get(x, x))
+                x = parent.get(x, x)
+            return x
+
+        def _union(a: str, b: str) -> None:
+            ra, rb = _find(a), _find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        # Collect all identity nodes and edges
+        all_ids: set = set()
+        for _, _, id1, id2 in parsed_samples:
+            all_ids.add(id1)
+            all_ids.add(id2)
+            _union(id1, id2)
+
+        # Group IDs into connected components via root
+        comp_map: Dict[str, list] = {}
+        for vid_id in sorted(all_ids):
+            root = _find(vid_id)
+            comp_map.setdefault(root, []).append(vid_id)
+
+        components = sorted(comp_map.values(), key=lambda c: c[0])
         rng = np.random.RandomState(seed)
-        rng.shuffle(unique_vids)
-        
-        n_val = int(len(unique_vids) * val_ratio)
-        n_test = int(len(unique_vids) * test_ratio)
-        
-        val_vids = set(unique_vids[:n_val])
-        test_vids = set(unique_vids[n_val:n_val + n_test])
-        train_vids = set(unique_vids[n_val + n_test:])
-        
-        train_s = [s for v in train_vids for s in video_map[v]]
-        val_s = [s for v in val_vids for s in video_map[v]]
-        test_s = [s for v in test_vids for s in video_map[v]]
+        rng.shuffle(components)
+
+        n_comps = len(components)
+        n_val_c = max(1, int(n_comps * val_ratio))
+        n_test_c = max(1, int(n_comps * test_ratio))
+
+        val_id_set = set(vid for comp in components[:n_val_c] for vid in comp)
+        test_id_set = set(vid for comp in components[n_val_c:n_val_c + n_test_c] for vid in comp)
+        train_id_set = set(vid for comp in components[n_val_c + n_test_c:] for vid in comp)
+
+        train_s, val_s, test_s = [], [], []
+        for path, label, id1, id2 in parsed_samples:
+            if id1 in train_id_set or id2 in train_id_set:
+                train_s.append((path, label))
+            elif id1 in val_id_set or id2 in val_id_set:
+                val_s.append((path, label))
+            else:
+                test_s.append((path, label))
+
         if is_string_list:
             return [s[0] for s in train_s], [s[0] for s in val_s], [s[0] for s in test_s]
         return train_s, val_s, test_s
@@ -203,15 +237,19 @@ class SequenceVideoDataset(Dataset):
     def __len__(self) -> int:
         return len(self.video_samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         frame_paths, label = self.video_samples[idx]
         N = len(frame_paths)
-        
+        mean_t = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
+        std_t = torch.tensor(IMAGENET_STD).view(3, 1, 1)
+
         if N >= self.seq_len:
             indices = np.linspace(0, N - 1, self.seq_len, dtype=int)
             selected_paths = [frame_paths[i] for i in indices]
+            n_pad = 0
         else:
-            selected_paths = frame_paths + [frame_paths[-1]] * (self.seq_len - N) if N > 0 else []
+            selected_paths = frame_paths[:N]
+            n_pad = self.seq_len - N
 
         frames = []
         for p in selected_paths:
@@ -225,11 +263,25 @@ class SequenceVideoDataset(Dataset):
                 img_tensor = self.transform(image=img_rgb)["image"]
             else:
                 img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
+                img_tensor = (img_tensor - mean_t) / std_t
 
             frames.append(img_tensor)
 
-        seq_tensor = torch.stack(frames, dim=0) if len(frames) > 0 else torch.zeros(self.seq_len, 3, 256, 256)
-        return seq_tensor, torch.tensor(label, dtype=torch.long)
+        # Pad with zero frames if video is shorter than seq_len
+        if n_pad > 0:
+            h = frames[0].shape[1] if frames else 256
+            w = frames[0].shape[2] if frames else 256
+            pad_frame = torch.zeros(3, h, w)
+            frames.extend([pad_frame] * n_pad)
+
+        seq_tensor = torch.stack(frames, dim=0) if frames else torch.zeros(self.seq_len, 3, 256, 256)
+
+        # padding_mask: True = padded position (ignored in temporal attention)
+        padding_mask = torch.zeros(self.seq_len, dtype=torch.bool)
+        if n_pad > 0:
+            padding_mask[self.seq_len - n_pad:] = True
+
+        return seq_tensor, torch.tensor(label, dtype=torch.long), padding_mask
 
 def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, DataLoader]:
     """Builds train, val, and test DataLoaders with zero identity leakage partitioning."""
@@ -284,3 +336,67 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
     }
 
 build_dataloaders = create_dataloaders
+
+def create_sequence_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, DataLoader]:
+    """
+    Builds train/val/test DataLoaders for video-sequence training (--sequence mode).
+    Each batch item is a 3-tuple: (seq_tensor [T,3,H,W], label, padding_mask [T]).
+    Frames are grouped by video identity using extract_video_id, then split via
+    graph-connected identity partitioning to guarantee zero identity leakage.
+    """
+    if config is None:
+        config = load_config()
+
+    prep_cfg = config.get("preprocessing", {})
+    train_cfg = config.get("training", {})
+    paths_cfg = config.get("paths", {})
+
+    cropped_dir = prep_cfg.get("cropped_frames_dir", paths_cfg.get("cropped_dir", "data/cropped"))
+    img_size = prep_cfg.get("img_size", 256)
+    batch_size = train_cfg.get("batch_size", 32)
+    num_workers = train_cfg.get("num_workers", 4)
+    seed = train_cfg.get("seed", 42)
+    seq_len = train_cfg.get("seq_len", 8)
+
+    # Group frames by video ID → {vid_id: [frame_path, ...]}
+    video_frame_map: Dict[str, List[str]] = {}
+    video_label_map: Dict[str, int] = {}
+
+    if os.path.exists(cropped_dir):
+        for root, _, files in os.walk(cropped_dir):
+            for file in sorted(files):
+                if file.lower().endswith((".png", ".jpg", ".jpeg")):
+                    full_path = os.path.join(root, file)
+                    vid_id = extract_video_id(full_path)
+                    label = 0 if "original" in full_path.lower() or "real" in full_path.lower() else 1
+                    video_frame_map.setdefault(vid_id, []).append(full_path)
+                    video_label_map[vid_id] = label
+
+    # Build flat (vid_id, label) list for graph split
+    flat_samples = [
+        (vid_id, video_label_map[vid_id])
+        for vid_id in sorted(video_frame_map.keys())
+    ]
+
+    if not flat_samples:
+        # Dummy fallback for integration testing
+        flat_samples = [(f"dummy_video_{i}", i % 2) for i in range(10)]
+        video_frame_map = {f"dummy_video_{i}": [f"dummy_video_{i}_frame000.jpg"] for i in range(10)}
+
+    train_s, val_s, test_s = perform_graph_split(flat_samples, seed=seed)
+
+    def _to_video_samples(split: List[Tuple]) -> List[Tuple[List[str], int]]:
+        return [(video_frame_map.get(vid_id, []), lbl) for vid_id, lbl in split]
+
+    train_transform, eval_transform = get_transforms(img_size=img_size)
+
+    train_dataset = SequenceVideoDataset(_to_video_samples(train_s), transform=train_transform, seq_len=seq_len)
+    val_dataset   = SequenceVideoDataset(_to_video_samples(val_s),   transform=eval_transform,  seq_len=seq_len)
+    test_dataset  = SequenceVideoDataset(_to_video_samples(test_s),  transform=eval_transform,  seq_len=seq_len)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,  num_workers=num_workers, pin_memory=True, drop_last=True)
+    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
+    return {"train": train_loader, "val": val_loader, "test": test_loader}
+

@@ -63,3 +63,17 @@ def test_get_lora_state_dict():
     assert len(lora_sd) > 0, "Micro-checkpoint state dict should not be empty"
     for k, v in lora_sd.items():
         assert "lora_" in k or "classifier" in k or "cross_attn" in k or "spatial_proj" in k or "freq_proj" in k or v.requires_grad
+
+def test_lora_actually_injects_layers():
+    """Verifies LoRA actually injects layers (not 0 layers)."""
+    from src.models.lora import LoRALinear, apply_lora_to_model
+    model = HybridDeepfakeDetector(backbone_name="convnext_base", pretrained=False, use_fft_branch=True, use_lora=False)
+    count = apply_lora_to_model(model.spatial_backbone, rank=8, target_keywords=("fc1", "fc2"))
+    assert count > 0, f"LoRA injected 0 layers — keyword matching broken. Got count={count}"
+    lora_layers = [m for m in model.spatial_backbone.modules() if isinstance(m, LoRALinear)]
+    assert len(lora_layers) > 0, "No LoRALinear modules found after apply_lora_to_model"
+    # Verify forward pass works
+    model.eval()
+    with torch.no_grad():
+        out = model(torch.randn(1, 3, 256, 256))
+    assert out.shape == torch.Size([1]), f"Unexpected output shape: {out.shape}"

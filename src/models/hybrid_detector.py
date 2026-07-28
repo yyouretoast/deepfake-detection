@@ -41,7 +41,7 @@ class FFTFrequencyExtractor(nn.Module):
 
     def _extract_norm_spectrum(self, x: torch.Tensor) -> torch.Tensor:
         """Extracts normalized FP32 log-magnitude frequency spectrum feature map."""
-        with torch.amp.autocast(device_type="cuda", enabled=False):
+        with torch.amp.autocast(device_type=x.device.type, enabled=False):
             x_fp32 = x.to(torch.float32)
             raw_x = (x_fp32 * self.std + self.mean).clamp(0.0, 1.0)
             gray = self.rgb_to_gray(raw_x)
@@ -93,14 +93,12 @@ class HybridDeepfakeDetector(nn.Module):
         spatial_in_features: int = self.spatial_backbone.num_features
         freq_embed_dim = model_cfg.get("freq_embed_dim", 128)
 
-        if self.use_lora:
-            apply_lora_to_model(self.spatial_backbone, rank=self.lora_rank)
-
         if self.use_fft_branch:
             self.freq_extractor = FFTFrequencyExtractor(out_features=freq_embed_dim)
             self.spatial_proj = nn.Linear(spatial_in_features, 128)
             self.freq_proj = nn.Linear(freq_embed_dim, 128)
             self.cross_attn = nn.MultiheadAttention(embed_dim=128, num_heads=4, batch_first=True)
+            self.attn_out_proj = nn.Linear(128, freq_embed_dim)
             fusion_dim = spatial_in_features + freq_embed_dim
         else:
             self.freq_extractor = None
@@ -118,6 +116,9 @@ class HybridDeepfakeDetector(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(256, 1)
         )
+
+        if self.use_lora:
+            apply_lora_to_model(self.spatial_backbone, rank=self.lora_rank)
 
     def merge_lora_weights(self) -> None:
         """Folds all LoRA weights into base parameters for 0ms inference latency penalty."""
@@ -162,7 +163,7 @@ class HybridDeepfakeDetector(nn.Module):
             f_kv = self.freq_proj(freq_tokens)
             attn_out, _ = self.cross_attn(query=s_q, key=f_kv, value=f_kv)
 
-            freq_enhanced_tokens = freq_tokens + 0.1 * attn_out
+            freq_enhanced_tokens = freq_tokens + 0.1 * self.attn_out_proj(attn_out)
             freq_raw = freq_enhanced_tokens.mean(dim=1)
             fused = torch.cat([spatial_raw, freq_raw], dim=1)
         else:
@@ -180,10 +181,11 @@ class HybridDeepfakeDetector(nn.Module):
         logits = self.classifier(features["fused"])
         return logits.view(-1)
 
-    def forward_sequence(self, x_seq: torch.Tensor) -> torch.Tensor:
+    def forward_sequence(self, x_seq: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Processes 5D video sequence tensors [B, T, 3, H, W] via 1-pass spatial-frequency
         extraction and Temporal Transformer sequence modeling.
+        padding_mask: optional bool tensor [B, T], True = padded frame (to be ignored).
         """
         if x_seq.ndim == 4:
             return self.forward(x_seq)
@@ -195,7 +197,7 @@ class HybridDeepfakeDetector(nn.Module):
         fused_frames = feats["fused"]
 
         fused_seq = fused_frames.view(B, T, -1)
-        pooled_seq = self.temporal_encoder(fused_seq)
+        pooled_seq = self.temporal_encoder(fused_seq, padding_mask=padding_mask)
 
         logits = self.classifier(pooled_seq)
         return logits.view(-1)

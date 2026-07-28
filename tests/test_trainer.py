@@ -16,11 +16,12 @@ def test_trainer_llrd_param_groups():
     trainer = TwoPhaseTrainer(model=model, train_loader=loader, val_loader=loader)
     param_groups = trainer._get_llrd_param_groups(lr_backbone=1e-5, lr_head=1e-4)
 
-    assert len(param_groups) == 4
-    assert param_groups[0]['lr'] == 1e-5 * 0.2
-    assert param_groups[1]['lr'] == 1e-5 * 0.5
-    assert param_groups[2]['lr'] == 1e-5 * 1.0
-    assert param_groups[3]['lr'] == 1e-4
+    assert len(param_groups) == 5, f"Expected 5 LLRD tiers, got {len(param_groups)}"
+    assert param_groups[0]['lr'] == 1e-5 * 0.2   # stem + stages 0-1
+    assert param_groups[1]['lr'] == 1e-5 * 0.5   # stage 2
+    assert param_groups[2]['lr'] == 1e-5 * 1.0   # stage 3
+    assert param_groups[3]['lr'] == 1e-5 * 1.0   # fusion/freq layers (same tier as stage 3)
+    assert param_groups[4]['lr'] == 1e-4          # classifier head
 
 def test_trainer_single_step_execution(tmp_path):
     model = build_model(use_fft=True, pretrained=False)

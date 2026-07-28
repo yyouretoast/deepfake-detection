@@ -148,17 +148,18 @@ class DynamicFaceCropper:
         os.makedirs(output_dir, exist_ok=True)
         video_name = os.path.splitext(os.path.basename(video_path))[0]
 
-        for i, idx in enumerate(frame_indices):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                continue
+        try:
+            for i, idx in enumerate(frame_indices):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    continue
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            crop = self.crop_face(rgb, target_size=target_size)
-            out_path = os.path.join(output_dir, f"{video_name}_frame{i:03d}.jpg")
-            cv2.imwrite(out_path, cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
-            saved_paths.append(out_path)
-
-        cap.release()
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                crop = self.crop_face(rgb, target_size=target_size)
+                out_path = os.path.join(output_dir, f"{video_name}_frame{i:03d}.jpg")
+                cv2.imwrite(out_path, cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
+                saved_paths.append(out_path)
+        finally:
+            cap.release()
         return saved_paths

@@ -31,10 +31,11 @@ class TemporalSequenceEncoder(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Input: x of shape [B, T, D] where T <= max_len
-        Output: Pooled sequence feature vector of shape [B, D]
+        padding_mask: optional bool tensor [B, T], True = padded position (to be ignored).
+        Output: Pooled sequence feature vector [B, D] using masked mean (ignores padding).
         """
         B, T, D = x.shape
         if T > self.max_len:
@@ -42,5 +43,12 @@ class TemporalSequenceEncoder(nn.Module):
 
         pos = self.pos_embed[:, :T, :]
         x_pos = x + pos
-        out = self.transformer(x_pos, mask=mask)
-        return out.mean(dim=1)
+        out = self.transformer(x_pos, src_key_padding_mask=padding_mask)
+
+        # Masked mean pooling — ignore padded positions
+        if padding_mask is not None:
+            valid = (~padding_mask).float().unsqueeze(-1)  # [B, T, 1], 1 = valid
+            out = (out * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1.0)
+        else:
+            out = out.mean(dim=1)
+        return out

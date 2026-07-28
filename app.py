@@ -101,7 +101,9 @@ def load_models() -> Tuple[torch.nn.Module, Optional[Any], bool, float]:
     has_weights = os.path.exists(weights_path)
     
     if has_weights:
-        checkpoint = torch.load(weights_path, map_location=DEVICE)
+        # weights_only=False required: checkpoint contains config dict alongside state_dict.
+        # Ensure this file is loaded only from a trusted source.
+        checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=False)
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             state_dict = checkpoint["state_dict"]
             opt_thresh_val = checkpoint.get("optimal_threshold", None)
@@ -215,8 +217,8 @@ def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Opt
 
     if can_render_gradcam:
         try:
-            gradcam_engine = PyTorchGradCAM(pytorch_model)
-            sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors)
+            with PyTorchGradCAM(pytorch_model) as gradcam_engine:
+                sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors)
         except Exception:
             sample_heatmaps = [None] * len(sample_faces)
 

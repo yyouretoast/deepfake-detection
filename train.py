@@ -39,7 +39,13 @@ def main() -> None:
     logger.info("Initializing Training on Device: %s", device)
 
     # 1. Build DataLoaders via Graph-Connected Identity Split
-    dataloaders = build_dataloaders(config=config)
+    if args.sequence:
+        from src.dataset.loader import create_sequence_dataloaders
+        dataloaders = create_sequence_dataloaders(config)
+        logger.info("Sequence training mode: using SequenceVideoDataset with seq_len=%d",
+                    config.get('training', {}).get('seq_len', 8))
+    else:
+        dataloaders = build_dataloaders(config=config)
     train_loader = dataloaders["train"]
     val_loader = dataloaders["val"]
 
