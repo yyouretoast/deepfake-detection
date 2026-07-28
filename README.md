@@ -60,10 +60,10 @@ Application Interface: **[https://huggingface.co/spaces/yyouretoast/deepfake-det
 **1. 2D Real FFT Spectrum Extraction**:
 
 $$
-\mathcal{F}_{\text{norm}} = \frac{1}{10} \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{gray}})| + 10^{-5} \right)
+\mathcal{F}_{\text{norm}} = \frac{\ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{gray}})| + 10^{-5} \right) - \mu}{\sigma + 10^{-6}}
 $$
 
-Computes 2D real FFT log-magnitude frequency spectra to capture high-frequency grid and compression artifacts.
+Computes 2D real FFT log-magnitude frequency spectra with per-image spatial standardization to capture high-frequency grid and compression artifacts.
 
 **2. 4-Head Cross-Attention Residual Fusion**:
 
@@ -93,7 +93,7 @@ Evaluation under **Stratified GroupKFold by Video-ID** (zero identity leakage):
 | **Standard CNNs (ResNet-50 / VGG16)** | $224 \times 224$ | `0.810 - 0.850` | `75.0% - 81.0%` | Baseline spatial frame classifiers |
 | **Spatial-Only ConvNeXt-Base** | $256 \times 256$ | `0.932` | `87.5%` | Spatial stream only (no FFT branch) |
 | **Xception Baseline** | $299 \times 299$ | `0.950` | `89.3%` | *Rossler et al., ICCV 2019* (FF++ Benchmark Paper) |
-| **Dual-Stream ConvNeXt + 2D FFT (Baseline)** | $256 \times 256$ | `0.903+` | `87.1%+` | **Active Frame-Level Dual-Stream Baseline** |
+| **Dual-Stream ConvNeXt + 2D FFT (Baseline)** | $256 \times 256$ | **`0.9377`** | `87.4%` | **Active Frame-Level Dual-Stream Baseline** |
 
 ### Benchmark Commands
 
@@ -156,7 +156,7 @@ Access the interface at `http://localhost:8501`.
 
 ```
 deepfake-detection/
-├── app.py                     # Streamlit web application with active 5D sequence inference
+├── app.py                     # Streamlit web application with model inference & Grad-CAM visualizations
 ├── benchmark.py               # Benchmark runner (--mode fast, --mode paper, 5-fold LOTO)
 ├── config/
 │   └── default.yaml           # Centralized configuration parameters
@@ -164,7 +164,7 @@ deepfake-detection/
 │   ├── config.py              # YAML configuration parser & fallback defaults
 │   ├── dataset/
 │   │   ├── loader.py          # Stratified GroupKFold zero-leakage splitter & dual ID parser
-│   │   └── preprocess.py      # DynamicFaceCropper & 512x512 MTCNN extraction
+│   │   └── preprocess.py      # DynamicFaceCropper & MTCNN face crop extraction
 │   ├── models/
 │   │   ├── hybrid_detector.py # Dual-Stream ConvNeXt + 2D FFT + Cross-Attention architecture
 │   │   ├── lora.py            # LoRAConv2d, weight-folding (merge_weights), & micro-checkpoints
