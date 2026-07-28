@@ -219,6 +219,8 @@ class HybridDeepfakeDetector(nn.Module):
 
         fused_frames = torch.cat(fused_list, dim=0)
         fused_seq = fused_frames.view(B, T, -1)
+        if padding_mask is not None:
+            fused_seq = fused_seq * (~padding_mask).unsqueeze(-1).float()
         pooled_seq = self.temporal_encoder(fused_seq, padding_mask=padding_mask)
 
         logits = self.classifier(pooled_seq)

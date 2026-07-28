@@ -80,12 +80,13 @@ class PyTorchGradCAM:
         self.gradients = None
         self.feature_maps = None
 
-        self.model.eval()
-        outputs = self.model(input_tensor_batch)
-
-        self.model.zero_grad()
-        loss = torch.sum(outputs)
-        loss.backward()
+        with torch.enable_grad():
+            self.model.eval()
+            self.model.zero_grad()
+            input_tensors = input_tensor_batch.clone().detach().requires_grad_(True)
+            outputs = self.model(input_tensors)
+            loss = torch.sum(outputs)
+            loss.backward()
 
         if self.feature_maps is None or self.gradients is None:
             raise RuntimeError("Grad-CAM hooks failed to capture feature maps or gradients.")

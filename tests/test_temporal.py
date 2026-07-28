@@ -39,3 +39,14 @@ def test_hybrid_detector_forward_sequence_chunking():
         out_seq = model.forward_sequence(video_seq)
     assert out_seq.shape == (1,)
 
+def test_hybrid_detector_forward_sequence_padding_mask():
+    model = build_model(use_fft=True, pretrained=False)
+    model.eval()
+
+    video_seq = torch.randn(2, 4, 3, 256, 256)
+    padding_mask = torch.tensor([[False, False, False, True], [False, False, True, True]])
+    with torch.no_grad():
+        out_padded = model.forward_sequence(video_seq, padding_mask=padding_mask)
+    assert out_padded.shape == (2,)
+
+

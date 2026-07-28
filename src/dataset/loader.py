@@ -29,29 +29,48 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 def extract_identities(filename: str) -> Tuple[str, str]:
     """Extracts actor/source video identity strings (id1 source, id2 target) from FaceForensics++ filename or path patterns."""
     basename = os.path.basename(filename)
-    match = re.search(r"(\d+)_(\d+)", basename)
+    # Strip frame suffix before matching (e.g. _f001, _frame001)
+    clean_base = re.sub(r"_(?:f|frame)\d+", "", basename, flags=re.IGNORECASE)
+
+    match = re.search(r"(\d+)_(\d+)", clean_base)
     if match:
         return match.group(1), match.group(2)
-        
-    match_path = re.search(r"(\d+)_(\d+)", filename)
-    if match_path:
-        return match_path.group(1), match_path.group(2)
 
-    match_single = re.search(r"(\d+)", basename)
+    match_single = re.search(r"(\d+)", clean_base)
     if match_single:
         id_str = match_single.group(1)
         return id_str, id_str
 
-    match_single_path = re.search(r"(\d+)", filename)
-    if match_single_path:
-        id_str = match_single_path.group(1)
-        return id_str, id_str
-        
-    return basename, basename
+    return clean_base, clean_base
 
 def extract_video_id(filename: str) -> str:
     """Alias function extracting primary video identity string."""
     return extract_identities(filename)[0]
+
+def group_samples_by_video(samples: List[Tuple[str, int]]) -> List[Tuple[List[str], int]]:
+    """
+    Groups flat (path, label) frame tuples by video ID before graph splitting.
+    Returns a list of tuples: (List[frame_paths], label).
+    """
+    if not samples:
+        return []
+    video_map: Dict[Any, Dict[str, Any]] = {}
+    for item in samples:
+        path, label = item[0], item[1]
+        vid_id = extract_video_id(path) if isinstance(path, str) else extract_video_id(path[0])
+        key = (vid_id, label)
+        if key not in video_map:
+            video_map[key] = {"paths": [], "label": label}
+        if isinstance(path, (list, tuple)):
+            video_map[key]["paths"].extend(path)
+        else:
+            video_map[key]["paths"].append(path)
+
+    grouped = []
+    for key in sorted(video_map.keys(), key=lambda k: str(k[0])):
+        paths = sorted(video_map[key]["paths"])
+        grouped.append((paths, video_map[key]["label"]))
+    return grouped
 
 def perform_graph_split(
     samples: Any,
@@ -62,7 +81,7 @@ def perform_graph_split(
 ) -> Tuple[Any, Any, Any]:
     """
     Graph-connected component identity partitioning guaranteeing zero identity leakage.
-    Supports samples as List[str] or List[Tuple[str, int]].
+    Supports samples as List[str], List[Tuple[str, int]], or List[Tuple[List[str], int]].
     """
     val_ratio = kwargs.get("val_size", val_ratio)
     test_ratio = kwargs.get("test_size", test_ratio)
@@ -81,7 +100,8 @@ def perform_graph_split(
 
     for item in normalized_samples:
         path, label = item[0], item[1]
-        id1, id2 = extract_identities(path)
+        first_path = path[0] if isinstance(path, (list, tuple)) else path
+        id1, id2 = extract_identities(first_path)
         parsed_samples.append((path, label, id1, id2))
         video_map.setdefault(id1, []).append((path, label))
 
@@ -241,6 +261,9 @@ class SequenceVideoDataset(Dataset):
     def __init__(self, video_samples: List[Tuple[List[str], int]], transform: Optional[Any] = None, seq_len: int = 8):
         self.video_samples = video_samples
         self.transform = transform
+        if HAS_ALBUMENTATIONS and self.transform is not None:
+            if isinstance(self.transform, A.Compose) and not isinstance(self.transform, A.ReplayCompose):
+                self.transform = A.ReplayCompose(self.transform.transforms)
         self.seq_len = seq_len
 
     def __len__(self) -> int:
@@ -252,29 +275,47 @@ class SequenceVideoDataset(Dataset):
         mean_t = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
         std_t = torch.tensor(IMAGENET_STD).view(3, 1, 1)
 
-        if N >= self.seq_len:
-            indices = np.linspace(0, N - 1, self.seq_len, dtype=int)
-            selected_paths = [frame_paths[i] for i in indices]
+        stride = 2
+        if N >= self.seq_len * stride:
+            selected_paths = [frame_paths[i * stride] for i in range(self.seq_len)]
+            n_pad = 0
+        elif N >= self.seq_len:
+            selected_paths = [frame_paths[i] for i in range(self.seq_len)]
             n_pad = 0
         else:
             selected_paths = frame_paths[:N]
             n_pad = self.seq_len - N
 
-        frames = []
+        img_rgb_list = []
         for p in selected_paths:
             img_bgr = cv2.imread(p)
             if img_bgr is not None:
                 img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
             else:
-                img_rgb = np.zeros((256, 256, 3), dtype=np.uint8)
+                try:
+                    with Image.open(p) as img_pil:
+                        img_rgb = np.array(img_pil.convert("RGB"))
+                except Exception:
+                    img_rgb = np.zeros((256, 256, 3), dtype=np.uint8)
+            img_rgb_list.append(img_rgb)
 
-            if self.transform is not None:
-                img_tensor = self.transform(image=img_rgb)["image"]
+        frames = []
+        if self.transform is not None and len(img_rgb_list) > 0:
+            first_res = self.transform(image=img_rgb_list[0])
+            frames.append(first_res["image"])
+            if "replay" in first_res and HAS_ALBUMENTATIONS:
+                replay_saved = first_res["replay"]
+                for img_rgb in img_rgb_list[1:]:
+                    aug_img = A.ReplayCompose.replay(replay_saved, image=img_rgb)["image"]
+                    frames.append(aug_img)
             else:
+                for img_rgb in img_rgb_list[1:]:
+                    frames.append(self.transform(image=img_rgb)["image"])
+        else:
+            for img_rgb in img_rgb_list:
                 img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
                 img_tensor = (img_tensor - mean_t) / std_t
-
-            frames.append(img_tensor)
+                frames.append(img_tensor)
 
         # Pad with zero frames if video is shorter than seq_len
         if n_pad > 0:
@@ -368,45 +409,39 @@ def create_sequence_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict
     seed = train_cfg.get("seed", 42)
     seq_len = train_cfg.get("seq_len", 8)
 
-    # Group frames by video ID → {vid_id: [frame_path, ...]}
-    video_frame_map: Dict[str, List[str]] = {}
-    video_label_map: Dict[str, int] = {}
-
+    samples = []
     if os.path.exists(cropped_dir):
         for root, _, files in os.walk(cropped_dir):
             for file in sorted(files):
                 if file.lower().endswith((".png", ".jpg", ".jpeg")):
                     full_path = os.path.join(root, file)
-                    vid_id = extract_video_id(full_path)
                     label = 0 if "original" in full_path.lower() or "real" in full_path.lower() else 1
-                    video_frame_map.setdefault(vid_id, []).append(full_path)
-                    video_label_map[vid_id] = label
+                    samples.append((full_path, label))
 
-    # Build flat (vid_id, label) list for graph split
-    flat_samples = [
-        (vid_id, video_label_map[vid_id])
-        for vid_id in sorted(video_frame_map.keys())
-    ]
-
-    if not flat_samples:
+    if not samples:
         # Dummy fallback for integration testing
-        flat_samples = [(f"dummy_video_{i}", i % 2) for i in range(10)]
-        video_frame_map = {f"dummy_video_{i}": [f"dummy_video_{i}_frame000.jpg"] for i in range(10)}
+        samples = [(f"dummy_video_{i//2}_f{i%2}.jpg", i % 2) for i in range(10)]
 
-    train_s, val_s, test_s = perform_graph_split(flat_samples, seed=seed)
-
-    def _to_video_samples(split: List[Tuple]) -> List[Tuple[List[str], int]]:
-        return [(video_frame_map.get(vid_id, []), lbl) for vid_id, lbl in split]
+    video_samples = group_samples_by_video(samples)
+    train_vids, val_vids, test_vids = perform_graph_split(video_samples, seed=seed)
 
     train_transform, eval_transform = get_transforms(img_size=img_size)
 
-    train_dataset = SequenceVideoDataset(_to_video_samples(train_s), transform=train_transform, seq_len=seq_len)
-    val_dataset   = SequenceVideoDataset(_to_video_samples(val_s),   transform=eval_transform,  seq_len=seq_len)
-    test_dataset  = SequenceVideoDataset(_to_video_samples(test_s),  transform=eval_transform,  seq_len=seq_len)
+    train_dataset = SequenceVideoDataset(train_vids, transform=train_transform, seq_len=seq_len)
+    val_dataset   = SequenceVideoDataset(val_vids,   transform=eval_transform,  seq_len=seq_len)
+    test_dataset  = SequenceVideoDataset(test_vids,  transform=eval_transform,  seq_len=seq_len)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,  num_workers=num_workers, pin_memory=True, drop_last=True)
+    train_labels = [v[1] for v in train_vids]
+    class_counts = np.maximum(np.bincount(train_labels), 1)
+    class_weights = 1.0 / class_counts
+    sample_weights = [class_weights[l] for l in train_labels]
+    generator = torch.Generator().manual_seed(seed)
+    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True, generator=generator)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True, drop_last=True)
     val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
     test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     return {"train": train_loader, "val": val_loader, "test": test_loader}
+
 

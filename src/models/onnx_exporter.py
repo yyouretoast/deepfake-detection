@@ -57,6 +57,8 @@ def export_to_onnx(
 
     return save_path
 
+export_model_to_onnx = export_to_onnx
+
 def quantize_onnx_model(
     onnx_path: str = "deepfake_convnext_v2.onnx",
     quant_path: Optional[str] = None

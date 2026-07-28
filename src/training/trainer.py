@@ -61,8 +61,10 @@ class TwoPhaseTrainer:
         self.model.to(self.device)
         if torch.cuda.device_count() > 1:
             logger.info("DataParallel: distributing across %d GPUs", torch.cuda.device_count())
-            self.model = nn.DataParallel(self.model)
-        self.criterion = nn.BCEWithLogitsLoss()
+            # Weighted BCE Loss (pos_weight ~4.0 for real/fake dataset ratio)
+        pos_weight_val = self.config.get("training", {}).get("pos_weight", 4.0)
+        pos_weight = torch.tensor([pos_weight_val], device=self.device)
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         self.scaler = get_grad_scaler("cuda" if self.device.type == "cuda" else "cpu", enabled=self.use_amp)
 
     def _forward_step(self, batch) -> torch.Tensor:
@@ -112,7 +114,7 @@ class TwoPhaseTrainer:
                     s3.append(p)
                 else:
                     stem_s01.append(p)
-            elif any(clean_name.startswith(pfx) for pfx in FUSION_PREFIXES):
+            elif any(pfx in clean_name for pfx in FUSION_PREFIXES):
                 fusion_params.append(p)
             else:
                 head_params.append(p)
@@ -252,7 +254,9 @@ class TwoPhaseTrainer:
         head_params = [p for n, p in self.model.named_parameters() if "spatial_backbone" not in n and p.requires_grad]
         optimizer_p1 = torch.optim.AdamW(head_params, lr=lr_p1, weight_decay=weight_decay)
 
-        warmup_steps = 500
+        total_p1_steps = epochs_p1 * max(1, len(self.train_loader))
+        warmup_ratio = training_cfg.get("warmup_ratio", 0.1)
+        warmup_steps = max(10, int(total_p1_steps * warmup_ratio))
         scheduler_p1 = torch.optim.lr_scheduler.LinearLR(
             optimizer_p1, start_factor=1e-3, end_factor=1.0, total_iters=warmup_steps
         )

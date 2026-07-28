@@ -1,10 +1,24 @@
 import pytest
-from src.dataset.loader import extract_video_id, group_video_split
+from src.dataset.loader import extract_video_id, group_video_split, group_samples_by_video
 
 def test_extract_video_id():
     assert extract_video_id("original_000_f0.png") == "000"
     assert extract_video_id("Deepfakes_001_002_f3.png") == "001"
     assert extract_video_id("045_f12.png") == "045"
+
+def test_group_samples_by_video():
+    flat_samples = [
+        ("Deepfakes_001_002_f0.png", 1),
+        ("Deepfakes_001_002_f1.png", 1),
+        ("original_000_f0.png", 0),
+        ("original_000_f1.png", 0),
+    ]
+    grouped = group_samples_by_video(flat_samples)
+    assert len(grouped) == 2
+    for frame_paths, label in grouped:
+        assert isinstance(frame_paths, list)
+        assert len(frame_paths) == 2
+        assert isinstance(label, int)
 
 def test_group_video_split_zero_leakage():
     # Generate synthetic video filenames across 10 distinct video IDs

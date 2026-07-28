@@ -18,10 +18,7 @@ model:
   backbone: "convnext_base"
   pretrained: true
   use_fft_branch: true  # Toggle for Frequency Stream Ablation Study
-  use_gated_fusion: true  # Adaptive Gated Fusion between spatial and frequency features
-  spatial_embed_dim: 1024
   freq_embed_dim: 128
-  freq_scale: 0.1  # Residual scaling factor for FFT stream (prevents random init noise)
   dropout: 0.3
 
 training:
@@ -34,7 +31,10 @@ training:
   lr_head: 1.0e-4  # Phase 2 classifier head learning rate
   weight_decay: 1.0e-2
   use_amp: true  # PyTorch Automatic Mixed Precision (fp16)
+  warmup_ratio: 0.1
+  patience: 4
   seq_len: 8
+  pos_weight: 4.0
   seed: 42
 
 labels:
