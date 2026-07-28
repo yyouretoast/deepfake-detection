@@ -1,6 +1,9 @@
 from typing import Dict, Tuple, Any, Optional
 import copy
+import json
 import logging
+import os
+from datetime import datetime
 import numpy as np
 import torch
 import torch.nn as nn
@@ -122,6 +125,36 @@ class TwoPhaseTrainer:
             {'params': head_params,   'lr': lr_head},
         ]
 
+    def export_metrics_json(self, metrics: Dict[str, Any], save_dir: str = "models", timestamp: Optional[str] = None) -> str:
+        """Exports evaluation metrics to a timestamped JSON file (metrics_{timestamp}.json)."""
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        os.makedirs(save_dir, exist_ok=True)
+        json_path = os.path.join(save_dir, f"metrics_{timestamp}.json")
+        exportable = {}
+        for k, v in metrics.items():
+            if isinstance(v, (np.ndarray, list)):
+                continue
+            if isinstance(v, (np.floating, np.integer)):
+                exportable[k] = float(v)
+            elif isinstance(v, (float, int, str, bool)):
+                exportable[k] = v
+        exportable["timestamp"] = timestamp
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(exportable, f, indent=4)
+        logger.info("Saved JSON metrics export to: %s", json_path)
+        return json_path
+
+    def save_timestamped_checkpoint(self, checkpoint_data: Dict[str, Any], save_dir: str = "models", timestamp: Optional[str] = None) -> str:
+        """Saves model state and metadata to a timestamped checkpoint file (deepfake_convnext_{timestamp}.pt)."""
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        os.makedirs(save_dir, exist_ok=True)
+        ckpt_path = os.path.join(save_dir, f"deepfake_convnext_{timestamp}.pt")
+        torch.save(checkpoint_data, ckpt_path)
+        logger.info("Saved timestamped checkpoint to: %s", ckpt_path)
+        return ckpt_path
+
     def evaluate(self) -> Dict[str, Any]:
         """Evaluates predictions over validation loader using Test-Time Augmentation (horizontal flip)."""
         self.model.eval()
@@ -206,6 +239,7 @@ class TwoPhaseTrainer:
         best_val_auc = 0.0
         best_weights = None
         best_opt_thresh = 0.5
+        epoch_losses = []
 
         unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
         device_type = "cuda" if self.device.type == "cuda" else "cpu"
@@ -240,7 +274,8 @@ class TwoPhaseTrainer:
                 optimizer_p1.zero_grad()
                 with get_autocast(device_type, enabled=self.use_amp):
                     logits = self._forward_step(fwd_input)
-                    smooth_labels = labels * 0.95 + 0.025
+                    eps = 0.025
+                    smooth_labels = labels.float() * (1.0 - 2.0 * eps) + eps
                     loss = self.criterion(logits, smooth_labels)
                 
                 scale_before = self.scaler.get_scale()
@@ -255,6 +290,9 @@ class TwoPhaseTrainer:
                     scheduler_p1.step()
 
                 running_loss += loss.item()
+
+            epoch_loss = running_loss / max(len(self.train_loader), 1)
+            epoch_losses.append(epoch_loss)
 
             val_metrics = self.evaluate()
             logger.info("Phase 1 - Epoch %d/%d Complete | Val Acc: %.2f%% | Val AUC: %.4f",
@@ -297,7 +335,8 @@ class TwoPhaseTrainer:
                 optimizer_p2.zero_grad()
                 with get_autocast(device_type, enabled=self.use_amp):
                     logits = self._forward_step(fwd_input)
-                    smooth_labels = labels * 0.95 + 0.025
+                    eps = 0.025
+                    smooth_labels = labels.float() * (1.0 - 2.0 * eps) + eps
                     loss = self.criterion(logits, smooth_labels)
 
                 scale_before = self.scaler.get_scale()
@@ -312,6 +351,9 @@ class TwoPhaseTrainer:
                     scheduler_p2.step()
 
                 running_loss += loss.item()
+
+            epoch_loss = running_loss / max(len(self.train_loader), 1)
+            epoch_losses.append(epoch_loss)
 
             val_metrics = self.evaluate()
             logger.info("Phase 2 - Epoch %d/%d Complete | Val Acc: %.2f%% | Val AUC: %.4f | Opt T*: %.4f",
@@ -334,6 +376,7 @@ class TwoPhaseTrainer:
         final_val_metrics = self.evaluate()
         final_val_metrics["best_val_auc"] = best_val_auc
         final_val_metrics["optimal_threshold"] = best_opt_thresh
+        final_val_metrics["epoch_losses"] = epoch_losses
 
         checkpoint_data = {
             "state_dict": best_weights,
@@ -341,6 +384,11 @@ class TwoPhaseTrainer:
             "val_auc": float(best_val_auc),
             "config": self.config
         }
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_dir = self.config.get("paths", {}).get("save_dir", "models")
+        self.save_timestamped_checkpoint(checkpoint_data, save_dir=save_dir, timestamp=timestamp)
+        self.export_metrics_json(final_val_metrics, save_dir=save_dir, timestamp=timestamp)
 
         return checkpoint_data, best_opt_thresh, final_val_metrics
 

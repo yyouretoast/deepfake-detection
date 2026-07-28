@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.fft
 import timm
+from torch.utils.checkpoint import checkpoint
 
 from src.config import load_config
 from src.models.temporal import TemporalSequenceEncoder
@@ -40,7 +41,7 @@ class FFTFrequencyExtractor(nn.Module):
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
 
     def _extract_norm_spectrum(self, x: torch.Tensor) -> torch.Tensor:
-        """Extracts normalized FP32 log-magnitude frequency spectrum feature map."""
+        """Extracts normalized FP32 log-magnitude frequency spectrum feature map using per-image spatial standardization."""
         with torch.amp.autocast(device_type=x.device.type, enabled=False):
             x_fp32 = x.to(torch.float32)
             raw_x = (x_fp32 * self.std + self.mean).clamp(0.0, 1.0)
@@ -48,7 +49,9 @@ class FFTFrequencyExtractor(nn.Module):
             fft_2d = torch.fft.rfft2(gray, norm="ortho")
             magnitude = torch.abs(fft_2d)
             log_spectrum = torch.log(magnitude + 1e-5)
-            norm_spectrum = log_spectrum / 10.0
+            mean = log_spectrum.mean(dim=(-2, -1), keepdim=True)
+            std = log_spectrum.std(dim=(-2, -1), keepdim=True)
+            norm_spectrum = (log_spectrum - mean) / (std + 1e-6)
         return self.conv_net(norm_spectrum.to(x.dtype))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -75,6 +78,7 @@ class HybridDeepfakeDetector(nn.Module):
         use_lora: bool = False,
         lora_rank: int = 8,
         dropout: float = 0.3,
+        use_checkpointing: bool = False,
         config: Optional[Dict[str, Any]] = None
     ) -> None:
         super().__init__()
@@ -88,6 +92,7 @@ class HybridDeepfakeDetector(nn.Module):
         self.use_fft_branch = use_fft_branch
         self.use_lora = use_lora or model_cfg.get("use_lora", False)
         self.lora_rank = lora_rank if lora_rank != 8 else model_cfg.get("lora_rank", 8)
+        self.use_checkpointing = use_checkpointing or model_cfg.get("use_checkpointing", False)
 
         self.spatial_backbone = timm.create_model(backbone_name, pretrained=pretrained, num_classes=0)
         spatial_in_features: int = self.spatial_backbone.num_features
@@ -148,7 +153,11 @@ class HybridDeepfakeDetector(nn.Module):
                 x_full = x
                 x = x_spatial
 
-        spatial_grid = self.spatial_backbone.forward_features(x)
+        if self.use_checkpointing and self.training and torch.is_grad_enabled():
+            spatial_grid = checkpoint(self.spatial_backbone.forward_features, x, use_reentrant=False)
+        else:
+            spatial_grid = self.spatial_backbone.forward_features(x)
+
         if spatial_grid.ndim == 4 and spatial_grid.shape[1] != self.spatial_backbone.num_features:
             spatial_grid = spatial_grid.permute(0, 3, 1, 2)
         spatial_raw = self.spatial_backbone.forward_head(spatial_grid, pre_logits=True)
@@ -223,6 +232,7 @@ def build_model(
     pretrained: bool = True,
     compile_model: bool = False,
     backbone_name: Optional[str] = None,
+    use_checkpointing: bool = False,
     config: Optional[Dict[str, Any]] = None
 ) -> nn.Module:
     """Factory function to build and optionally compile model."""
@@ -235,6 +245,7 @@ def build_model(
         use_fft_branch=use_fft,
         use_lora=use_lora,
         lora_rank=lora_rank,
+        use_checkpointing=use_checkpointing,
         config=config
     )
     model = model.to(device)
