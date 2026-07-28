@@ -3,66 +3,38 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
-*.so
-
 # Distribution / packaging
-.Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
 
 # PyTorch & Large Models
 *.pth
 *.pt
 *.onnx
-deepfake_convnext_v2.onnx.data
 *.onnx.data
 *.onnx_data
 *.bin
 *.h5
 
-# Heavy Binary Blobs & Data Artifacts
-*.dat
-*.data
-*.blob
+# Heavy Binary Data & Datasets
 *.npz
 *.npy
 *.pkl
-*.pickle
-models/*.onnx.data
-
-# Dataset / Extracted Frames
 frames/
-frames_v2/
 *.mp4
 *.avi
-*.mov
 
 # Jupyter Notebook Checkpoints
 .ipynb_checkpoints
 
-# Environments
+# Environments & IDE
 .env
 .venv
 env/
 venv/
-ENV/
-
-# IDE / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
