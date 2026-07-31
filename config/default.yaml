@@ -10,8 +10,10 @@ paths:
 preprocessing:
   img_size: 256
   padding_scale: 1.30  # Relative bounding box expansion factor (1.30 = 30% expansion)
-  max_videos_per_type: 150
-  frames_per_video: 15
+  max_videos_per_type: 1000
+  max_real_videos: 1000
+  max_fake_per_dir: 1000
+  frames_per_video: 25
   min_face_size: 20
 
 model:
@@ -33,7 +35,7 @@ training:
   use_amp: true  # PyTorch Automatic Mixed Precision (fp16)
   warmup_ratio: 0.1
   patience: 4
-  seq_len: 8
+  seq_len: 16
   pos_weight: 4.0
   seed: 42
 
@@ -46,5 +48,5 @@ manipulation_types:
   held_out_loto: "FaceShifter"  # Target type for Leave-One-Type-Out generalization test
 
 app:
-  frames_to_sample: 10
+  frames_to_sample: 16
   classification_threshold: 0.5

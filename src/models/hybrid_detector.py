@@ -25,7 +25,7 @@ class FFTFrequencyExtractor(nn.Module):
         self.rgb_to_gray.weight.requires_grad = False
 
         self.conv_net = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(2, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
@@ -40,7 +40,7 @@ class FFTFrequencyExtractor(nn.Module):
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
 
     def _extract_norm_spectrum(self, x: torch.Tensor) -> torch.Tensor:
-        """Extracts normalized FP32 log-magnitude frequency spectrum feature map using per-image spatial standardization."""
+        """Extracts 2-channel FP32 frequency spectrum feature map (log-magnitude + normalized phase angle)."""
         with torch.amp.autocast(device_type=x.device.type, enabled=False):
             x_fp32 = x.to(torch.float32)
             raw_x = (x_fp32 * self.std + self.mean).clamp(0.0, 1.0)
@@ -51,8 +51,14 @@ class FFTFrequencyExtractor(nn.Module):
             log_spectrum = torch.fft.fftshift(log_spectrum, dim=-2)
             mean = log_spectrum.mean(dim=(-2, -1), keepdim=True)
             std = log_spectrum.std(dim=(-2, -1), keepdim=True)
-            norm_spectrum = (log_spectrum - mean) / (std + 1e-6)
-        return self.conv_net(norm_spectrum.to(x.dtype))
+            norm_magnitude = (log_spectrum - mean) / (std + 1e-6)
+
+            # Channel 1: Normalized Phase Angle [-1.0, +1.0]
+            phase_angle = torch.angle(fft_2d) / torch.pi
+            phase_angle = torch.fft.fftshift(phase_angle, dim=-2)
+
+            two_channel_spectrum = torch.cat([norm_magnitude, phase_angle], dim=1)
+        return self.conv_net(two_channel_spectrum.to(x.dtype))
 
     def forward_grid(self, x: torch.Tensor, target_h: int = 8, target_w: int = 8) -> torch.Tensor:
         """Extracts spatial frequency feature grid dynamically adaptive-pooled to (target_h, target_w)."""
@@ -116,6 +122,15 @@ class HybridDeepfakeDetector(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(256, 1)
         )
+
+    def load_state_dict(self, state_dict: Dict[str, Any], strict: bool = True, assign: bool = False):
+        """Adapter hook to seamlessly duplicate 1-channel legacy weights to 2-channel phase FFT models."""
+        key = "freq_extractor.conv_net.0.weight"
+        if key in state_dict and self.use_fft_branch and self.freq_extractor is not None:
+            w = state_dict[key]
+            if isinstance(w, torch.Tensor) and w.ndim == 4 and w.shape[1] == 1:
+                state_dict[key] = w.repeat(1, 2, 1, 1) / 2.0
+        return super().load_state_dict(state_dict, strict=strict, assign=assign)
 
     def extract_features(
         self,

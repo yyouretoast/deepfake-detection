@@ -246,18 +246,22 @@ class SequenceVideoDataset(Dataset):
         mean_t = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
         std_t = torch.tensor(IMAGENET_STD).view(3, 1, 1)
 
-        stride = 2
-        if N >= self.seq_len * stride:
-            selected_paths = [frame_paths[i * stride] for i in range(self.seq_len)]
-            n_pad = 0
-        elif N >= self.seq_len:
-            selected_paths = [frame_paths[i] for i in range(self.seq_len)]
+        # Consecutive 30 FPS frame sampling for contiguous temporal motion continuity
+        if N >= self.seq_len:
+            start_idx = max(0, (N - self.seq_len) // 2)
+            selected_paths = frame_paths[start_idx : start_idx + self.seq_len]
             n_pad = 0
         else:
             selected_paths = frame_paths[:N]
             n_pad = self.seq_len - N
 
         img_rgb_list = [load_image_rgb(p) for p in selected_paths]
+        if n_pad > 0 and len(img_rgb_list) > 0:
+            last_frame = img_rgb_list[-1]
+            img_rgb_list.extend([last_frame] * n_pad)
+        elif n_pad > 0:
+            dummy = np.zeros((256, 256, 3), dtype=np.uint8)
+            img_rgb_list = [dummy] * self.seq_len
         frames = []
         if self.transform is not None and len(img_rgb_list) > 0:
             if HAS_ALBUMENTATIONS and isinstance(self.transform, A.ReplayCompose):

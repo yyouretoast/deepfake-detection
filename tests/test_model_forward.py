@@ -47,3 +47,12 @@ def test_use_fft_false_actually_disables_fft(eval_model_factory):
     assert first_linear.in_features == model.spatial_backbone.num_features, (
         f"Classifier input dim {first_linear.in_features} != spatial backbone dim {model.spatial_backbone.num_features}"
     )
+
+def test_legacy_1channel_weight_adapter(eval_model_factory):
+    """Verifies that legacy 1-channel checkpoint weights are adapted to 2-channel FFT model."""
+    model = eval_model_factory(use_fft=True)
+    state = model.state_dict()
+    state["freq_extractor.conv_net.0.weight"] = torch.randn(32, 1, 3, 3)
+    
+    model.load_state_dict(state)
+    assert model.freq_extractor.conv_net[0].weight.shape == torch.Size([32, 2, 3, 3])

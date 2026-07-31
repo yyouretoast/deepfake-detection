@@ -33,7 +33,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "weight_decay": 1e-2,
         "patience": 4,
         "use_amp": True,
-        "seq_len": 8,
+        "seq_len": 16,
         "num_workers": 4,
     },
     "explainability": {

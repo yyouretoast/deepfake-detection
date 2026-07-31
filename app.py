@@ -39,6 +39,8 @@ def clean_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
             new_k = new_k[7:]
         if new_k.startswith("_orig_mod."):
             new_k = new_k[10:]
+        if new_k == "freq_extractor.conv_net.0.weight" and isinstance(v, torch.Tensor) and v.ndim == 4 and v.shape[1] == 1:
+            v = v.repeat(1, 2, 1, 1) / 2.0
         cleaned[new_k] = v
     return cleaned
 
@@ -158,7 +160,11 @@ def process_video_frames(
         if total <= 0:
             return None
 
-        frame_indices = np.linspace(0, total - 1, min(FRAMES_TO_SAMPLE, total), dtype=int)
+        if total >= FRAMES_TO_SAMPLE:
+            start_frame = max(0, (total - FRAMES_TO_SAMPLE) // 2)
+            frame_indices = list(range(start_frame, start_frame + FRAMES_TO_SAMPLE))
+        else:
+            frame_indices = list(range(total))
         frames_rgb: List[np.ndarray] = []
 
         for idx in frame_indices:
