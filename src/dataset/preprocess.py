@@ -45,6 +45,30 @@ class DynamicFaceCropper:
         else:
             self.detector = None
 
+        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        if os.path.exists(cascade_path):
+            self.haar_cascade = cv2.CascadeClassifier(cascade_path)
+        else:
+            self.haar_cascade = None
+
+    def _detect_cpu_cascade(self, image_rgb: np.ndarray) -> Optional[np.ndarray]:
+        """Ultra-fast OpenCV Haar Cascade CPU face detector fallback (100+ FPS)."""
+        if self.haar_cascade is None:
+            return None
+        try:
+            gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
+            faces = self.haar_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+            )
+            if len(faces) == 0:
+                return None
+            boxes = []
+            for (x, y, w, h) in faces:
+                boxes.append([x, y, x + w, y + h])
+            return np.array(boxes)
+        except Exception:
+            return None
+
     def _crop_single_box(self, image_rgb: np.ndarray, box: np.ndarray, landmarks: Optional[np.ndarray] = None, target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
         """Crops a face box with 1.30x scaling, slicing image bounds before applying reflection padding."""
         out_size = target_size if target_size is not None else self.target_size
@@ -166,9 +190,14 @@ class DynamicFaceCropper:
                 
                 boxes = res[0]
                 landmarks = res[2] if len(res) >= 3 else None
-                return self._crop_from_box(image_rgb, boxes, landmarks, target_size=out_size)
+                if boxes is not None and len(boxes) > 0:
+                    return self._crop_from_box(image_rgb, boxes, landmarks, target_size=out_size)
             except Exception:
                 pass
+
+        cascade_boxes = self._detect_cpu_cascade(image_rgb)
+        if cascade_boxes is not None and len(cascade_boxes) > 0:
+            return self._crop_from_box(image_rgb, cascade_boxes, None, target_size=out_size)
 
         c = self._center_crop(image_rgb, target_size=out_size)
         return c, c
