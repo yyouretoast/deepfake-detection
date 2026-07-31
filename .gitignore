@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# PyTest Cache
+.pytest_cache/
+
 # Distribution / packaging
 build/
 dist/
@@ -16,6 +19,7 @@ dist/
 *.onnx_data
 *.bin
 *.h5
+models/
 
 # Heavy Binary Data & Datasets
 *.npz
@@ -28,7 +32,7 @@ frames/
 # Jupyter Notebook Checkpoints
 .ipynb_checkpoints
 
-# Environments & IDE
+# Environments, IDE & Scratch Files
 .env
 .venv
 env/
@@ -37,4 +41,8 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
-
+.gemini/
+scratch/
+cells_detail.txt
+cells_info.txt
+refactor.py

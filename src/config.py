@@ -19,8 +19,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "backbone": "convnext_base",
         "pretrained": True,
         "use_fft_branch": True,
-        "use_lora": False,
-        "lora_rank": 8,
         "freq_embed_dim": 128,
         "dropout": 0.3,
     },

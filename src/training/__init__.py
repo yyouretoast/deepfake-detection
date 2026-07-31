@@ -1,3 +1,4 @@
-from src.training.trainer import TwoPhaseTrainer, train_two_phase
+from src.training.trainer import TwoPhaseTrainer
 
-__all__ = ["TwoPhaseTrainer", "train_two_phase"]
+__all__ = ["TwoPhaseTrainer"]
+

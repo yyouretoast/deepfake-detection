@@ -23,10 +23,11 @@ def test_run_fast_benchmark():
 
 def test_run_paper_benchmark():
     try:
-        results = run_paper_benchmark(batch_size=2, img_size=256, fold_samples=4, celeb_samples=4)
+        results = run_paper_benchmark(batch_size=2, img_size=256, fold_samples=4, celeb_samples=4, mock=True)
         assert "loto_results" in results
         assert len(results["loto_results"]) == 5
         assert "celeb_df_auc" in results
         assert "loto_avg_auc" in results
     except Exception as e:
         pytest.fail(f"run_paper_benchmark raised unexpected exception: {e}")
+

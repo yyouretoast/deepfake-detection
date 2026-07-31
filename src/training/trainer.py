@@ -11,12 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from sklearn.metrics import classification_report, roc_auc_score, f1_score, roc_curve
 
-try:
-    from scipy.optimize import brentq
-    from scipy.interpolate import interp1d
-    HAS_SCIPY = True
-except ImportError:
-    HAS_SCIPY = False
+from src.training.evaluator import calculate_crash_proof_eer, evaluate_full_suite
 
 from src.config import load_config
 
@@ -59,9 +54,16 @@ class TwoPhaseTrainer:
         self.use_amp = self.config.get("training", {}).get("use_amp", True)
         
         self.model.to(self.device)
-        if torch.cuda.device_count() > 1:
-            logger.info("DataParallel: distributing across %d GPUs", torch.cuda.device_count())
-            # Weighted BCE Loss (pos_weight ~4.0 for real/fake dataset ratio)
+        if torch.cuda.device_count() > 1 and self.device.type == "cuda":
+            batch_size = getattr(self.train_loader, "batch_size", 1) or 1
+            if batch_size >= torch.cuda.device_count():
+                logger.info("DataParallel: distributing across %d GPUs", torch.cuda.device_count())
+                self.model = nn.DataParallel(self.model)
+                self.device = torch.device("cuda:0")
+            else:
+                logger.warning("Batch size %d is less than GPU count %d. DataParallel disabled.", batch_size, torch.cuda.device_count())
+        
+        # Weighted BCE Loss (pos_weight ~4.0 for real/fake dataset ratio)
         pos_weight_val = self.config.get("training", {}).get("pos_weight", 4.0)
         pos_weight = torch.tensor([pos_weight_val], device=self.device)
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
@@ -69,7 +71,11 @@ class TwoPhaseTrainer:
 
     def _forward_step(self, batch) -> torch.Tensor:
         """DataParallel-invariant model forward step handling 4D/5D tensors and optional padding masks."""
-        if isinstance(batch, (tuple, list)):
+        if isinstance(batch, dict):
+            imgs = batch.get("image", batch.get("imgs"))
+            padding_mask = batch.get("padding_mask")
+            labels = batch.get("label")
+        elif isinstance(batch, (tuple, list)):
             imgs = batch[0]
             padding_mask = batch[1] if len(batch) > 1 else None
         else:
@@ -77,11 +83,10 @@ class TwoPhaseTrainer:
 
         imgs = imgs.to(self.device)
         if padding_mask is not None:
-            padding_mask = padding_mask.to(self.device)
+            padding_mask = padding_mask.to(self.device).to(torch.bool)
 
-        unwrapped = self.model.module if hasattr(self.model, "module") else self.model
-        if imgs.ndim == 5 and hasattr(unwrapped, "forward_sequence"):
-            return unwrapped.forward_sequence(imgs, padding_mask=padding_mask)
+        if imgs.ndim == 5:
+            return self.model(imgs, padding_mask=padding_mask)
         return self.model(imgs)
 
     def _get_llrd_param_groups(self, lr_backbone: float, lr_head: float) -> list:
@@ -93,7 +98,14 @@ class TwoPhaseTrainer:
         - Tier 4: classifier head  (lr_head)
         """
         unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
-        stem_s01, s2, s3, fusion_params, head_params = [], [], [], [], []
+        
+        tier_params = {
+            'tier0': {'decayed': [], 'non_decayed': [], 'lr': lr_backbone * 0.2, 'name_prefix': 'tier0_stem_s01'},
+            'tier1': {'decayed': [], 'non_decayed': [], 'lr': lr_backbone * 0.5, 'name_prefix': 'tier1_s2'},
+            'tier2': {'decayed': [], 'non_decayed': [], 'lr': lr_backbone * 1.0, 'name_prefix': 'tier2_s3'},
+            'tier3': {'decayed': [], 'non_decayed': [], 'lr': lr_backbone * 1.0, 'name_prefix': 'tier3_fusion'},
+            'tier4': {'decayed': [], 'non_decayed': [], 'lr': lr_head, 'name_prefix': 'tier4_head'},
+        }
 
         # Fusion/frequency layer prefixes — these are feature extractors, not the head
         FUSION_PREFIXES = (
@@ -105,27 +117,34 @@ class TwoPhaseTrainer:
             if not p.requires_grad:
                 continue
             clean_name = name.replace("module.", "")
+            
             if "spatial_backbone" in clean_name:
                 if any(s in clean_name for s in ["stem", "stages.0", "stages.1"]):
-                    stem_s01.append(p)
+                    tier = 'tier0'
                 elif "stages.2" in clean_name:
-                    s2.append(p)
+                    tier = 'tier1'
                 elif "stages.3" in clean_name:
-                    s3.append(p)
+                    tier = 'tier2'
                 else:
-                    stem_s01.append(p)
+                    tier = 'tier0'
             elif any(pfx in clean_name for pfx in FUSION_PREFIXES):
-                fusion_params.append(p)
+                tier = 'tier3'
             else:
-                head_params.append(p)
+                tier = 'tier4'
+                
+            if p.ndim < 2 or 'bias' in clean_name or 'norm' in clean_name or 'gamma' in clean_name:
+                tier_params[tier]['non_decayed'].append(p)
+            else:
+                tier_params[tier]['decayed'].append(p)
 
-        return [
-            {'params': stem_s01,      'lr': lr_backbone * 0.2},
-            {'params': s2,            'lr': lr_backbone * 0.5},
-            {'params': s3,            'lr': lr_backbone * 1.0},
-            {'params': fusion_params, 'lr': lr_backbone * 1.0},
-            {'params': head_params,   'lr': lr_head},
-        ]
+        param_groups = []
+        for t, info in tier_params.items():
+            if info['decayed']:
+                param_groups.append({'params': info['decayed'], 'lr': info['lr'], 'name': info['name_prefix'] + '_decayed'})
+            if info['non_decayed']:
+                param_groups.append({'params': info['non_decayed'], 'lr': info['lr'], 'weight_decay': 0.0, 'name': info['name_prefix'] + '_non_decayed'})
+
+        return param_groups
 
     def export_metrics_json(self, metrics: Dict[str, Any], save_dir: str = "models", timestamp: Optional[str] = None) -> str:
         """Exports evaluation metrics to a timestamped JSON file (metrics_{timestamp}.json)."""
@@ -164,6 +183,7 @@ class TwoPhaseTrainer:
         val_probs, val_targets = [], []
 
         with torch.no_grad():
+            total_val_samples = 0
             for batch in self.val_loader:
                 if isinstance(batch, (list, tuple)) and len(batch) == 3:
                     imgs, labels, padding_mask = batch
@@ -179,15 +199,17 @@ class TwoPhaseTrainer:
                 with get_autocast("cuda" if self.device.type == "cuda" else "cpu", enabled=self.use_amp):
                     logits = self._forward_step(fwd_input)
                     logits_flip = self._forward_step(fwd_input_flip)
+                    if getattr(self.criterion, 'pos_weight', None) is not None:
+                        self.criterion.pos_weight = self.criterion.pos_weight.to(labels.device)
                     loss = self.criterion(logits, labels.float())
 
                 running_loss += loss.item() * imgs.size(0)
-                probs = (torch.sigmoid(logits) + torch.sigmoid(logits_flip)) / 2.0
+                total_val_samples += imgs.size(0)
+                probs = torch.sigmoid((logits + logits_flip) / 2.0)
                 val_probs.extend(probs.cpu().numpy())
                 val_targets.extend(labels.cpu().numpy())
 
-        total_samples = len(self.val_loader.dataset) if hasattr(self.val_loader, 'dataset') and len(self.val_loader.dataset) > 0 else len(val_targets)
-        val_loss = running_loss / max(total_samples, 1)
+        val_loss = running_loss / max(total_val_samples, 1)
         
         probs_arr = np.array(val_probs)
         targets_arr = np.array(val_targets)
@@ -208,13 +230,7 @@ class TwoPhaseTrainer:
         val_acc = float(np.mean(val_preds_fixed == targets_arr))
 
         # Equal Error Rate (EER) Calculation
-        eer = 0.50
-        if HAS_SCIPY and len(np.unique(targets_arr)) > 1:
-            try:
-                fpr, tpr, _ = roc_curve(targets_arr, probs_arr)
-                eer = float(brentq(lambda x: 1.0 - x - interp1d(fpr, tpr)(x), 0.0, 1.0))
-            except Exception as e:
-                logger.warning("EER calculation fallback: %s", e)
+        eer, _ = calculate_crash_proof_eer(targets_arr, probs_arr)
 
         return {
             "val_loss": val_loss,
@@ -239,11 +255,11 @@ class TwoPhaseTrainer:
         patience = training_cfg.get("patience", 4)
 
         best_val_auc = 0.0
-        best_weights = None
+        unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
+        best_weights = copy.deepcopy(unwrapped.state_dict())
         best_opt_thresh = 0.5
         epoch_losses = []
 
-        unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
         device_type = "cuda" if self.device.type == "cuda" else "cpu"
 
         # --- Phase 1: Classifier Head Warmup ---
@@ -257,8 +273,14 @@ class TwoPhaseTrainer:
         total_p1_steps = epochs_p1 * max(1, len(self.train_loader))
         warmup_ratio = training_cfg.get("warmup_ratio", 0.1)
         warmup_steps = max(10, int(total_p1_steps * warmup_ratio))
-        scheduler_p1 = torch.optim.lr_scheduler.LinearLR(
+        scheduler_p1_warmup = torch.optim.lr_scheduler.LinearLR(
             optimizer_p1, start_factor=1e-3, end_factor=1.0, total_iters=warmup_steps
+        )
+        scheduler_p1_decay = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer_p1, T_max=total_p1_steps - warmup_steps, eta_min=1e-6
+        )
+        scheduler_p1 = torch.optim.lr_scheduler.SequentialLR(
+            optimizer_p1, schedulers=[scheduler_p1_warmup, scheduler_p1_decay], milestones=[warmup_steps]
         )
 
         for epoch in range(epochs_p1):
@@ -280,6 +302,8 @@ class TwoPhaseTrainer:
                     logits = self._forward_step(fwd_input)
                     eps = 0.025
                     smooth_labels = labels.float() * (1.0 - 2.0 * eps) + eps
+                    if getattr(self.criterion, 'pos_weight', None) is not None:
+                        self.criterion.pos_weight = self.criterion.pos_weight.to(labels.device)
                     loss = self.criterion(logits, smooth_labels)
                 
                 scale_before = self.scaler.get_scale()
@@ -341,6 +365,8 @@ class TwoPhaseTrainer:
                     logits = self._forward_step(fwd_input)
                     eps = 0.025
                     smooth_labels = labels.float() * (1.0 - 2.0 * eps) + eps
+                    if getattr(self.criterion, 'pos_weight', None) is not None:
+                        self.criterion.pos_weight = self.criterion.pos_weight.to(labels.device)
                     loss = self.criterion(logits, smooth_labels)
 
                 scale_before = self.scaler.get_scale()
@@ -384,6 +410,8 @@ class TwoPhaseTrainer:
 
         checkpoint_data = {
             "state_dict": best_weights,
+            "optimizer_state_dict": optimizer_p2.state_dict(),
+            "scaler_state_dict": self.scaler.state_dict(),
             "optimal_threshold": float(best_opt_thresh),
             "val_auc": float(best_val_auc),
             "config": self.config
@@ -396,14 +424,4 @@ class TwoPhaseTrainer:
 
         return checkpoint_data, best_opt_thresh, final_val_metrics
 
-def train_two_phase(
-    model: nn.Module,
-    train_loader: DataLoader,
-    val_loader: DataLoader,
-    config: Optional[Dict[str, Any]] = None,
-    device: Optional[torch.device] = None
-) -> Tuple[nn.Module, float]:
-    """Functional wrapper for TwoPhaseTrainer for backward compatibility."""
-    trainer = TwoPhaseTrainer(model, train_loader, val_loader, config=config, device=device)
-    checkpoint_data, opt_thresh, metrics = trainer.train()
-    return model, opt_thresh
+

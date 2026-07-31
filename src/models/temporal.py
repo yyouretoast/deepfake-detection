@@ -1,6 +1,7 @@
 from typing import Optional
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class TemporalSequenceEncoder(nn.Module):
     """
@@ -39,10 +40,17 @@ class TemporalSequenceEncoder(nn.Module):
         """
         B, T, D = x.shape
         if T > self.max_len:
-            raise ValueError(f"Sequence length T={T} exceeds max_len={self.max_len}")
-
-        pos = self.pos_embed[:, :T, :]
+            pos = F.interpolate(self.pos_embed.permute(0, 2, 1), size=T, mode="linear", align_corners=False).permute(0, 2, 1)
+        else:
+            pos = self.pos_embed[:, :T, :]
+            
         x_pos = x + pos
+        
+        if padding_mask is not None:
+            padding_mask = padding_mask.clone()
+            all_masked = padding_mask.all(dim=1)
+            padding_mask[all_masked, 0] = False
+
         out = self.transformer(x_pos, src_key_padding_mask=padding_mask)
 
         # Masked mean pooling — ignore padded positions

@@ -3,6 +3,7 @@ import os
 import logging
 import numpy as np
 import torch
+import copy
 
 try:
     import onnx
@@ -18,38 +19,61 @@ def export_to_onnx(
     model: torch.nn.Module,
     save_path: str = "deepfake_convnext_v2.onnx",
     img_size: int = 256,
-    dummy_input: Optional[torch.Tensor] = None
+    dummy_input: Optional[torch.Tensor] = None,
+    export_probability: bool = True
 ) -> str:
     """Exports PyTorch HybridDeepfakeDetector model to ONNX format with dynamic batching and dynamic sequence length support."""
+    model = copy.deepcopy(model)
+    unwrapped = model.module if hasattr(model, 'module') else model
     model.eval()
-    unwrapped = model.module if isinstance(model, torch.nn.DataParallel) else model
+
+    if export_probability:
+        class SigmoidWrapper(torch.nn.Module):
+            def __init__(self, m):
+                super().__init__()
+                self.m = m
+            def forward(self, *args, **kwargs):
+                return torch.sigmoid(self.m(*args, **kwargs))
+        unwrapped = SigmoidWrapper(unwrapped)
 
     device = next(unwrapped.parameters()).device
     if dummy_input is None:
         dummy_input = torch.randn(2, 3, img_size, img_size, device=device)
 
     if dummy_input.ndim == 5:
-        dynamic_axes = {
-            'input': {0: 'batch_size', 1: 'sequence_length', 3: 'height', 4: 'width'},
-            'output': {0: 'batch_size'}
-        }
+        dynamic_axes = {'input': {0: 'batch_size', 1: 'sequence_length'}, 'output': {0: 'batch_size'}}
     else:
-        dynamic_axes = {
-            'input': {0: 'batch_size', 2: 'height', 3: 'width'},
-            'output': {0: 'batch_size'}
-        }
+        dynamic_axes = {'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
 
-    torch.onnx.export(
-        unwrapped,
-        dummy_input,
-        save_path,
-        export_params=True,
-        opset_version=17,
-        do_constant_folding=True,
-        input_names=['input'],
-        output_names=['output'],
-        dynamic_axes=dynamic_axes
-    )
+    if device.type == "cuda":
+        with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_math=True, enable_mem_efficient=False):
+            torch.onnx.export(
+                unwrapped,
+                dummy_input,
+                save_path,
+                export_params=True,
+                opset_version=17,
+                do_constant_folding=True,
+                input_names=['input'],
+                output_names=['output'],
+                dynamic_axes=dynamic_axes,
+                dynamo=False
+            )
+    else:
+        torch.onnx.export(
+            unwrapped,
+            dummy_input,
+            save_path,
+            export_params=True,
+            opset_version=17,
+            do_constant_folding=True,
+            input_names=['input'],
+            output_names=['output'],
+            dynamic_axes=dynamic_axes,
+            dynamo=False
+        )
+
+
 
     if HAS_ONNX:
         onnx_model = onnx.load(save_path)
@@ -57,7 +81,7 @@ def export_to_onnx(
 
     return save_path
 
-export_model_to_onnx = export_to_onnx
+
 
 def quantize_onnx_model(
     onnx_path: str = "deepfake_convnext_v2.onnx",
@@ -107,8 +131,6 @@ class ONNXDeepfakePredictor:
             numpy_batch = np.expand_dims(numpy_batch, axis=0)
 
         numpy_batch = np.asarray(numpy_batch, dtype=np.float32)
-        logits = self.session.run([self.output_name], {self.input_name: numpy_batch})[0]
+        probs = self.session.run([self.output_name], {self.input_name: numpy_batch})[0]
         
-        clipped_logits = np.clip(logits, -88.0, 88.0)
-        probs = 1.0 / (1.0 + np.exp(-clipped_logits))
         return probs.squeeze(-1) if probs.ndim > 1 else probs

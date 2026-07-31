@@ -11,6 +11,10 @@ from src.dataset.preprocess import DynamicFaceCropper
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.explainability.gradcam import PyTorchGradCAM
 from src.config import load_config
+import shutil
+import threading
+
+GRADCAM_LOCK = threading.Lock()
 
 try:
     from src.models.onnx_exporter import ONNXDeepfakePredictor, HAS_ONNX
@@ -25,12 +29,26 @@ DEFAULT_THRESHOLD: float = APP_CFG.get("classification_threshold", 0.5)
 
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def clean_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
+    cleaned = {}
+    for k, v in state_dict.items():
+        if "lora_" in k:
+            continue
+        new_k = k
+        if new_k.startswith("module."):
+            new_k = new_k[7:]
+        if new_k.startswith("_orig_mod."):
+            new_k = new_k[10:]
+        cleaned[new_k] = v
+    return cleaned
+
+
 
 @st.cache_resource
-def load_prediction_engine() -> Tuple[torch.nn.Module, Optional[Any], DynamicFaceCropper, bool, float]:
+def load_prediction_engine() -> Tuple[torch.nn.Module, Optional[Any], DynamicFaceCropper, bool, float, float]:
     """
     Decoupled cached model and predictor loader using Streamlit cache_resource.
-    Returns: (pytorch_model, onnx_predictor, cropper, has_pytorch_weights, classification_threshold)
+    Returns: (pytorch_model, onnx_predictor, cropper, has_pytorch_weights, classification_threshold, temperature)
     """
     onnx_path = "models/deepfake_convnext_v2.onnx"
     if not os.path.exists(onnx_path):
@@ -43,18 +61,15 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, Optional[Any], DynamicFac
         except Exception:
             onnx_predictor = None
 
-    backbone_name = CONFIG.get("model", {}).get("backbone", "convnext_base")
-    pytorch_model = HybridDeepfakeDetector(
-        backbone_name=backbone_name, pretrained=False, use_fft_branch=True, config=CONFIG
-    )
-
     weights_path = "models/deepfake_convnext_v2.pt"
     if not os.path.exists(weights_path):
         weights_path = "deepfake_convnext_v2.pth"
 
     opt_threshold = DEFAULT_THRESHOLD
+    temperature = 1.0
     has_weights = os.path.exists(weights_path)
-
+    
+    state_dict = None
     if has_weights:
         checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=False)
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
@@ -62,20 +77,26 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, Optional[Any], DynamicFac
             opt_thresh_val = checkpoint.get("optimal_threshold", None)
             if opt_thresh_val is not None:
                 opt_threshold = float(opt_thresh_val)
+            temperature = float(checkpoint.get("temperature", 1.0))
         else:
             state_dict = checkpoint
-        pytorch_model.load_state_dict(state_dict)
+        
+        state_dict = clean_state_dict(state_dict)
+
+    backbone_name = CONFIG.get("model", {}).get("backbone", "convnext_base")
+    pytorch_model = HybridDeepfakeDetector(
+        backbone_name=backbone_name, pretrained=False, use_fft_branch=True, config=CONFIG
+    )
+
+    if state_dict is not None:
+        pytorch_model.load_state_dict(state_dict, strict=False)
 
     pytorch_model.to(DEVICE)
     pytorch_model.eval()
 
     cropper = DynamicFaceCropper(scale_factor=1.30, target_size=IMG_SIZE, device=DEVICE)
 
-    return pytorch_model, onnx_predictor, cropper, has_weights, opt_threshold
-
-
-# Backward compatibility alias
-load_models = load_prediction_engine
+    return pytorch_model, onnx_predictor, cropper, has_weights, opt_threshold, temperature
 
 
 def preprocess_tensors_batch(
@@ -94,6 +115,13 @@ def preprocess_tensors_batch(
     return norm_nchw, tensor
 
 
+def normalize_confidence(prob: float, threshold: float) -> float:
+    if prob > threshold:
+        return 50.0 + 50.0 * ((prob - threshold) / (1.0 - threshold)) if threshold < 1.0 else 100.0
+    else:
+        return 50.0 + 50.0 * ((threshold - prob) / threshold) if threshold > 0.0 else 100.0
+
+
 def process_video_frames(
     video_path: str,
     enable_gradcam: bool = False,
@@ -101,6 +129,7 @@ def process_video_frames(
     onnx_predictor: Optional[Any] = None,
     cropper: Optional[DynamicFaceCropper] = None,
     classification_threshold: Optional[float] = None,
+    temperature: Optional[float] = None,
     has_pytorch_weights: Optional[bool] = None,
 ) -> Optional[Dict[str, Any]]:
     """
@@ -108,12 +137,13 @@ def process_video_frames(
     Constructs 5D sequence tensor [1, T, 3, H, W] and invokes unwrapped.forward_sequence(sequence_tensor)
     wrapped in torch.inference_mode(), so TemporalSequenceEncoder is actively used during video inference.
     """
-    if pytorch_model is None or cropper is None or classification_threshold is None:
-        p_model, o_pred, c_crop, h_weights, threshold = load_prediction_engine()
+    if pytorch_model is None or cropper is None or classification_threshold is None or temperature is None:
+        p_model, o_pred, c_crop, h_weights, threshold, temp = load_prediction_engine()
         pytorch_model = pytorch_model or p_model
         onnx_predictor = onnx_predictor or o_pred
         cropper = cropper or c_crop
         classification_threshold = classification_threshold if classification_threshold is not None else threshold
+        temperature = temperature if temperature is not None else temp
         if has_pytorch_weights is None:
             has_pytorch_weights = h_weights
     elif has_pytorch_weights is None:
@@ -146,7 +176,7 @@ def process_video_frames(
     if not frames_rgb:
         return None
 
-    faces_per_frame = [cropper.crop_face(f) for f in frames_rgb]
+    faces_per_frame = cropper.crop_faces_batched(frames_rgb)
     all_faces = [f for f in faces_per_frame if f is not None]
     if not all_faces:
         return None
@@ -159,7 +189,7 @@ def process_video_frames(
     with torch.inference_mode():
         with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
             seq_logits = unwrapped.forward_sequence(sequence_tensor)
-            video_prob = float(torch.sigmoid(seq_logits.float()).mean().item())
+            video_prob = float(torch.sigmoid(seq_logits.float() / temperature).mean().item())
 
     # Per-frame predictions for breakdown & ranking
     BATCH_SIZE = 16
@@ -179,8 +209,8 @@ def process_video_frames(
         if batch_probs is None:
             with torch.inference_mode():
                 with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                    p1 = torch.sigmoid(pytorch_model(sub_torch).float())
-                    p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float())
+                    p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature)
+                    p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature)
                     batch_probs = ((p1 + p2) / 2.0).cpu().numpy().tolist()
 
         all_probs.extend(batch_probs)
@@ -196,18 +226,13 @@ def process_video_frames(
     can_render_gradcam = enable_gradcam and has_pytorch_weights
     sample_heatmaps = []
 
-    if can_render_gradcam:
+    if can_render_gradcam and len(sample_tensors) > 0:
         try:
-            with PyTorchGradCAM(pytorch_model) as gradcam_engine:
-                sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors)
+            with GRADCAM_LOCK:
+                with PyTorchGradCAM(pytorch_model) as gradcam_engine:
+                    sample_heatmaps = gradcam_engine.generate_heatmaps_batch(sample_tensors)
         except Exception:
             sample_heatmaps = [None] * len(sample_faces)
-
-    def normalize_confidence(prob: float, threshold: float) -> float:
-        if prob > threshold:
-            return 50.0 + 50.0 * ((prob - threshold) / (1.0 - threshold)) if threshold < 1.0 else 100.0
-        else:
-            return 50.0 + 50.0 * ((threshold - prob) / threshold) if threshold > 0.0 else 100.0
 
     sample_outputs = []
     for idx, (face, prob) in enumerate(zip(sample_faces, sample_probs)):
@@ -238,9 +263,6 @@ def process_video_frames(
     }
 
 
-def predict_video_sequence(video_path: str, enable_gradcam: bool = False) -> Optional[Dict[str, Any]]:
-    """Backward compatibility wrapper for predict_video_sequence."""
-    return process_video_frames(video_path=video_path, enable_gradcam=enable_gradcam)
 
 
 def render_ui() -> None:
@@ -255,35 +277,46 @@ def render_ui() -> None:
         """
         <style>
         .main {
-            background-color: #0e1117;
+            background-color: #0b0f19;
         }
         .stApp {
             font-family: 'Inter', sans-serif;
         }
         .header-box {
             text-align: center;
-            padding: 24px;
-            background: linear-gradient(135deg, rgba(26, 115, 232, 0.15), rgba(168, 85, 247, 0.15));
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            backdrop-filter: blur(10px);
-            margin-bottom: 25px;
+            padding: 32px;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(147, 51, 234, 0.2));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            backdrop-filter: blur(12px);
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
         .result-card-fake {
             text-align: center;
-            padding: 25px;
-            border-radius: 16px;
-            background: rgba(229, 57, 53, 0.15);
-            border: 2px solid #ef4444;
-            box-shadow: 0 8px 32px rgba(239, 68, 68, 0.2);
+            padding: 30px;
+            border-radius: 20px;
+            background: rgba(220, 38, 38, 0.15);
+            border: 2px solid #dc2626;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 32px rgba(220, 38, 38, 0.25);
+            transition: transform 0.3s ease;
+        }
+        .result-card-fake:hover {
+            transform: scale(1.02);
         }
         .result-card-real {
             text-align: center;
-            padding: 25px;
-            border-radius: 16px;
-            background: rgba(67, 160, 71, 0.15);
-            border: 2px solid #22c55e;
-            box-shadow: 0 8px 32px rgba(34, 197, 94, 0.2);
+            padding: 30px;
+            border-radius: 20px;
+            background: rgba(22, 163, 74, 0.15);
+            border: 2px solid #16a34a;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 32px rgba(22, 163, 74, 0.25);
+            transition: transform 0.3s ease;
+        }
+        .result-card-real:hover {
+            transform: scale(1.02);
         }
         </style>
     """,
@@ -303,7 +336,7 @@ def render_ui() -> None:
     )
 
     try:
-        pytorch_model, onnx_predictor, cropper, has_pytorch_weights, classification_threshold = (
+        pytorch_model, onnx_predictor, cropper, has_pytorch_weights, classification_threshold, temperature = (
             load_prediction_engine()
         )
         if not has_pytorch_weights:
@@ -344,13 +377,12 @@ def render_ui() -> None:
             st.error("File size exceeds 50MB limit.")
             st.stop()
 
-        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}_gradcam={enable_gradcam}"
         if st.session_state.last_file_id != file_id or st.session_state.analysis_results is None:
-            content = uploaded_file.read()
             tmp_path: Optional[str] = None
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                    tmp.write(content)
+                    shutil.copyfileobj(uploaded_file, tmp)
                     tmp_path = tmp.name
 
                 with st.spinner("Running model inference..."):
@@ -361,6 +393,7 @@ def render_ui() -> None:
                         onnx_predictor=onnx_predictor,
                         cropper=cropper,
                         classification_threshold=classification_threshold,
+                        temperature=temperature,
                         has_pytorch_weights=has_pytorch_weights,
                     )
                     st.session_state.analysis_results = res
@@ -423,6 +456,10 @@ def render_ui() -> None:
             """,
                 unsafe_allow_html=True,
             )
+
+
+
+
 
 
 if __name__ == "__main__":

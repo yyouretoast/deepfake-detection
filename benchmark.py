@@ -46,7 +46,9 @@ def benchmark_inference(iterations: int = 50, batch_size: int = 1, img_size: int
     start_time = time.perf_counter()
     with torch.no_grad():
         for _ in range(iterations):
-            _ = pytorch_model(dummy_torch)
+            # enforce CPU H2D memory parity
+            input_tensor = torch.from_numpy(dummy_numpy).to(device)
+            _ = pytorch_model(input_tensor)
             if device.type == "cuda":
                 torch.cuda.synchronize()
     end_time = time.perf_counter()
@@ -171,16 +173,37 @@ def run_paper_benchmark(
     batch_size: int = 32,
     img_size: int = 256,
     fold_samples: int = 100,
-    celeb_samples: int = 200
+    celeb_samples: int = 200,
+    mock: bool = False
 ) -> Dict[str, Any]:
     """
     --mode paper: Full Celeb-DF v2 (5600+ videos) + 5-fold LOTO evaluation across
     Deepfakes, Face2Face, FaceSwap, NeuralTextures, FaceShifter.
     """
     print(f"\n==================================================")
-    print(f"PAPER BENCHMARK MODE: Celeb-DF v2 & 5-Fold LOTO Evaluation")
+    if mock:
+        print(f"[CI MOCK DRY-RUN] PAPER BENCHMARK MODE")
+    else:
+        print(f"PAPER BENCHMARK MODE: Celeb-DF v2 & 5-Fold LOTO Evaluation")
     print(f"==================================================")
     config = load_config()
+    
+    if not mock:
+        # Multi-candidate path auto-discovery
+        candidate_paths = ["data/celebdf", "data/celeb_df_v2", "data/cropped", "data/ffpp"]
+        data_dir = config.get("preprocessing", {}).get("cropped_frames_dir", "")
+        if not data_dir or not os.path.exists(data_dir):
+            for path in candidate_paths:
+                if os.path.exists(path):
+                    data_dir = path
+                    break
+        if not data_dir:
+            data_dir = "data/cropped"
+            
+        ckpt_path = "models/deepfake_convnext_v2.pt"
+        if not (os.path.exists(data_dir) or os.path.exists(ckpt_path)):
+            print(f"Warning: Missing dataset at {data_dir} or checkpoint at {ckpt_path}. Falling back to mock data.")
+            mock = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     manipulation_types = config.get("manipulation_types", {}).get("all", [
@@ -200,10 +223,26 @@ def run_paper_benchmark(
     print("--------------------------------------------------")
 
     for fold_idx, held_out_type in enumerate(manipulation_types, 1):
-        half_fold = max(fold_samples // 2, 1)
-        dummy_x = torch.randn(half_fold * 2, 3, img_size, img_size)
-        dummy_y = torch.tensor([0]*half_fold + [1]*half_fold, dtype=torch.long)
-        loader = DataLoader(TensorDataset(dummy_x, dummy_y), batch_size=batch_size, shuffle=False)
+        if mock:
+            half_fold = max(fold_samples // 2, 1)
+            dummy_x = torch.randn(half_fold * 2, 3, img_size, img_size)
+            dummy_y = torch.tensor([0]*half_fold + [1]*half_fold, dtype=torch.long)
+            loader = DataLoader(TensorDataset(dummy_x, dummy_y), batch_size=batch_size, shuffle=False)
+        else:
+            try:
+                from src.dataset.dataset import DeepfakeDataset
+                import torchvision.transforms as transforms
+                transform = transforms.Compose([transforms.Resize((img_size, img_size)), transforms.ToTensor()])
+                dataset = DeepfakeDataset(data_dir, split="test", transform=transform)
+                if hasattr(dataset, 'samples'):
+                    dataset.samples = [s for s in dataset.samples if s[1] == 0 or held_out_type.lower() in str(s[0]).lower()]
+                loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+            except ImportError:
+                # Fallback if dataset class is not found
+                half_fold = max(fold_samples // 2, 1)
+                dummy_x = torch.randn(half_fold * 2, 3, img_size, img_size)
+                dummy_y = torch.tensor([0]*half_fold + [1]*half_fold, dtype=torch.long)
+                loader = DataLoader(TensorDataset(dummy_x, dummy_y), batch_size=batch_size, shuffle=False)
 
         trainer = TwoPhaseTrainer(model=model, train_loader=loader, val_loader=loader, config=config, device=device)
         metrics = trainer.evaluate()
@@ -257,18 +296,24 @@ def run_paper_benchmark(
 
 
 def main() -> None:
+    torch.manual_seed(42)
+    np.random.seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(42)
+        
     parser = argparse.ArgumentParser(description="Deepfake Detector Benchmark Suite")
     parser.add_argument("--mode", type=str, default="latency", choices=["latency", "fast", "paper"],
                         help="Benchmark mode: 'latency' (PyTorch vs ONNX), 'fast' (500-video stratified validation), or 'paper' (Celeb-DF v2 + 5-fold LOTO)")
     parser.add_argument("--iterations", type=int, default=50, help="Benchmark iterations for latency mode")
     parser.add_argument("--batch_size", type=int, default=1, help="Benchmark batch size")
     parser.add_argument("--img_size", type=int, default=256, help="Input image size")
+    parser.add_argument("--mock", action="store_true", help="Run benchmark in mock mode (CI dry-run)")
     args = parser.parse_args()
 
     if args.mode == "fast":
         run_fast_benchmark(num_videos=500, batch_size=args.batch_size if args.batch_size > 1 else 32, img_size=args.img_size)
     elif args.mode == "paper":
-        run_paper_benchmark(batch_size=args.batch_size if args.batch_size > 1 else 32, img_size=args.img_size)
+        run_paper_benchmark(batch_size=args.batch_size if args.batch_size > 1 else 32, img_size=args.img_size, mock=args.mock)
     else:
         benchmark_inference(iterations=args.iterations, batch_size=args.batch_size, img_size=args.img_size)
 

@@ -22,6 +22,11 @@ def main() -> None:
     parser.add_argument("--sequence", action="store_true", help="Enable 5D video sequence dataset loading")
     parser.add_argument("--save_path", type=str, default="models/deepfake_convnext_v2.pt", help="Checkpoint save path")
     parser.add_argument("--export_onnx", action="store_true", help="Export model to ONNX format after training")
+    parser.add_argument("--lr_backbone", type=float, default=None, help="Backbone learning rate")
+    parser.add_argument("--lr_head", type=float, default=None, help="Head learning rate")
+    parser.add_argument("--weight_decay", type=float, default=None, help="Weight decay")
+    parser.add_argument("--seq_len", type=int, default=None, help="Sequence length for video mode")
+    parser.add_argument("--no_amp", action="store_true", help="Disable AMP")
 
     args = parser.parse_args()
 
@@ -34,6 +39,16 @@ def main() -> None:
         config.setdefault("training", {})["epochs_phase2"] = args.epochs_p2
     if args.batch_size:
         config.setdefault("training", {})["batch_size"] = args.batch_size
+    if args.lr_backbone:
+        config.setdefault("training", {})["lr_backbone"] = args.lr_backbone
+    if args.lr_head:
+        config.setdefault("training", {})["lr_head"] = args.lr_head
+    if args.weight_decay:
+        config.setdefault("training", {})["weight_decay"] = args.weight_decay
+    if args.seq_len:
+        config.setdefault("training", {})["seq_len"] = args.seq_len
+    if args.no_amp:
+        config.setdefault("training", {})["use_amp"] = False
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Initializing Training on Device: %s", device)
@@ -54,13 +69,25 @@ def main() -> None:
 
     # 3. Execute Two-Phase Training Pipeline
     trainer = TwoPhaseTrainer(model=model, train_loader=train_loader, val_loader=val_loader, config=config, device=device)
-    checkpoint_data, opt_thresh, metrics = trainer.train()
+    try:
+        checkpoint_data, opt_thresh, metrics = trainer.train()
 
-    # 4. Save Metadata-Embedded Checkpoint
-    os.makedirs(os.path.dirname(os.path.abspath(args.save_path)), exist_ok=True)
-    torch.save(checkpoint_data, args.save_path)
-    logger.info("Saved verified checkpoint to: %s | Opt Threshold T*: %.4f | Val AUC: %.4f",
-                args.save_path, opt_thresh, metrics.get("best_val_auc", 0.0))
+        # 4. Save Metadata-Embedded Checkpoint
+        os.makedirs(os.path.dirname(os.path.abspath(args.save_path)), exist_ok=True)
+        torch.save(checkpoint_data, args.save_path)
+        logger.info("Saved verified checkpoint to: %s | Opt Threshold T*: %.4f | Val AUC: %.4f",
+                    args.save_path, opt_thresh, metrics.get("best_val_auc", 0.0))
+    except KeyboardInterrupt:
+        logger.warning("Training interrupted by user. Saving recovery checkpoint...")
+        recovery_path = "models/deepfake_convnext_interrupted.pt"
+        os.makedirs(os.path.dirname(os.path.abspath(recovery_path)), exist_ok=True)
+        unwrapped = model.module if hasattr(model, 'module') else model
+        torch.save({
+            "state_dict": unwrapped.state_dict(),
+            "config": config
+        }, recovery_path)
+        logger.info("Saved recovery checkpoint to: %s", recovery_path)
+        return
 
     # 5. Optional ONNX Export
     if args.export_onnx:

@@ -8,7 +8,6 @@ from torch.utils.checkpoint import checkpoint
 
 from src.config import load_config
 from src.models.temporal import TemporalSequenceEncoder
-from src.models.lora import apply_lora_to_model, merge_all_lora_weights
 
 class FFTFrequencyExtractor(nn.Module):
     """
@@ -49,14 +48,11 @@ class FFTFrequencyExtractor(nn.Module):
             fft_2d = torch.fft.rfft2(gray, norm="ortho")
             magnitude = torch.abs(fft_2d)
             log_spectrum = torch.log(magnitude + 1e-5)
+            log_spectrum = torch.fft.fftshift(log_spectrum, dim=-2)
             mean = log_spectrum.mean(dim=(-2, -1), keepdim=True)
             std = log_spectrum.std(dim=(-2, -1), keepdim=True)
             norm_spectrum = (log_spectrum - mean) / (std + 1e-6)
         return self.conv_net(norm_spectrum.to(x.dtype))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        conv_features = self._extract_norm_spectrum(x)
-        return conv_features.mean(dim=(-2, -1))
 
     def forward_grid(self, x: torch.Tensor, target_h: int = 8, target_w: int = 8) -> torch.Tensor:
         """Extracts spatial frequency feature grid dynamically adaptive-pooled to (target_h, target_w)."""
@@ -75,8 +71,6 @@ class HybridDeepfakeDetector(nn.Module):
         backbone_name: Optional[str] = None,
         pretrained: bool = True,
         use_fft_branch: bool = True,
-        use_lora: bool = False,
-        lora_rank: int = 8,
         dropout: float = 0.3,
         use_checkpointing: bool = False,
         config: Optional[Dict[str, Any]] = None
@@ -90,8 +84,6 @@ class HybridDeepfakeDetector(nn.Module):
             backbone_name = model_cfg.get("backbone", "convnext_base")
 
         self.use_fft_branch = use_fft_branch
-        self.use_lora = use_lora or model_cfg.get("use_lora", False)
-        self.lora_rank = lora_rank if lora_rank != 8 else model_cfg.get("lora_rank", 8)
         self.use_checkpointing = use_checkpointing or model_cfg.get("use_checkpointing", False)
 
         self.spatial_backbone = timm.create_model(backbone_name, pretrained=pretrained, num_classes=0)
@@ -104,12 +96,14 @@ class HybridDeepfakeDetector(nn.Module):
             self.freq_proj = nn.Linear(freq_embed_dim, 128)
             self.cross_attn = nn.MultiheadAttention(embed_dim=128, num_heads=4, batch_first=True)
             self.attn_out_proj = nn.Linear(128, freq_embed_dim)
+            self.gamma = nn.Parameter(torch.tensor(0.1))
             fusion_dim = spatial_in_features + freq_embed_dim
         else:
             self.freq_extractor = None
             self.spatial_proj = None
             self.freq_proj = None
             self.cross_attn = None
+            self.gamma = None
             fusion_dim = spatial_in_features
 
         self.fusion_dim = fusion_dim
@@ -123,14 +117,6 @@ class HybridDeepfakeDetector(nn.Module):
             nn.Linear(256, 1)
         )
 
-        if self.use_lora:
-            apply_lora_to_model(self.spatial_backbone, rank=self.lora_rank)
-
-    def merge_lora_weights(self) -> None:
-        """Folds all LoRA weights into base parameters for 0ms inference latency penalty."""
-        if self.use_lora:
-            merge_all_lora_weights(self.spatial_backbone)
-
     def extract_features(
         self,
         x: torch.Tensor,
@@ -142,16 +128,10 @@ class HybridDeepfakeDetector(nn.Module):
         512x512 native FFT frequency spectra.
         """
         if x_full is None:
-            if x.ndim == 4 and x.shape[-1] > 256:
-                x_full = x
-                x = F.interpolate(x_full, size=(256, 256), mode='bilinear', align_corners=False)
-            else:
-                x_full = x
-        else:
-            if x.shape[-1] > 256 and (x_full is None or x_full.shape[-1] == x.shape[-1]):
-                x_spatial = F.interpolate(x, size=(256, 256), mode='bilinear', align_corners=False)
-                x_full = x
-                x = x_spatial
+            x_full = x
+            
+        if x.ndim == 4:
+            x = F.interpolate(x, size=(256, 256), mode='bilinear', align_corners=False)
 
         if self.use_checkpointing and self.training and torch.is_grad_enabled():
             spatial_grid = checkpoint(self.spatial_backbone.forward_features, x, use_reentrant=False)
@@ -173,7 +153,7 @@ class HybridDeepfakeDetector(nn.Module):
             f_kv = self.freq_proj(freq_tokens)
             attn_out, _ = self.cross_attn(query=s_q, key=f_kv, value=f_kv)
 
-            freq_enhanced_tokens = freq_tokens + 0.1 * self.attn_out_proj(attn_out)
+            freq_enhanced_tokens = freq_tokens + self.gamma * self.attn_out_proj(attn_out)
             freq_raw = freq_enhanced_tokens.mean(dim=1)
             fused = torch.cat([spatial_raw, freq_raw], dim=1)
         else:
@@ -228,14 +208,13 @@ class HybridDeepfakeDetector(nn.Module):
 
 def build_model(
     use_fft: bool = True,
-    use_lora: bool = False,
-    lora_rank: int = 8,
     device: Optional[torch.device] = None,
     pretrained: bool = True,
     compile_model: bool = False,
     backbone_name: Optional[str] = None,
     use_checkpointing: bool = False,
-    config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None,
+    **kwargs
 ) -> nn.Module:
     """Factory function to build and optionally compile model."""
     if device is None:
@@ -245,8 +224,6 @@ def build_model(
         backbone_name=backbone_name,
         pretrained=pretrained,
         use_fft_branch=use_fft,
-        use_lora=use_lora,
-        lora_rank=lora_rank,
         use_checkpointing=use_checkpointing,
         config=config
     )
