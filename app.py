@@ -167,9 +167,13 @@ def process_video_frames(
             frame_indices = list(range(total))
         frames_rgb: List[np.ndarray] = []
 
+        # Fast keyframe video ingestion: jump directly to frame positions
         for idx in frame_indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
             ret, frame = cap.read()
+            if not ret or frame is None:
+                # Fallback: if exact seek failed, read current stream frame
+                ret, frame = cap.read()
             if ret and frame is not None:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 frames_rgb.append(rgb)
