@@ -93,3 +93,17 @@ def test_process_video_frames_temperature():
         assert "final_conf" in res
         assert "real_frames" in res
         assert "fake_frames" in res
+
+@pytest.mark.fast
+def test_process_video_corrupted_file(tmp_path):
+    """Verifies that 0-byte, text, and corrupted video uploads return None gracefully without throwing uncaught exceptions."""
+    # Case 1: 0-byte file
+    empty_file = str(tmp_path / "empty.mp4")
+    open(empty_file, "w").close()
+    assert process_video_frames(empty_file) is None
+
+    # Case 2: Corrupted text file renamed as MP4
+    corrupted_file = str(tmp_path / "corrupted.mp4")
+    with open(corrupted_file, "w") as f:
+        f.write("Not a real video file content")
+    assert process_video_frames(corrupted_file) is None

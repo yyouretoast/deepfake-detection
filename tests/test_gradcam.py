@@ -136,3 +136,25 @@ def test_gradcam_overlay_float_image():
     assert isinstance(blended, np.ndarray)
     assert blended.shape == (224, 224, 3)
     assert blended.dtype == np.uint8
+
+def test_gradcam_multithreaded_concurrency(shared_model, dummy_4d_batch):
+    """Verifies that 5 concurrent worker threads generating Grad-CAM heatmaps under lock do not collide or crash."""
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    lock = threading.Lock()
+    
+    def worker_job(worker_id):
+        cam_engine = PyTorchGradCAM(shared_model, target_stream="spatial")
+        with lock:
+            heatmap = cam_engine.generate_heatmap(dummy_4d_batch[:1], target_class=1)
+            cam_engine.remove()
+        return heatmap
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(worker_job, i) for i in range(5)]
+        results = [f.result() for f in futures]
+
+    assert len(results) == 5
+    for hmap in results:
+        assert isinstance(hmap, np.ndarray)
+        assert hmap.ndim == 2
