@@ -7,7 +7,8 @@ from src.dataset.preprocess import DynamicFaceCropper
 def process_video(video_path: str, output_dir: str, max_frames: int, img_size: int) -> int:
     try:
         cropper = DynamicFaceCropper(target_size=img_size, scale_factor=1.30)
-        saved_paths = cropper.extract_faces_from_video(video_path, output_dir, max_frames=max_frames, target_size=img_size)
+        v_prefix = os.path.splitext(os.path.basename(video_path))[0]
+        saved_paths = cropper.extract_faces_from_video(video_path, output_dir, prefix=v_prefix, max_frames=max_frames, target_size=img_size)
         return len(saved_paths)
     except Exception as e:
         print(f"Error processing {video_path}: {e}")

@@ -11,7 +11,7 @@ license: mit
 
 # Deepfake Detection Engine
 
-A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Base spatial representations with centered 2D Real FFT log-magnitude frequency spectrum embeddings.
+A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Base spatial representations with 2-Channel 2D Real FFT frequency spectrum embeddings and OpenCV YuNet primary face detection.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-Accelerated-005CED?style=flat&logo=onnx&logoColor=white)](https://onnxruntime.ai/)

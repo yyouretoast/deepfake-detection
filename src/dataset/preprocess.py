@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
+import urllib.request
 from tqdm import tqdm
 from PIL import Image
 
@@ -14,10 +15,33 @@ try:
 except ImportError:
     HAS_MTCNN = False
 
+YUNET_MODEL_FILENAME = "face_detection_yunet_2023mar.onnx"
+YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+
+def get_yunet_model_path() -> Optional[str]:
+    """Resolves or downloads YuNet ONNX model path with automatic local caching."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    local_path = os.path.join(repo_root, "models", YUNET_MODEL_FILENAME)
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
+        return local_path
+    
+    alt_path = os.path.join("models", YUNET_MODEL_FILENAME)
+    if os.path.exists(alt_path) and os.path.getsize(alt_path) > 1000:
+        return os.path.abspath(alt_path)
+
+    try:
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        urllib.request.urlretrieve(YUNET_URL, local_path)
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
+            return local_path
+    except Exception as e:
+        logging.warning("Failed to download YuNet model file: %s", e)
+    return None
+
 class DynamicFaceCropper:
     """
-    High-performance MTCNN GPU-accelerated dynamic face extractor.
-    Extracts face bounding boxes with 1.30x bounding box scaling factor.
+    High-performance OpenCV YuNet primary dynamic face extractor with MTCNN & Haar Cascade fallbacks.
+    Extracts face bounding boxes with 1.30x bounding box scaling factor and 5-point landmark similarity alignment.
     Supports native 512x512 full-resolution face crop extraction.
     """
     def __init__(
@@ -32,6 +56,24 @@ class DynamicFaceCropper:
         self.margin = margin
         self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        # Initialize Primary Engine: OpenCV YuNet
+        self.yunet = None
+        yunet_path = get_yunet_model_path()
+        if yunet_path is not None and hasattr(cv2, "FaceDetectorYN"):
+            try:
+                self.yunet = cv2.FaceDetectorYN.create(
+                    model=yunet_path,
+                    config="",
+                    input_size=(300, 300),
+                    score_threshold=0.6,
+                    nms_threshold=0.3,
+                    top_k=5000
+                )
+            except Exception as e:
+                logging.warning("Failed to initialize YuNet detector: %s", e)
+                self.yunet = None
+
+        # Fallback Engine 1: MTCNN
         if HAS_MTCNN:
             try:
                 self.detector = MTCNN(
@@ -45,11 +87,44 @@ class DynamicFaceCropper:
         else:
             self.detector = None
 
+        # Fallback Engine 2: Haar Cascade
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         if os.path.exists(cascade_path):
             self.haar_cascade = cv2.CascadeClassifier(cascade_path)
         else:
             self.haar_cascade = None
+
+    def _detect_yunet(self, image_rgb: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Detects faces using OpenCV YuNet (2-5ms per frame on CPU). Returns (boxes, 5-point landmarks)."""
+        if self.yunet is None:
+            return None, None
+        try:
+            h, w, _ = image_rgb.shape
+            self.yunet.setInputSize((w, h))
+            img_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+            _, faces = self.yunet.detect(img_bgr)
+            if faces is None or len(faces) == 0:
+                return None, None
+            
+            boxes = []
+            landmarks_list = []
+            for face in faces:
+                x, y, fw, fh = face[0:4]
+                boxes.append([x, y, x + fw, y + fh])
+                # YuNet 5 landmarks: right_eye, left_eye, nose, right_mouth, left_mouth
+                # Map to MTCNN canonical order: [left_eye, right_eye, nose, left_mouth, right_mouth]
+                r_eye = face[4:6]
+                l_eye = face[6:8]
+                nose = face[8:10]
+                r_mouth = face[10:12]
+                l_mouth = face[12:14]
+                lms = np.array([l_eye, r_eye, nose, l_mouth, r_mouth], dtype=np.float32)
+                landmarks_list.append(lms)
+                
+            return np.array(boxes), np.array(landmarks_list)
+        except Exception as e:
+            logging.warning("YuNet detection exception: %s", e)
+            return None, None
 
     def _detect_cpu_cascade(self, image_rgb: np.ndarray) -> Optional[np.ndarray]:
         """Ultra-fast OpenCV Haar Cascade CPU face detector fallback (100+ FPS)."""
@@ -168,7 +243,7 @@ class DynamicFaceCropper:
         return cv2.resize(crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
 
     def crop_face_dual(self, image_input: Union[str, np.ndarray], target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
-        """Extracts 1.30x scaled face crop from image returning both aligned warped and raw unwarped crops."""
+        """Extracts 1.30x scaled face crop returning both aligned warped and raw unwarped crops."""
         out_size = target_size if target_size is not None else self.target_size
         if isinstance(image_input, str):
             img_bgr = cv2.imread(image_input)
@@ -180,6 +255,12 @@ class DynamicFaceCropper:
         else:
             image_rgb = image_input
 
+        # Primary Engine: YuNet
+        yunet_boxes, yunet_landmarks = self._detect_yunet(image_rgb)
+        if yunet_boxes is not None and len(yunet_boxes) > 0:
+            return self._crop_from_box(image_rgb, yunet_boxes, yunet_landmarks, target_size=out_size)
+
+        # Fallback Engine 1: MTCNN
         if self.detector is not None:
             try:
                 with torch.no_grad():
@@ -195,52 +276,47 @@ class DynamicFaceCropper:
             except Exception:
                 pass
 
+        # Fallback Engine 2: Haar Cascade
         cascade_boxes = self._detect_cpu_cascade(image_rgb)
         if cascade_boxes is not None and len(cascade_boxes) > 0:
             return self._crop_from_box(image_rgb, cascade_boxes, None, target_size=out_size)
 
+        # Final Fallback: Center Crop
         c = self._center_crop(image_rgb, target_size=out_size)
         return c, c
 
     def crop_face(self, image_input: Union[str, np.ndarray], target_size: Optional[int] = None) -> np.ndarray:
-        """Extracts 1.30x scaled face crop from image filepath or RGB numpy array."""
-        aligned, _ = self.crop_face_dual(image_input, target_size=target_size)
-        return aligned
+        """Extracts single 1.30x scaled aligned face crop array."""
+        aligned_crop, _ = self.crop_face_dual(image_input, target_size=target_size)
+        return aligned_crop
 
-    def crop_faces_batched(self, images_rgb: List[np.ndarray], target_size: Optional[int] = None) -> List[np.ndarray]:
-        """Batched face extraction returning one face crop per image."""
+    def crop_faces_batched(
+        self,
+        image_inputs: List[Union[str, np.ndarray, Image.Image]],
+        target_size: Optional[int] = None
+    ) -> List[np.ndarray]:
+        """Batched face crop extraction delegating to crop_face for each input image."""
+        if not image_inputs:
+            return []
+        return [self.crop_face(img, target_size=target_size) for img in image_inputs]
+
+    def extract_faces_from_video(
+        self,
+        video_path: str,
+        output_dir: str,
+        prefix: str = "frame",
+        frames_per_video: int = 15,
+        target_size: Optional[int] = None,
+        max_frames: Optional[int] = None
+    ) -> List[str]:
+        """Extracts face crops from video frames saving as Lossless WebP images."""
+        if max_frames is not None:
+            frames_per_video = max_frames
         out_size = target_size if target_size is not None else self.target_size
-        try:
-            if self.detector is not None:
-                pil_images = [Image.fromarray(img) if isinstance(img, np.ndarray) else img for img in images_rgb]
-                with torch.no_grad():
-                    try:
-                        res = self.detector.detect(pil_images, landmarks=True)
-                    except TypeError:
-                        res = self.detector.detect(pil_images)
-                
-                boxes_list = res[0]
-                landmarks_list = res[2] if len(res) >= 3 else [None] * len(boxes_list)
-                
-                results = []
-                for img, boxes, lms in zip(images_rgb, boxes_list, landmarks_list):
-                    img_np = np.array(img) if not isinstance(img, np.ndarray) else img
-                    aligned, _ = self._crop_from_box(img_np, boxes, lms, target_size=out_size)
-                    results.append(aligned)
-                
-                if len(results) == len(images_rgb):
-                    return results
-
-        except Exception:
-            pass
-            
-        return [self.crop_face(img, target_size=out_size) for img in images_rgb]
-
-    def extract_faces_from_video(self, video_path: str, output_dir: str, max_frames: int = 30, target_size: Optional[int] = None) -> List[str]:
-        """Extracts face crops from video MP4 file into output directory."""
-        out_size = target_size if target_size is not None else self.target_size
+        os.makedirs(output_dir, exist_ok=True)
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
+            logging.warning("Could not open video: %s", video_path)
             return []
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -248,23 +324,31 @@ class DynamicFaceCropper:
             cap.release()
             return []
 
-        frame_indices = np.linspace(0, total_frames - 1, min(max_frames, total_frames), dtype=int)
+        actual_frames = min(frames_per_video, total_frames)
+        step = max(total_frames // actual_frames, 1)
+        target_indices = set(i * step for i in range(actual_frames))
+
         saved_paths = []
-        os.makedirs(output_dir, exist_ok=True)
-        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        frame_idx = 0
+        saved_count = 0
 
-        try:
-            for i, idx in enumerate(frame_indices):
-                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-                ret, frame = cap.read()
-                if not ret or frame is None:
-                    continue
+        while cap.isOpened() and saved_count < actual_frames:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                crop = self.crop_face(rgb, target_size=out_size)
-                out_path = os.path.join(output_dir, f"{video_name}_frame{i:03d}.webp")
-                Image.fromarray(crop).save(out_path, format="WEBP", lossless=True)
-                saved_paths.append(out_path)
-        finally:
-            cap.release()
+            if frame_idx in target_indices:
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                crop_rgb = self.crop_face(rgb_frame, target_size=out_size)
+                out_filename = f"{prefix}_{saved_count:04d}.webp"
+                out_filepath = os.path.join(output_dir, out_filename)
+                
+                # Save as Lossless WebP
+                Image.fromarray(crop_rgb).save(out_filepath, format="WEBP", lossless=True)
+                saved_paths.append(out_filepath)
+                saved_count += 1
+
+            frame_idx += 1
+
+        cap.release()
         return saved_paths
