@@ -39,12 +39,10 @@ def clean_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
             new_k = new_k[7:]
         if new_k.startswith("_orig_mod."):
             new_k = new_k[10:]
-        if new_k == "freq_extractor.conv_net.0.weight" and isinstance(v, torch.Tensor) and v.ndim == 4 and v.shape[1] == 1:
-            v = v.repeat(1, 2, 1, 1) / 2.0
+        if new_k == "freq_extractor.conv_net.0.weight" and isinstance(v, torch.Tensor) and v.ndim == 4 and v.shape[1] != 8:
+            v = v.repeat(1, max(1, 8 // v.shape[1]), 1, 1)[:, :8, :, :] / float(max(1, 8 // v.shape[1]))
         cleaned[new_k] = v
     return cleaned
-
-
 
 @st.cache_resource
 def load_prediction_engine() -> Tuple[torch.nn.Module, Optional[Any], DynamicFaceCropper, bool, float, float]:
@@ -96,7 +94,7 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, Optional[Any], DynamicFac
     pytorch_model.to(DEVICE)
     pytorch_model.eval()
 
-    cropper = DynamicFaceCropper(scale_factor=1.30, target_size=IMG_SIZE, device=DEVICE)
+    cropper = DynamicFaceCropper(scale_factor=1.50, target_size=IMG_SIZE, device=DEVICE)
 
     return pytorch_model, onnx_predictor, cropper, has_weights, opt_threshold, temperature
 

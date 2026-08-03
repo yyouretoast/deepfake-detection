@@ -63,10 +63,13 @@ class TwoPhaseTrainer:
             else:
                 logger.warning("Batch size %d is less than GPU count %d. DataParallel disabled.", batch_size, torch.cuda.device_count())
         
-        # Weighted BCE Loss (pos_weight ~4.0 for real/fake dataset ratio)
-        pos_weight_val = self.config.get("training", {}).get("pos_weight", 4.0)
-        pos_weight = torch.tensor([pos_weight_val], device=self.device)
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        # BCE Loss (default pos_weight 1.0 for clean balanced gradients)
+        pos_weight_val = self.config.get("training", {}).get("pos_weight", 1.0)
+        if abs(pos_weight_val - 1.0) < 1e-5:
+            self.criterion = nn.BCEWithLogitsLoss()
+        else:
+            pos_weight = torch.tensor([pos_weight_val], device=self.device)
+            self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         self.scaler = get_grad_scaler("cuda" if self.device.type == "cuda" else "cpu", enabled=self.use_amp)
 
     def _forward_step(self, batch) -> torch.Tensor:
@@ -110,7 +113,7 @@ class TwoPhaseTrainer:
         # Fusion/frequency layer prefixes — these are feature extractors, not the head
         FUSION_PREFIXES = (
             "freq_extractor", "cross_attn", "spatial_proj",
-            "freq_proj", "temporal_encoder", "attn_out_proj",
+            "freq_proj", "temporal_encoder", "attn_out_proj", "gate_net",
         )
 
         for name, p in unwrapped.named_parameters():
@@ -253,6 +256,7 @@ class TwoPhaseTrainer:
         lr_head = training_cfg.get("lr_head", 1e-4)
         weight_decay = training_cfg.get("weight_decay", 1e-2)
         patience = training_cfg.get("patience", 4)
+        accum_steps = training_cfg.get("gradient_accumulation_steps", 2)
 
         best_val_auc = 0.0
         unwrapped = self.model.module if hasattr(self.model, 'module') else self.model
@@ -270,14 +274,14 @@ class TwoPhaseTrainer:
         head_params = [p for n, p in self.model.named_parameters() if "spatial_backbone" not in n and p.requires_grad]
         optimizer_p1 = torch.optim.AdamW(head_params, lr=lr_p1, weight_decay=weight_decay)
 
-        total_p1_steps = epochs_p1 * max(1, len(self.train_loader))
+        total_p1_steps = (epochs_p1 * max(1, len(self.train_loader))) // accum_steps
         warmup_ratio = training_cfg.get("warmup_ratio", 0.1)
         warmup_steps = max(10, int(total_p1_steps * warmup_ratio))
         scheduler_p1_warmup = torch.optim.lr_scheduler.LinearLR(
             optimizer_p1, start_factor=1e-3, end_factor=1.0, total_iters=warmup_steps
         )
         scheduler_p1_decay = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer_p1, T_max=total_p1_steps - warmup_steps, eta_min=1e-6
+            optimizer_p1, T_max=max(1, total_p1_steps - warmup_steps), eta_min=1e-6
         )
         scheduler_p1 = torch.optim.lr_scheduler.SequentialLR(
             optimizer_p1, schedulers=[scheduler_p1_warmup, scheduler_p1_decay], milestones=[warmup_steps]
@@ -286,8 +290,9 @@ class TwoPhaseTrainer:
         for epoch in range(epochs_p1):
             self.model.train()
             running_loss = 0.0
-            pbar = tqdm(self.train_loader, desc=f"Phase 1 - Epoch {epoch+1}/{epochs_p1} [Train]")
-            for batch in pbar:
+            optimizer_p1.zero_grad()
+            pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), desc=f"Phase 1 - Epoch {epoch+1}/{epochs_p1} [Train]")
+            for step, batch in pbar:
                 if isinstance(batch, (list, tuple)) and len(batch) == 3:
                     imgs, labels, padding_mask = batch
                     imgs, labels = imgs.to(self.device), labels.to(self.device)
@@ -297,27 +302,27 @@ class TwoPhaseTrainer:
                     imgs, labels = imgs.to(self.device), labels.to(self.device)
                     fwd_input = imgs
 
-                optimizer_p1.zero_grad()
                 with get_autocast(device_type, enabled=self.use_amp):
                     logits = self._forward_step(fwd_input)
-                    eps = 0.025
-                    smooth_labels = labels.float() * (1.0 - 2.0 * eps) + eps
                     if getattr(self.criterion, 'pos_weight', None) is not None:
                         self.criterion.pos_weight = self.criterion.pos_weight.to(labels.device)
-                    loss = self.criterion(logits, smooth_labels)
-                
-                scale_before = self.scaler.get_scale()
+                    loss = self.criterion(logits, labels.float()) / float(accum_steps)
+
                 self.scaler.scale(loss).backward()
-                self.scaler.unscale_(optimizer_p1)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                self.scaler.step(optimizer_p1)
-                self.scaler.update()
-                scale_after = self.scaler.get_scale()
 
-                if scale_before <= scale_after:
-                    scheduler_p1.step()
+                if (step + 1) % accum_steps == 0 or (step + 1) == len(self.train_loader):
+                    scale_before = self.scaler.get_scale()
+                    self.scaler.unscale_(optimizer_p1)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    self.scaler.step(optimizer_p1)
+                    self.scaler.update()
+                    scale_after = self.scaler.get_scale()
 
-                running_loss += loss.item()
+                    if scale_before <= scale_after:
+                        scheduler_p1.step()
+                    optimizer_p1.zero_grad()
+
+                running_loss += loss.item() * accum_steps
 
             epoch_loss = running_loss / max(len(self.train_loader), 1)
             epoch_losses.append(epoch_loss)
@@ -341,16 +346,17 @@ class TwoPhaseTrainer:
         param_groups = self._get_llrd_param_groups(lr_backbone=lr_backbone, lr_head=lr_head)
         optimizer_p2 = torch.optim.AdamW(param_groups, weight_decay=weight_decay)
 
-        total_steps = epochs_p2 * max(1, len(self.train_loader))
-        scheduler_p2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_p2, T_max=total_steps, eta_min=1e-6)
+        total_steps = (epochs_p2 * max(1, len(self.train_loader))) // accum_steps
+        scheduler_p2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer_p2, T_max=max(1, total_steps), eta_min=1e-6)
 
         patience_counter = 0
 
         for epoch in range(epochs_p2):
             self.model.train()
             running_loss = 0.0
-            pbar = tqdm(self.train_loader, desc=f"Phase 2 - Epoch {epoch+1}/{epochs_p2} [Train]")
-            for batch in pbar:
+            optimizer_p2.zero_grad()
+            pbar = tqdm(enumerate(self.train_loader), total=len(self.train_loader), desc=f"Phase 2 - Epoch {epoch+1}/{epochs_p2} [Train]")
+            for step, batch in pbar:
                 if isinstance(batch, (list, tuple)) and len(batch) == 3:
                     imgs, labels, padding_mask = batch
                     imgs, labels = imgs.to(self.device), labels.to(self.device)
@@ -360,27 +366,27 @@ class TwoPhaseTrainer:
                     imgs, labels = imgs.to(self.device), labels.to(self.device)
                     fwd_input = imgs
 
-                optimizer_p2.zero_grad()
                 with get_autocast(device_type, enabled=self.use_amp):
                     logits = self._forward_step(fwd_input)
-                    eps = 0.025
-                    smooth_labels = labels.float() * (1.0 - 2.0 * eps) + eps
                     if getattr(self.criterion, 'pos_weight', None) is not None:
                         self.criterion.pos_weight = self.criterion.pos_weight.to(labels.device)
-                    loss = self.criterion(logits, smooth_labels)
+                    loss = self.criterion(logits, labels.float()) / float(accum_steps)
 
-                scale_before = self.scaler.get_scale()
                 self.scaler.scale(loss).backward()
-                self.scaler.unscale_(optimizer_p2)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-                self.scaler.step(optimizer_p2)
-                self.scaler.update()
-                scale_after = self.scaler.get_scale()
 
-                if scale_before <= scale_after:
-                    scheduler_p2.step()
+                if (step + 1) % accum_steps == 0 or (step + 1) == len(self.train_loader):
+                    scale_before = self.scaler.get_scale()
+                    self.scaler.unscale_(optimizer_p2)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    self.scaler.step(optimizer_p2)
+                    self.scaler.update()
+                    scale_after = self.scaler.get_scale()
 
-                running_loss += loss.item()
+                    if scale_before <= scale_after:
+                        scheduler_p2.step()
+                    optimizer_p2.zero_grad()
+
+                running_loss += loss.item() * accum_steps
 
             epoch_loss = running_loss / max(len(self.train_loader), 1)
             epoch_losses.append(epoch_loss)

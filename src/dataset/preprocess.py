@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import urllib.request
+import threading
 from tqdm import tqdm
 from PIL import Image
 
@@ -38,16 +39,20 @@ def get_yunet_model_path() -> Optional[str]:
         logging.warning("Failed to download YuNet model file: %s", e)
     return None
 
+# Global path caching for instant thread-local YuNet instantiation
+YUNET_CACHED_MODEL_PATH = get_yunet_model_path()
+
 class DynamicFaceCropper:
     """
     High-performance OpenCV YuNet primary dynamic face extractor with MTCNN & Haar Cascade fallbacks.
-    Extracts face bounding boxes with 1.30x bounding box scaling factor and 5-point landmark similarity alignment.
+    Extracts face bounding boxes with 1.50x bounding box scaling factor and 5-point landmark similarity alignment.
+    Uses thread-local storage (threading.local()) for zero lock contention and 100% thread safety.
     Supports native 512x512 full-resolution face crop extraction.
     """
     def __init__(
         self,
         target_size: int = 512,
-        scale_factor: float = 1.30,
+        scale_factor: float = 1.50,
         device: Optional[torch.device] = None,
         margin: int = 20
     ) -> None:
@@ -55,23 +60,7 @@ class DynamicFaceCropper:
         self.scale_factor = scale_factor
         self.margin = margin
         self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        # Initialize Primary Engine: OpenCV YuNet
-        self.yunet = None
-        yunet_path = get_yunet_model_path()
-        if yunet_path is not None and hasattr(cv2, "FaceDetectorYN"):
-            try:
-                self.yunet = cv2.FaceDetectorYN.create(
-                    model=yunet_path,
-                    config="",
-                    input_size=(300, 300),
-                    score_threshold=0.6,
-                    nms_threshold=0.3,
-                    top_k=5000
-                )
-            except Exception as e:
-                logging.warning("Failed to initialize YuNet detector: %s", e)
-                self.yunet = None
+        self._local = threading.local()
 
         # Fallback Engine 1: MTCNN
         if HAS_MTCNN:
@@ -94,15 +83,36 @@ class DynamicFaceCropper:
         else:
             self.haar_cascade = None
 
+    def _get_thread_yunet(self):
+        """Thread-isolated YuNet detector instantiation to prevent C++ state race conditions."""
+        if not hasattr(self._local, "yunet"):
+            if YUNET_CACHED_MODEL_PATH is not None and hasattr(cv2, "FaceDetectorYN"):
+                try:
+                    self._local.yunet = cv2.FaceDetectorYN.create(
+                        model=YUNET_CACHED_MODEL_PATH,
+                        config="",
+                        input_size=(300, 300),
+                        score_threshold=0.6,
+                        nms_threshold=0.3,
+                        top_k=5000
+                    )
+                except Exception as e:
+                    logging.warning("Failed to initialize thread-local YuNet detector: %s", e)
+                    self._local.yunet = None
+            else:
+                self._local.yunet = None
+        return self._local.yunet
+
     def _detect_yunet(self, image_rgb: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-        """Detects faces using OpenCV YuNet (2-5ms per frame on CPU). Returns (boxes, 5-point landmarks)."""
-        if self.yunet is None:
+        """Detects faces using thread-isolated OpenCV YuNet (2-5ms per frame on CPU). Returns (boxes, 5-point landmarks)."""
+        yunet_engine = self._get_thread_yunet()
+        if yunet_engine is None:
             return None, None
         try:
             h, w, _ = image_rgb.shape
-            self.yunet.setInputSize((w, h))
+            yunet_engine.setInputSize((w, h))
             img_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
-            _, faces = self.yunet.detect(img_bgr)
+            _, faces = yunet_engine.detect(img_bgr)
             if faces is None or len(faces) == 0:
                 return None, None
             
@@ -111,8 +121,6 @@ class DynamicFaceCropper:
             for face in faces:
                 x, y, fw, fh = face[0:4]
                 boxes.append([x, y, x + fw, y + fh])
-                # YuNet 5 landmarks: right_eye, left_eye, nose, right_mouth, left_mouth
-                # Map to MTCNN canonical order: [left_eye, right_eye, nose, left_mouth, right_mouth]
                 r_eye = face[4:6]
                 l_eye = face[6:8]
                 nose = face[8:10]
@@ -144,8 +152,25 @@ class DynamicFaceCropper:
         except Exception:
             return None
 
+    def _apply_cosine_edge_taper(self, crop: np.ndarray, border_ratio: float = 0.05) -> np.ndarray:
+        """Applies 2D Cosine window edge tapering to smooth padded border step-discontinuities."""
+        h, w, _ = crop.shape
+        taper_h = max(1, int(h * border_ratio))
+        taper_w = max(1, int(w * border_ratio))
+        
+        win_y = np.ones(h, dtype=np.float32)
+        win_y[:taper_h] = 0.5 * (1.0 - np.cos(np.linspace(0, np.pi, taper_h)))
+        win_y[-taper_h:] = 0.5 * (1.0 - np.cos(np.linspace(np.pi, 0, taper_h)))
+
+        win_x = np.ones(w, dtype=np.float32)
+        win_x[:taper_w] = 0.5 * (1.0 - np.cos(np.linspace(0, np.pi, taper_w)))
+        win_x[-taper_w:] = 0.5 * (1.0 - np.cos(np.linspace(np.pi, 0, taper_w)))
+
+        window_2d = np.outer(win_y, win_x)[:, :, np.newaxis]
+        return np.clip(crop.astype(np.float32) * window_2d, 0, 255).astype(np.uint8)
+
     def _crop_single_box(self, image_rgb: np.ndarray, box: np.ndarray, landmarks: Optional[np.ndarray] = None, target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
-        """Crops a face box with 1.30x scaling, slicing image bounds before applying reflection padding."""
+        """Crops a face box with 1.50x scaling, slicing image bounds with BORDER_REPLICATE and Cosine edge tapering."""
         out_size = target_size if target_size is not None else self.target_size
         h_img, w_img, _ = image_rgb.shape
         x1, y1, x2, y2 = box[:4]
@@ -171,7 +196,7 @@ class DynamicFaceCropper:
             padded_img = cv2.copyMakeBorder(
                 image_rgb,
                 pad_top, pad_bottom, pad_left, pad_right,
-                cv2.BORDER_REFLECT
+                cv2.BORDER_REPLICATE
             )
         else:
             padded_img = image_rgb
@@ -192,6 +217,9 @@ class DynamicFaceCropper:
             fallback = self._center_crop(image_rgb, target_size=out_size)
             return fallback, fallback
 
+        if pad_left > 0 or pad_top > 0 or pad_right > 0 or pad_bottom > 0:
+            raw_crop = self._apply_cosine_edge_taper(raw_crop)
+
         raw_unwarped_crop = cv2.resize(raw_crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
 
         aligned_warped_crop = raw_unwarped_crop
@@ -210,11 +238,12 @@ class DynamicFaceCropper:
                 if M is not None:
                     det = abs(M[0, 0] * M[1, 1] - M[0, 1] * M[1, 0])
                     if 0.2 < det < 5.0:
-                        aligned_warped_crop = cv2.warpAffine(image_rgb, M, (out_size, out_size), flags=cv2.INTER_AREA, borderMode=cv2.BORDER_REFLECT)
+                        aligned_warped_crop = cv2.warpAffine(image_rgb, M, (out_size, out_size), flags=cv2.INTER_AREA, borderMode=cv2.BORDER_REPLICATE)
             except Exception:
                 pass
 
         return aligned_warped_crop, raw_unwarped_crop
+
 
     def _crop_from_box(self, image_rgb: np.ndarray, boxes, landmarks=None, target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
         """Selects the largest detected bounding box and delegates to _crop_single_box."""

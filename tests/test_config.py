@@ -13,9 +13,9 @@ def test_load_config_default():
 
 def test_config_key_values():
     cfg = load_config("config/default.yaml")
-    assert cfg["preprocessing"]["img_size"] == 256
-    assert cfg["preprocessing"]["padding_scale"] == 1.30
-    assert cfg["model"]["backbone"] == "convnext_base"
+    assert cfg["preprocessing"]["img_size"] == 512
+    assert cfg["preprocessing"]["padding_scale"] == 1.50
+    assert cfg["model"]["backbone"] == "convnext_small"
     assert cfg["model"]["use_fft_branch"] is True
 
 def test_model_instantiation_from_config():

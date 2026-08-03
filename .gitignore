@@ -20,6 +20,7 @@ dist/
 *.bin
 *.h5
 models/
+checkpoint_state/
 
 # Heavy Binary Data & Datasets
 *.npz

@@ -11,11 +11,11 @@ license: mit
 
 # Deepfake Detection Engine
 
-A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Base spatial representations with 2-Channel 2D Real FFT frequency spectrum embeddings and OpenCV YuNet primary face detection.
+A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small spatial representations with Steganographic Rich Model (SRM) + Bayar-Stamm 2D Real FFT frequency spectrum embeddings and thread-safe OpenCV YuNet face detection.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-Accelerated-005CED?style=flat&logo=onnx&logoColor=white)](https://onnxruntime.ai/)
-[![pytest](https://img.shields.io/badge/pytest-51%2F51%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
+[![pytest](https://img.shields.io/badge/pytest-Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Live Demo**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
@@ -35,10 +35,6 @@ pip install -r requirements.txt
 ### 2. Run Tests (< 5s Fast Feedback Loop)
 
 ```bash
-# Fast Unit Test Suite (< 5 seconds)
-pytest -m fast -v
-
-# Full Integration Suite (51/51 Passing)
 pytest tests/ -v
 ```
 
@@ -48,14 +44,10 @@ pytest tests/ -v
 streamlit run app.py
 ```
 
-### 4. Run Training & Benchmarks
+### 4. Launch Multi-GPU Training (Kaggle / Cloud)
 
 ```bash
-# CLI Fine-Tuning
-python train.py --epochs_phase1 3 --epochs_phase2 15
-
-# Fast Benchmark (500 samples)
-python benchmark.py --mode fast
+accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_dual_stream_ddp.py
 ```
 
 ---
@@ -63,64 +55,54 @@ python benchmark.py --mode fast
 ## System Architecture
 
 ```
-[ Input Video ] ──► [ GPU Batched MTCNN ] ──► [ 256x256 Face Crops ]
-                                                      │
+[ Input Video ] ──► [ Thread-Local YuNet ] ──► [ 512x512 Face Crops (1.50x Scale Margin) ]
+                                                       │
                        ┌──────────────────────────────┴──────────────────────────────┐
                        ▼                                                             ▼
-         [ Spatial Stream (ConvNeXt-Base) ]                       [ Frequency Stream (2D Real FFT) ]
-         • 256x256 RGB Image Input                                • 2D Real FFT (fftshift centered)
-         • 1024-d Feature Embeddings                               • 128-d Frequency Spectrum Embeddings
+         [ Spatial Stream (ConvNeXt-Small) ]                     [ Frequency Stream (SRM + Bayar + 2D FFT) ]
+         • 256x256 RGB Image Input                                • 3 SRM Filters + 1 Bayar-Stamm Conv
+         • 512-d Feature Embeddings                               • 20-Channel 2D FFT (10 Mag + 10 Phase)
+                       │                                          • 512-d Frequency Embeddings
                        │                                                             │
                        └──────────────────────────────┬──────────────────────────────┘
                                                       ▼
-                                       [ 4-Head Cross-Attention Fusion ]
-                                       • Spatial Query (128-d) ◄► Freq Key/Value (128-d)
-                                       • Learnable Residual Parameter γ + 1152-d Fusion
+                                       [ Equalized Residual Gated Fusion ]
+                                       • Gating Vector g = Sigmoid(Linear(Spatial || Freq))
+                                       • Fused Feature f_fused = [f_spatial_512 || f_freq_512 * g]
+                                       • 1024-d Equalized Feature Vector
                                                       │
                                                       ▼
                                            [ Binary Classifier Head ]
-                                           • LayerNorm(256) + Dropout(0.3)
-                                           • Log-Temperature Calibrated Probabilities σ(z / T*)
+                                           • Linear(1024, 256) + Dropout(0.3)
+                                           • Binary Logit Output
 ```
 
 ### Formulations
 
-**2D Real FFT Spectrum Extraction**:
+**20-Channel Dual-Domain Spectral Extraction**:
 
 $$
-\mathcal{F}_{\text{norm}} = \frac{\ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{gray}})| + 10^{-5} \right) - \mu}{\sigma + 10^{-6}}
+\mathcal{F}_{\text{norm}} = \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}})| + 1 \right)
 $$
 
-**Cross-Attention Residual Fusion**:
+**Residual Gated Fusion**:
 
 $$
-\mathbf{f}_{\text{enhanced}} = \mathbf{f}_{\text{freq}} + \gamma \times \text{Attention}(Q_{\text{spatial}}, K_{\text{freq}}, V_{\text{freq}})
+g = \sigma\Big(\text{Linear}\big([\mathbf{f}_{\text{spatial}} \;\|\; \mathbf{f}_{\text{freq}}]\big)\Big) \in \mathbb{R}^{512}
 $$
 
-Where $\gamma = \text{nn.Parameter}(\text{torch.tensor}(0.1))$ is a learnable scalar controlling frequency feature injection.
+$$
+\mathbf{f}_{\text{fused}} = \Big[ \mathbf{f}_{\text{spatial}} \;\|\; \mathbf{f}_{\text{freq}} \odot g \Big] \in \mathbb{R}^{1024}
+$$
 
 ---
 
 ## Core Engineering Features
 
 - **Zero Identity Data Leakage**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs across train, val, and test splits.
-- **10-Group LLRD Optimization**: Splits 5 LLRD tiers into 10 parameter groups (decayed 2D/4D weights `1e-2` vs non-decayed 1D biases/LayerNorms/$\gamma$ `0.0`).
-- **Log-Temperature Calibration**: Calibrates raw output logits using LBFGS-optimized log-temperature $\alpha = \ln(T)$, ensuring $T = \exp(\alpha) \ge 0.05$.
-- **Logit-Space TTA**: Evaluates original and horizontally flipped inputs ($\sigma((z + z_{\text{flip}})/2)$).
-- **Dual-Stream Grad-CAM**: Generates signed target class saliency maps for spatial (`target_stream="spatial"`) or 2D FFT frequency (`target_stream="frequency"`) channels with thread-safe `GRADCAM_LOCK` guards.
-
----
-
-## Benchmark Performance
-
-Evaluated under **Stratified GroupKFold by Video-ID** (zero identity leakage):
-
-| Model / Architecture | Input Resolution | AUC | Accuracy | Reference |
-| :--- | :---: | :---: | :---: | :--- |
-| Standard CNNs (ResNet-50 / VGG16) | $224 \times 224$ | `0.810 - 0.850` | `75.0% - 81.0%` | Baseline spatial frame classifiers |
-| Spatial-Only ConvNeXt-Base | $256 \times 256$ | `0.932` | `87.5%` | Spatial stream only (no FFT branch) |
-| Xception Baseline | $299 \times 299$ | `0.950` | `89.3%` | *Rossler et al., ICCV 2019* (FF++ Paper) |
-| **Dual-Stream ConvNeXt + 2D FFT** | $256 \times 256$ | **`0.9377`** | `87.4%` | **Active Baseline** |
+- **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals before FFT extraction.
+- **Multi-GPU DDP Engine**: Hugging Face `Accelerate` DistributedDataParallel with `SyncBatchNorm` and OpenCV C++ binary loader.
+- **Per-Sample Loss Masking**: Excludes corrupt or invalid image frames from backpropagation gradient updates.
 
 ---
 
@@ -128,30 +110,21 @@ Evaluated under **Stratified GroupKFold by Video-ID** (zero identity leakage):
 
 ```
 deepfake-detection/
-├── app.py                     # Streamlit web UI with T* calibration & Grad-CAM
-├── benchmark.py               # Benchmark runner (--mode fast, --mode paper, 5-fold LOTO)
-├── train.py                   # Two-phase fine-tuning CLI entrypoint
-├── pytest.ini                 # PyTest configuration with fast/slow test markers
+├── app.py                         # Streamlit web interface
 ├── config/
-│   └── default.yaml           # Configuration parameters
+│   └── default.yaml               # Configuration parameters (img_size: 512, scale_factor: 1.50)
 ├── src/
-│   ├── config.py              # Configuration parser
+│   ├── config.py                  # Configuration parser
 │   ├── dataset/
-│   │   ├── loader.py          # Identity-safe graph splitter & loader
-│   │   └── preprocess.py      # DynamicFaceCropper & 5-point similarity alignment
-│   ├── models/
-│   │   ├── hybrid_detector.py # Dual-Stream ConvNeXt + 2D FFT architecture
-│   │   ├── temporal.py        # 5D Temporal Sequence Transformer Encoder
-│   │   └── onnx_exporter.py   # PyTorch to ONNX exporter
-│   ├── training/
-│   │   ├── trainer.py         # TwoPhaseTrainer & 10-group LLRD setup
-│   │   └── evaluator.py       # Crash-proof EER, adaptive ECE & temperature scaling
-│   └── explainability/
-│       └── gradcam.py         # PyTorchGradCAM heatmap generator & overlay
-├── tests/                     # 51/51 passing unit & integration tests
-├── scripts/                   # Ablation, LOTO, cross-dataset & robustness scripts
-├── deepfake_detection_v2_pytorch.ipynb # GPU Training Notebook
-├── Dockerfile                 # Production Docker container
+│   │   ├── loader.py              # Identity-safe graph splitter & loader
+│   │   └── preprocess.py          # DynamicFaceCropper & 5-point similarity alignment
+│   └── models/
+│       └── hybrid_detector.py     # ConvNeXt-Small + SRM/Bayar 2D FFT architecture
+├── scripts/                       # Production training, face cropping, and ONNX export
+│   ├── extract_face_crops.py      # Thread-pool multi-threaded face cropper
+│   ├── train_dual_stream_ddp.py   # Multi-GPU DDP training pipeline
+│   └── export_onnx.py             # ONNX FP16/UINT8 exporter
+├── tests/                         # PyTest unit test suite
 └── README.md
 ```
 
