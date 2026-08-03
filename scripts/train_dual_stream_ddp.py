@@ -29,8 +29,8 @@ IMG_SIZE = 256
 BATCH_SIZE = 16
 NUM_EPOCHS = 5
 T_MAX_TOTAL = 15
-LEARNING_RATE_BACKBONE = 1e-5
-LEARNING_RATE_HEAD = 1e-4
+LEARNING_RATE_BACKBONE = 1e-4
+LEARNING_RATE_HEAD = 1e-3
 CHECKPOINT_STATE_DIR = '/kaggle/working/checkpoint_state'
 BEST_MODEL_WEIGHTS_PATH = '/kaggle/working/dual_stream_best.pth'
 
@@ -377,7 +377,7 @@ def main():
             if total_val_failures > 0:
                 logging.warning(f"Epoch {epoch+1} Val Read Failures: {total_val_failures}")
 
-            current_lr_head = optimizer.param_groups[0]['lr']
+            current_lr_head = optimizer.param_groups[2]['lr']
             logging.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] - Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val AUC: {val_auc:.4f} | Head LR: {current_lr_head:.6f}")
 
             if val_auc > best_val_auc:
