@@ -285,8 +285,6 @@ def main():
     )
 
     model = DualStreamDetector()
-    if torch.cuda.device_count() > 1:
-        model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
     criterion = nn.BCEWithLogitsLoss()
 
