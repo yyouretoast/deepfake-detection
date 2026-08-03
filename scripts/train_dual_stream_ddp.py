@@ -110,7 +110,11 @@ class DualStreamDetector(nn.Module):
         convnext = models.convnext_small(weights=models.ConvNeXt_Small_Weights.DEFAULT)
         self.spatial_backbone = convnext.features
         self.spatial_pool = nn.AdaptiveAvgPool2d(1)
-        self.spatial_fc = nn.Linear(768, 512)
+        self.spatial_fc = nn.Sequential(
+            nn.Linear(768, 512),
+            nn.LayerNorm(512),
+            nn.ReLU()
+        )
 
         self.imagenet_norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
@@ -126,10 +130,15 @@ class DualStreamDetector(nn.Module):
             nn.ReLU(),
             nn.AdaptiveAvgPool2d(1)
         )
-        self.freq_fc = nn.Linear(128, 512)
+        self.freq_fc = nn.Sequential(
+            nn.Linear(128, 512),
+            nn.LayerNorm(512),
+            nn.ReLU()
+        )
         self.gate_fc = nn.Linear(1024, 512)
         self.classifier = nn.Sequential(
             nn.Linear(1024, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(256, 1)
@@ -138,14 +147,14 @@ class DualStreamDetector(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_spatial = self.imagenet_norm(x)
         f_s = self.spatial_pool(self.spatial_backbone(x_spatial)).flatten(1)
-        f_s = F.relu(self.spatial_fc(f_s))
+        f_s = self.spatial_fc(f_s)
 
         srm_out = self.srm(x)
         bayar_out = self.bayar(x)
         noise_combined = torch.cat([srm_out, bayar_out], dim=1)
         freq_maps = self.fft(noise_combined)
         f_f = self.freq_conv(freq_maps).flatten(1)
-        f_f = F.relu(self.freq_fc(f_f))
+        f_f = self.freq_fc(f_f)
 
         concat_feat = torch.cat([f_s, f_f], dim=1)
         gate = torch.sigmoid(self.gate_fc(concat_feat))
@@ -240,7 +249,7 @@ def get_differential_param_groups(model):
 
 
 def main():
-    accelerator = Accelerator(mixed_precision='no')
+    accelerator = Accelerator(mixed_precision='fp16')
     data_root = find_dataset_root()
 
     if accelerator.is_main_process:
@@ -325,9 +334,10 @@ def main():
             failed_reads_tensor += (1.0 - valid_flags).sum()
             optimizer.zero_grad(set_to_none=True)
 
-            outputs = model(images)
-            loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
-            loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+            with accelerator.autocast():
+                outputs = model(images)
+                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
+                loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
 
             accelerator.backward(loss)
             accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
