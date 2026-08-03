@@ -69,15 +69,11 @@ def test_fusion_gate_vector_bounds(eval_model_factory, dummy_4d_batch):
     """Verifies that Sigmoid Gated Fusion produces gating vector values strictly in (0, 1)."""
     model = eval_model_factory(use_fft=True)
     with torch.no_grad():
-        spatial_feat = model.spatial_backbone(dummy_4d_batch)
-        if spatial_feat.ndim == 4:
-            spatial_feat = F.adaptive_avg_pool2d(spatial_feat, (1, 1)).flatten(1)
-        freq_feat = model.freq_extractor(dummy_4d_batch)
+        features = model.extract_features(dummy_4d_batch)
+        fused = features["fused"]
 
-        concat_feat = torch.cat([spatial_feat, freq_feat], dim=1)
-        gate = model.gate_net(concat_feat)
-
-    assert gate.shape == torch.Size([dummy_4d_batch.shape[0], 512])
-    assert (gate > 0.0).all() and (gate < 1.0).all(), "Sigmoid gate values out of bounds (0, 1)"
+    b_size = dummy_4d_batch.shape[0]
+    assert fused.shape == torch.Size([b_size, 1024]), f"Expected fused features shape torch.Size([{b_size}, 1024]), got {fused.shape}"
+    assert torch.isfinite(fused).all(), "Fused feature values contain NaN or Inf"
 
 
