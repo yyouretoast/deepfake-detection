@@ -27,6 +27,7 @@ from torchvision import transforms, models
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from accelerate import Accelerator
+from src.models.hybrid_detector import HybridDeepfakeDetector
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 IMG_SIZE = 256
