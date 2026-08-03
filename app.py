@@ -69,7 +69,7 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     )
 
     if state_dict is not None:
-        pytorch_model.load_state_dict(state_dict, strict=False)
+        pytorch_model.load_state_dict(state_dict, strict=True)
 
     pytorch_model.to(DEVICE)
     pytorch_model.eval()

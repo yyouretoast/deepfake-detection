@@ -17,152 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, models
-import numpy as np
-import cv2
-from tqdm import tqdm
-from sklearn.metrics import roc_auc_score
-from accelerate import Accelerator
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-IMG_SIZE = 256
-BATCH_SIZE = 16
-NUM_EPOCHS = 5
-T_MAX_TOTAL = 15
-LEARNING_RATE_BACKBONE = 1e-4
-LEARNING_RATE_HEAD = 1e-3
-CHECKPOINT_STATE_DIR = '/kaggle/working/checkpoint_state'
-BEST_MODEL_WEIGHTS_PATH = '/kaggle/working/dual_stream_best.pth'
-
-
-def seed_everything(seed=42):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-seed_everything(42)
-
-
-class SRMConv2d(nn.Module):
-    def __init__(self):
-        super().__init__()
-        srm1 = np.array([[0, 0, 0, 0, 0], [0, -1, 2, -1, 0], [0, 2, -4, 2, 0], [0, -1, 2, -1, 0], [0, 0, 0, 0, 0]], dtype=np.float32) / 4.0
-        srm2 = np.array([[-1, 2, -2, 2, -1], [2, -6, 8, -6, 2], [-2, 8, -12, 8, -2], [2, -6, 8, -6, 2], [-1, 2, -2, 2, -1]], dtype=np.float32) / 12.0
-        srm3 = np.array([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 1, -2, 1, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], dtype=np.float32) / 2.0
-        filters = np.stack([srm1, srm2, srm3], axis=0)[:, np.newaxis, :, :]
-        filters = np.tile(filters, (3, 1, 1, 1))
-        self.register_buffer("weights", torch.from_numpy(filters))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        w = self.weights.to(dtype=x.dtype, device=x.device)
-        return F.conv2d(x, w, stride=1, padding=2, groups=3)
-
-
-class BayarConv2d(nn.Module):
-    def __init__(self, in_channels: int = 3, out_channels: int = 1):
-        super().__init__()
-        self.kernel = nn.Parameter(torch.randn(out_channels, in_channels, 5, 5))
-
-    def _get_constrained_kernel(self) -> torch.Tensor:
-        w = self.kernel
-        mask = torch.ones_like(w)
-        mask[:, :, 2, 2] = 0.0
-        w_masked = w * mask
-        sum_w = w_masked.sum(dim=(2, 3), keepdim=True).clamp(min=1e-5)
-        w_norm = w_masked / sum_w
-        center_mask = torch.zeros_like(w)
-        center_mask[:, :, 2, 2] = -1.0
-        return w_norm + center_mask
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.conv2d(x, self._get_constrained_kernel(), stride=1, padding=2)
-
-
-class RealFFT2DModule(nn.Module):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        device_type = x.device.type if x.is_cuda else 'cpu'
-        with torch.amp.autocast(device_type=device_type, enabled=False):
-            x_fp32 = x.float()
-            fft = torch.fft.rfft2(x_fp32, norm='ortho')
-            mag = torch.log1p(torch.abs(fft))
-            phase = torch.clamp(torch.angle(fft) / torch.pi, -1.0, 1.0)
-            mag = torch.nan_to_num(mag, nan=0.0, posinf=1.0, neginf=-1.0)
-            phase = torch.nan_to_num(phase, nan=0.0, posinf=1.0, neginf=-1.0)
-            mag_resized = F.interpolate(mag, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
-            phase_resized = F.interpolate(phase, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
-            out_fp32 = torch.cat([mag_resized, phase_resized], dim=1)
-        return out_fp32.to(dtype=x.dtype)
-
-
-class DualStreamDetector(nn.Module):
-    def __init__(self):
-        super().__init__()
-        convnext = models.convnext_small(weights=models.ConvNeXt_Small_Weights.DEFAULT)
-        self.spatial_backbone = convnext.features
-        self.spatial_pool = nn.AdaptiveAvgPool2d(1)
-        self.spatial_fc = nn.Sequential(
-            nn.Linear(768, 512),
-            nn.LayerNorm(512),
-            nn.ReLU()
-        )
-
-        self.imagenet_norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-
-        self.srm = SRMConv2d()
-        self.bayar = BayarConv2d(in_channels=3, out_channels=1)
-        self.fft = RealFFT2DModule()
-        self.freq_conv = nn.Sequential(
-            nn.Conv2d(20, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d(1)
-        )
-        self.freq_fc = nn.Sequential(
-            nn.Linear(128, 512),
-            nn.LayerNorm(512),
-            nn.ReLU()
-        )
-        self.gate_fc = nn.Linear(1024, 512)
-        self.classifier = nn.Sequential(
-            nn.Linear(1024, 256),
-            nn.LayerNorm(256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 1)
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_spatial = self.imagenet_norm(x).to(dtype=x.dtype)
-        f_s = self.spatial_pool(self.spatial_backbone(x_spatial)).flatten(1)
-        f_s = self.spatial_fc(f_s)
-
-        srm_out = self.srm(x)
-        bayar_out = self.bayar(x)
-        noise_combined = torch.cat([srm_out, bayar_out], dim=1)
-        freq_maps = self.fft(noise_combined)
-        f_f = self.freq_conv(freq_maps).flatten(1)
-        f_f = self.freq_fc(f_f)
-
-        concat_feat = torch.cat([f_s, f_f], dim=1)
-        gate = torch.sigmoid(self.gate_fc(concat_feat))
-        gated_freq = f_f * gate
-        fused = torch.cat([f_s, gated_freq], dim=1)
-        return self.classifier(fused)
+from src.models.hybrid_detector import HybridDeepfakeDetector
 
 
 class KaggleFastDataset(Dataset):
@@ -284,10 +139,16 @@ def main():
         worker_init_fn=seed_worker, generator=g
     )
 
-    model = DualStreamDetector()
+    num_fake = sum(1 for s in train_samples if s[1] == 1)
+    num_real = len(train_samples) - num_fake
+    pos_weight_val = num_real / max(1, num_fake)
 
-    criterion = nn.BCEWithLogitsLoss()
+    if accelerator.is_main_process:
+        logging.info(f"Class Distribution — Real: {num_real}, Fake: {num_fake} | Calculated pos_weight: {pos_weight_val:.4f}")
 
+    pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
+
+    model = HybridDeepfakeDetector()
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_MAX_TOTAL, eta_min=1e-6)
 
@@ -329,7 +190,7 @@ def main():
 
             with accelerator.autocast():
                 outputs = model(images)
-                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
+                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, pos_weight=pos_weight_tensor, reduction='none')
                 loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
 
             accelerator.backward(loss)
@@ -356,7 +217,7 @@ def main():
                 val_failures_tensor += (1.0 - valid_flags).sum()
                 
                 outputs = model(images)
-                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
+                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, pos_weight=pos_weight_tensor, reduction='none')
                 loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
                 val_loss_tensor += loss.detach() * images.size(0)
 

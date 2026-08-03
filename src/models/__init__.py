@@ -1,7 +1,9 @@
-from src.models.hybrid_detector import HybridDeepfakeDetector, FFTFrequencyExtractor, build_model
+from src.models.hybrid_detector import HybridDeepfakeDetector, SRMConv2d, BayarConv2d, RealFFT2DModule, build_model
 
 __all__ = [
     "HybridDeepfakeDetector",
-    "FFTFrequencyExtractor",
+    "SRMConv2d",
+    "BayarConv2d",
+    "RealFFT2DModule",
     "build_model"
 ]

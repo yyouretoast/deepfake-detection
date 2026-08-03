@@ -14,7 +14,7 @@ def test_loss_masking_zero_gradient_for_corrupt_samples(eval_model_factory):
     # Sample 0 is valid (1.0), Sample 1 is corrupt/invalid (0.0)
     valid_flags = torch.tensor([1.0, 0.0])
 
-    outputs = model(images)
+    outputs = model(images).squeeze(1)
     loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
     
     loss_sample0 = loss_unreduced[0] * valid_flags[0]
@@ -29,7 +29,7 @@ def test_loss_masking_zero_gradient_for_corrupt_samples(eval_model_factory):
 
     grad_masked = [p.grad.clone() for p in model.parameters() if p.requires_grad and p.grad is not None]
 
-    outputs_single = model(images[:1])
+    outputs_single = model(images[:1]).squeeze(1)
     loss_single = F.binary_cross_entropy_with_logits(outputs_single, labels[:1])
     model.zero_grad()
     loss_single.backward()
@@ -48,7 +48,7 @@ def test_loss_masking_amp_autocast_precision(eval_model_factory):
 
     device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
     with torch.amp.autocast(device_type):
-        outputs = model(images)
+        outputs = model(images).squeeze(1)
         loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
         loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
 
