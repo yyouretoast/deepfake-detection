@@ -57,3 +57,27 @@ def test_legacy_1channel_weight_adapter(eval_model_factory):
     model.load_state_dict(state)
     assert model.freq_extractor.conv_net[0].weight.shape == torch.Size([32, 8, 3, 3])
 
+def test_corrupt_zero_input_nan_safety(eval_model_factory):
+    """Verifies that all-zero corrupt image tensors return finite logits without NaN or Inf values."""
+    model = eval_model_factory(use_fft=True)
+    zero_batch = torch.zeros(2, 3, 256, 256)
+    
+    logits = model(zero_batch)
+    assert torch.isfinite(logits).all(), "Logits contain NaN or Inf values under all-zero corrupt input"
+
+def test_fusion_gate_vector_bounds(eval_model_factory, dummy_4d_batch):
+    """Verifies that Sigmoid Gated Fusion produces gating vector values strictly in (0, 1)."""
+    model = eval_model_factory(use_fft=True)
+    with torch.no_grad():
+        spatial_feat = model.spatial_backbone(dummy_4d_batch)
+        if spatial_feat.ndim == 4:
+            spatial_feat = F.adaptive_avg_pool2d(spatial_feat, (1, 1)).flatten(1)
+        freq_feat = model.freq_extractor(dummy_4d_batch)
+
+        concat_feat = torch.cat([spatial_feat, freq_feat], dim=1)
+        gate = model.gate_net(concat_feat)
+
+    assert gate.shape == torch.Size([dummy_4d_batch.shape[0], 512])
+    assert (gate > 0.0).all() and (gate < 1.0).all(), "Sigmoid gate values out of bounds (0, 1)"
+
+

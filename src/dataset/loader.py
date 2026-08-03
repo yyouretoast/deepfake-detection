@@ -44,8 +44,9 @@ def extract_identities(filename: str, metadata_map: Optional[Dict[str, Tuple[str
     if metadata_map and filename in metadata_map:
         return metadata_map[filename]
         
-    basename = os.path.basename(filename)
-    clean_base = re.sub(r"_(?:f|frame)\d+", "", basename, flags=re.IGNORECASE).split('.')[0]
+    parts = os.path.normpath(filename).replace("\\", "/").split("/")
+    target = parts[-2] if len(parts) > 1 else parts[-1]
+    clean_base = re.sub(r"_(?:f|frame)\d+", "", target, flags=re.IGNORECASE).split('.')[0]
 
     match_alpha = re.search(r"(id\d+)_(id\d+)", clean_base)
     if match_alpha:
