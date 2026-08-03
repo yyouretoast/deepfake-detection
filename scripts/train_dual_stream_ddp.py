@@ -300,22 +300,15 @@ def main():
     start_epoch = 0
     best_val_auc = 0.0
 
-    if os.path.exists(CHECKPOINT_STATE_DIR):
+    if os.path.exists(BEST_MODEL_WEIGHTS_PATH):
         try:
-            accelerator.load_state(CHECKPOINT_STATE_DIR)
-            meta_path = os.path.join(CHECKPOINT_STATE_DIR, 'meta.json')
-            if os.path.exists(meta_path):
-                with open(meta_path, 'r') as mf:
-                    meta = json.load(mf)
-                    start_epoch = meta.get('epoch', 0)
-                    best_val_auc = meta.get('best_val_auc', 0.0)
+            unwrapped_model = accelerator.unwrap_model(model)
+            unwrapped_model.load_state_dict(torch.load(BEST_MODEL_WEIGHTS_PATH, map_location='cpu'))
             if accelerator.is_main_process:
-                logging.info(f"Auto-resumed from Epoch {start_epoch} (Best Val AUC: {best_val_auc:.4f})")
+                logging.info(f"Loaded existing model weights from {BEST_MODEL_WEIGHTS_PATH}")
         except Exception as e:
             if accelerator.is_main_process:
-                logging.warning(f"Could not load checkpoint state: {e}. Training from Epoch 1.")
-            start_epoch = 0
-            best_val_auc = 0.0
+                logging.warning(f"Could not load model weights: {e}")
 
     if accelerator.is_main_process:
         logging.info(f"Starting DDP Run: Epochs {start_epoch + 1} to {NUM_EPOCHS}...")
@@ -393,11 +386,6 @@ def main():
 
             if val_auc > best_val_auc:
                 best_val_auc = val_auc
-                os.makedirs(CHECKPOINT_STATE_DIR, exist_ok=True)
-                accelerator.save_state(CHECKPOINT_STATE_DIR)
-                with open(os.path.join(CHECKPOINT_STATE_DIR, 'meta.json'), 'w') as mf:
-                    json.dump({'epoch': epoch + 1, 'best_val_auc': best_val_auc}, mf)
-
                 unwrapped_model = accelerator.unwrap_model(model)
                 torch.save(unwrapped_model.state_dict(), BEST_MODEL_WEIGHTS_PATH)
                 logging.info(f"Saved Checkpoint (Val AUC: {val_auc:.4f}) to {BEST_MODEL_WEIGHTS_PATH}")
