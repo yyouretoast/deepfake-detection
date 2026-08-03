@@ -15,7 +15,7 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
-[![pytest](https://img.shields.io/badge/pytest-Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![pytest](https://img.shields.io/badge/pytest-18%2F18%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Live Demo**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
@@ -124,7 +124,7 @@ deepfake-detection/
 │   ├── extract_face_crops.py      # Thread-pool multi-threaded face cropper
 │   ├── train_dual_stream_ddp.py   # Multi-GPU DDP training pipeline
 │   └── export_onnx.py             # ONNX FP16/UINT8 exporter
-├── tests/                         # PyTest unit test suite
+├── tests/                         # 18/18 passing unit tests (LOTO graph splits, loss masking, FFT bounds)
 └── README.md
 ```
 
