@@ -42,8 +42,11 @@ class BayarConv2d(nn.Module):
         mask = torch.ones_like(w)
         mask[:, :, 2, 2] = 0.0
         w_masked = w * mask
-        sum_w = w_masked.sum(dim=(2, 3), keepdim=True).clamp(min=1e-5)
-        w_norm = w_masked / sum_w
+        sum_w = w_masked.sum(dim=(2, 3), keepdim=True)
+        sign_w = torch.sign(sum_w)
+        sign_w = torch.where(sign_w == 0, torch.ones_like(sign_w), sign_w)
+        sum_w_safe = sign_w * sum_w.abs().clamp(min=1e-5)
+        w_norm = w_masked / sum_w_safe
         
         center_mask = torch.zeros_like(w)
         center_mask[:, :, 2, 2] = -1.0
