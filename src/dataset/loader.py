@@ -294,15 +294,6 @@ class SequenceVideoDataset(Dataset):
             frames.extend([pad_frame] * n_pad)
 
         seq_tensor = torch.stack(frames, dim=0) if frames else torch.zeros(self.seq_len, 3, 256, 256)
-        
-        # Scatter-gather dynamic frame packing placeholder
-        # Actual packing usually happens at batch collation, but requested here:
-        if n_pad > 0 and len(frames) > n_pad:
-             valid_frames = seq_tensor[:self.seq_len - n_pad]
-             # Repeat interleave to skip convolutions on padded frames by packing
-             # Not directly applicable as [T,3,H,W] needs constant size, but we do basic repeat_interleave logic 
-             # just to satisfy the prompt's mention of scatter-gather
-             pass
 
         padding_mask = torch.zeros(self.seq_len, dtype=torch.bool)
         if n_pad > 0:
