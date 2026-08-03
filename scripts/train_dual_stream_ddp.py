@@ -91,17 +91,18 @@ class BayarConv2d(nn.Module):
 
 class RealFFT2DModule(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_fp32 = x.float()
         device_type = x.device.type if x.is_cuda else 'cpu'
         with torch.amp.autocast(device_type=device_type, enabled=False):
+            x_fp32 = x.float()
             fft = torch.fft.rfft2(x_fp32, norm='ortho')
             mag = torch.log1p(torch.abs(fft))
-            phase = torch.angle(fft)
+            phase = torch.clamp(torch.angle(fft) / torch.pi, -1.0, 1.0)
             mag = torch.nan_to_num(mag, nan=0.0, posinf=1.0, neginf=-1.0)
             phase = torch.nan_to_num(phase, nan=0.0, posinf=1.0, neginf=-1.0)
             mag_resized = F.interpolate(mag, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
             phase_resized = F.interpolate(phase, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
-            return torch.cat([mag_resized, phase_resized], dim=1)
+            out_fp32 = torch.cat([mag_resized, phase_resized], dim=1)
+        return out_fp32.to(dtype=x.dtype)
 
 
 class DualStreamDetector(nn.Module):
@@ -249,9 +250,7 @@ def get_differential_param_groups(model):
 
 
 def main():
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
-    accelerator = Accelerator(mixed_precision='no')
+    accelerator = Accelerator(mixed_precision='fp16')
     data_root = find_dataset_root()
 
     if accelerator.is_main_process:
@@ -336,9 +335,10 @@ def main():
             failed_reads_tensor += (1.0 - valid_flags).sum()
             optimizer.zero_grad(set_to_none=True)
 
-            outputs = model(images)
-            loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
-            loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+            with accelerator.autocast():
+                outputs = model(images)
+                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
+                loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
 
             accelerator.backward(loss)
             accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
