@@ -22,6 +22,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY app.py ./
 COPY config ./config
 COPY src ./src
+COPY scripts ./scripts
 COPY tests ./tests
 
 # Run as non-root user for security
