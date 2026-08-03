@@ -63,10 +63,11 @@ class SRMConv2d(nn.Module):
         srm3 = np.array([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 1, -2, 1, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], dtype=np.float32) / 2.0
         filters = np.stack([srm1, srm2, srm3], axis=0)[:, np.newaxis, :, :]
         filters = np.tile(filters, (3, 1, 1, 1))
-        self.weights = nn.Parameter(torch.from_numpy(filters), requires_grad=False)
+        self.register_buffer("weights", torch.from_numpy(filters))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.conv2d(x, self.weights, stride=1, padding=2, groups=3)
+        w = self.weights.to(dtype=x.dtype, device=x.device)
+        return F.conv2d(x, w, stride=1, padding=2, groups=3)
 
 
 class BayarConv2d(nn.Module):
@@ -146,7 +147,7 @@ class DualStreamDetector(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_spatial = self.imagenet_norm(x)
+        x_spatial = self.imagenet_norm(x).to(dtype=x.dtype)
         f_s = self.spatial_pool(self.spatial_backbone(x_spatial)).flatten(1)
         f_s = self.spatial_fc(f_s)
 
