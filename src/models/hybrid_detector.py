@@ -245,43 +245,23 @@ class HybridDeepfakeDetector(nn.Module):
     def forward_sequence(
         self,
         x_seq: torch.Tensor,
-        padding_mask: Optional[torch.Tensor] = None,
-        chunk_size: int = 8
+        padding_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
         Processes 5D video sequence tensors [B, T, 3, H, W].
-        Routes to calibrated logit-space temporal pooling when sequence_trained=False,
-        or Temporal Transformer sequence modeling when sequence_trained=True.
+        Performs calibrated logit-space temporal pooling over sequence frames.
         """
         if x_seq.ndim == 4:
             return self.forward(x_seq)
 
         B, T, C, H, W = x_seq.shape
         x_flat = x_seq.view(B * T, C, H, W)
-
-        if not getattr(self, "sequence_trained", False):
-            logits_flat = self.forward(x_flat)
-            logits_seq = logits_flat.view(B, T)
-            if padding_mask is not None:
-                valid = (~padding_mask).float()
-                return (logits_seq * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1.0)
-            return logits_seq.mean(dim=1)
-
-        fused_list = []
-        total_frames = B * T
-        for i in range(0, total_frames, chunk_size):
-            chunk = x_flat[i : i + chunk_size]
-            feats = self.extract_features(chunk)
-            fused_list.append(feats["fused"])
-
-        fused_frames = torch.cat(fused_list, dim=0)
-        fused_seq = fused_frames.view(B, T, -1)
+        logits_flat = self.forward(x_flat)
+        logits_seq = logits_flat.view(B, T)
         if padding_mask is not None:
-            fused_seq = fused_seq * (~padding_mask).unsqueeze(-1).float()
-        pooled_seq = self.temporal_encoder(fused_seq, padding_mask=padding_mask)
-
-        logits = self.classifier(pooled_seq)
-        return logits.view(-1)
+            valid = (~padding_mask).float()
+            return (logits_seq * valid).sum(dim=1) / valid.sum(dim=1).clamp(min=1.0)
+        return logits_seq.mean(dim=1)
 
 def build_model(
     use_fft: bool = True,

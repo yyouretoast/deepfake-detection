@@ -272,7 +272,7 @@ class DynamicFaceCropper:
         return cv2.resize(crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
 
     def crop_face_dual(self, image_input: Union[str, np.ndarray], target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
-        """Extracts 1.30x scaled face crop returning both aligned warped and raw unwarped crops."""
+        """Extracts 1.50x scaled face crop returning both aligned warped and raw unwarped crops."""
         out_size = target_size if target_size is not None else self.target_size
         if isinstance(image_input, str):
             img_bgr = cv2.imread(image_input)
@@ -302,8 +302,8 @@ class DynamicFaceCropper:
                 landmarks = res[2] if len(res) >= 3 else None
                 if boxes is not None and len(boxes) > 0:
                     return self._crop_from_box(image_rgb, boxes, landmarks, target_size=out_size)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("MTCNN fallback detection exception: %s", e)
 
         # Fallback Engine 2: Haar Cascade
         cascade_boxes = self._detect_cpu_cascade(image_rgb)
