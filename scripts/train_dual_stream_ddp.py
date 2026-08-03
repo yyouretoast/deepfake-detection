@@ -17,12 +17,11 @@ if REPO_ROOT not in sys.path:
 import json
 import random
 import logging
-import time
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms, models
+import numpy as np
+import cv2
+from tqdm import tqdm
+from sklearn.metrics import roc_auc_score
+from accelerate import Accelerator
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
 
