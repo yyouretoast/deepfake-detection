@@ -240,7 +240,7 @@ def get_differential_param_groups(model):
 
 
 def main():
-    accelerator = Accelerator(mixed_precision='fp16')
+    accelerator = Accelerator()
     data_root = find_dataset_root()
 
     if accelerator.is_main_process:
