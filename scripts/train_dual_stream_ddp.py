@@ -92,14 +92,16 @@ class BayarConv2d(nn.Module):
 class RealFFT2DModule(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_fp32 = x.float()
-        fft = torch.fft.rfft2(x_fp32, norm='ortho')
-        mag = torch.log1p(torch.abs(fft))
-        phase = torch.angle(fft)
-        mag = torch.nan_to_num(mag, nan=0.0, posinf=1.0, neginf=-1.0)
-        phase = torch.nan_to_num(phase, nan=0.0, posinf=1.0, neginf=-1.0)
-        mag_resized = F.interpolate(mag, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
-        phase_resized = F.interpolate(phase, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
-        return torch.cat([mag_resized, phase_resized], dim=1)
+        device_type = x.device.type if x.is_cuda else 'cpu'
+        with torch.amp.autocast(device_type=device_type, enabled=False):
+            fft = torch.fft.rfft2(x_fp32, norm='ortho')
+            mag = torch.log1p(torch.abs(fft))
+            phase = torch.angle(fft)
+            mag = torch.nan_to_num(mag, nan=0.0, posinf=1.0, neginf=-1.0)
+            phase = torch.nan_to_num(phase, nan=0.0, posinf=1.0, neginf=-1.0)
+            mag_resized = F.interpolate(mag, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
+            phase_resized = F.interpolate(phase, size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
+            return torch.cat([mag_resized, phase_resized], dim=1)
 
 
 class DualStreamDetector(nn.Module):
@@ -277,19 +279,7 @@ def main():
 
     criterion = nn.BCEWithLogitsLoss()
 
-    decay, no_decay = [], []
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-        if len(param.shape) == 1 or name.endswith(".bias") or "bn" in name or "norm" in name:
-            no_decay.append(param)
-        else:
-            decay.append(param)
-
-    optimizer = torch.optim.AdamW([
-        {'params': decay, 'weight_decay': 1e-4},
-        {'params': no_decay, 'weight_decay': 0.0}
-    ], lr=LEARNING_RATE_HEAD)
+    optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_MAX_TOTAL, eta_min=1e-6)
 
     model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
