@@ -27,7 +27,36 @@ from torchvision import transforms, models
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from accelerate import Accelerator
-from src.models.hybrid_detector import HybridDeepfakeDetector
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+IMG_SIZE = 256
+BATCH_SIZE = 16
+NUM_EPOCHS = 5
+T_MAX_TOTAL = 15
+LEARNING_RATE_BACKBONE = 1e-4
+LEARNING_RATE_HEAD = 1e-3
+CHECKPOINT_STATE_DIR = '/kaggle/working/checkpoint_state'
+BEST_MODEL_WEIGHTS_PATH = '/kaggle/working/dual_stream_best.pth'
+
+
+def seed_everything(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
+seed_everything(42)
 
 
 class KaggleFastDataset(Dataset):
