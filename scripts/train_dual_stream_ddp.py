@@ -240,7 +240,7 @@ def get_differential_param_groups(model):
 
 
 def main():
-    accelerator = Accelerator()
+    accelerator = Accelerator(mixed_precision='no')
     data_root = find_dataset_root()
 
     if accelerator.is_main_process:
@@ -325,10 +325,9 @@ def main():
             failed_reads_tensor += (1.0 - valid_flags).sum()
             optimizer.zero_grad(set_to_none=True)
 
-            with accelerator.autocast():
-                outputs = model(images)
-                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
-                loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+            outputs = model(images)
+            loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
+            loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
 
             accelerator.backward(loss)
             accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
