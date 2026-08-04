@@ -71,27 +71,23 @@ def fit_temperature_log(logits: np.ndarray, labels: np.ndarray) -> float:
 def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     """
     Identifies if a sample path belongs to the holdout generator domain.
-    Supports:
-      - 'neuraltextures' / 'nt': FF++ NeuralTextures (Pairs 600-799)
-      - 'deepfakes' / 'df': FF++ Deepfakes (Pairs 0-199)
-      - 'face2face' / 'f2f': FF++ Face2Face (Pairs 200-399)
-      - 'faceswap' / 'fs': FF++ FaceSwap (Pairs 400-599)
-      - 'celeb' / 'celebdf': Celeb-DF v2 synthesis (id0_id..., __)
+    Extracts relative path starting from 'fake/' or 'real/' to ignore parent dataset container folders.
     """
     path_norm = rel_path.replace("\\", "/").lower()
     kw = holdout_keyword.lower()
 
-    if kw in ("celeb", "celebdf", "celeb-df"):
-        # Strip kaggle input prefixes to avoid false matches on parent root folders
-        clean_path = path_norm.replace("/kaggle/input/", "").replace("/kaggle/working/", "")
-        return (
-            "/id" in clean_path or 
-            "fake/id" in clean_path or 
-            "__" in clean_path or 
-            "celeb" in clean_path
-        )
+    # Isolate subpath relative to fake/ or real/
+    if "fake/" in path_norm:
+        sub_path = "fake/" + path_norm.split("fake/")[1]
+    elif "real/" in path_norm:
+        sub_path = "real/" + path_norm.split("real/")[1]
+    else:
+        sub_path = path_norm
 
-    folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
+    if kw in ("celeb", "celebdf", "celeb-df"):
+        return "id" in sub_path or "__" in sub_path or "celeb" in sub_path
+
+    folder = sub_path.split("/")[1] if len(sub_path.split("/")) > 1 else ""
     if re.match(r"^\d{3}_\d{3}$", folder):
         pair_num = int(folder.split("_")[0])
         if kw in ("neuraltextures", "nt") and (600 <= pair_num <= 799):
@@ -103,7 +99,7 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
         elif kw in ("faceswap", "fs") and (400 <= pair_num <= 599):
             return True
 
-    return kw in path_norm
+    return kw in sub_path
 
 def filter_loto_split_strict(samples, holdout_keyword):
     """
