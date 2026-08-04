@@ -54,27 +54,18 @@ seed_everything(42)
 
 def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     """
-    Strict directory token matching to identify holdout generator domain.
-    Prevents false-positive matches on filename frames (e.g. 'id0_frame1').
+    Identifies if a sample path belongs to the holdout generator domain.
     """
-    path_norm = rel_path.replace("\\", "/")
-    path_parts = [p.lower() for p in path_norm.split("/")]
+    path_norm = rel_path.replace("\\", "/").lower()
     kw = holdout_keyword.lower()
 
-    for p in path_parts:
-        if kw == "neuraltextures" and (p == "neuraltextures" or p == "nt"):
-            return True
-        elif kw == "deepfakes" and (p == "deepfakes" or p == "df"):
-            return True
-        elif kw == "face2face" and (p == "face2face" or p == "f2f"):
-            return True
-        elif kw == "faceswap" and (p == "faceswap" or p == "fs"):
-            return True
-        elif kw == "celeb" and ("celeb" in p):
-            return True
-
-    if re.search(r"/(?:" + re.escape(kw) + r")/", path_norm, re.IGNORECASE):
+    if kw in path_norm:
         return True
+
+    path_parts = [p.lower() for p in path_norm.split("/")]
+    for p in path_parts:
+        if kw in p:
+            return True
 
     return False
 
