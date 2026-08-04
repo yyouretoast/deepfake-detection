@@ -55,19 +55,20 @@ seed_everything(42)
 def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     """
     Identifies if a sample path belongs to the holdout generator domain.
+    Supports 'celeb' (Celeb-DF v2 synthesis: id0_id..., double underscores __)
+    and 'ffpp' / 'numeric' (FF++ numeric swap pairs: fake/000_003).
     """
     path_norm = rel_path.replace("\\", "/").lower()
     kw = holdout_keyword.lower()
 
-    if kw in path_norm:
-        return True
+    if kw == "celeb" or kw == "celebdf" or kw == "celeb-df":
+        return "id" in path_norm or "__" in path_norm or "celeb" in path_norm
+    elif kw == "ffpp" or kw == "numeric" or kw == "ffpp_pairs":
+        # Matches numeric pair format like fake/000_003
+        folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
+        return bool(re.match(r"^\d{3}_\d{3}$", folder))
 
-    path_parts = [p.lower() for p in path_norm.split("/")]
-    for p in path_parts:
-        if kw in p:
-            return True
-
-    return False
+    return kw in path_norm
 
 def filter_loto_split_strict(samples, holdout_keyword):
     """

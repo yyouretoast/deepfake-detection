@@ -22,38 +22,21 @@ from scripts.train_dual_stream_ddp import KaggleFastDataset, find_dataset_root, 
 
 def categorize_sample_path(rel_path: str) -> str:
     """
-    Strict directory token matching to categorize face crop samples into exact generator domains.
-    Prevents false-positive matches on filename frames (e.g. 'id0_frame1').
+    Categorizes face crop samples into exact generator domains based on dataset structure.
+    Celeb-DF v2: Contains 'id0_id' or double underscores '__'
+    FF++ Numeric Pairs: Folder pattern like '000_003'
     """
-    path_norm = rel_path.replace("\\", "/")
-    path_parts = [p.lower() for p in path_norm.split("/")]
+    path_norm = rel_path.replace("\\", "/").lower()
 
-    for p in path_parts:
-        if "celeb" in p:
-            return "Celeb-DF"
-        elif p == "deepfakes" or p == "df":
-            return "FF++ Deepfakes"
-        elif p == "face2face" or p == "f2f":
-            return "FF++ Face2Face"
-        elif p == "faceswap" or p == "fs":
-            return "FF++ FaceSwap"
-        elif p == "neuraltextures" or p == "nt":
-            return "FF++ NeuralTextures"
-        elif p == "face_shifter" or p == "faceshifter":
-            return "FaceShifter"
-
-    if re.search(r"/(?:deepfakes|df)/", path_norm, re.IGNORECASE):
-        return "FF++ Deepfakes"
-    elif re.search(r"/(?:face2face|f2f)/", path_norm, re.IGNORECASE):
-        return "FF++ Face2Face"
-    elif re.search(r"/(?:faceswap|fs)/", path_norm, re.IGNORECASE):
-        return "FF++ FaceSwap"
-    elif re.search(r"/(?:neuraltextures|nt)/", path_norm, re.IGNORECASE):
-        return "FF++ NeuralTextures"
-    elif re.search(r"/celeb", path_norm, re.IGNORECASE):
-        return "Celeb-DF"
-
-    return "Mixed / Original Real"
+    if "real" in path_norm:
+        return "Original Real Faces"
+    elif "id" in path_norm or "__" in path_norm or "celeb" in path_norm:
+        return "Celeb-DF v2 Synthesis"
+    else:
+        folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
+        if re.match(r"^\d{3}_\d{3}$", folder):
+            return "FF++ Numeric Manipulation Pairs"
+        return "FF++ Deepfakes / Mixed"
 
 def run_subdomain_evaluation():
     data_root = find_dataset_root()
