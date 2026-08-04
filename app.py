@@ -41,13 +41,23 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     Decoupled cached model loader using Streamlit cache_resource.
     Returns: (pytorch_model, cropper, has_pytorch_weights, classification_threshold, temperature)
     """
-    weights_path = "models/dual_stream_best.pth"
-    if not os.path.exists(weights_path):
-        weights_path = "dual_stream_best.pth"
+    candidate_paths = [
+        "models/dual_stream_calibrated.pth",
+        "weights/dual_stream_calibrated.pth",
+        "dual_stream_calibrated.pth",
+        "models/dual_stream_best.pth",
+        "weights/dual_stream_best.pth",
+        "dual_stream_best.pth"
+    ]
+    weights_path = None
+    for p in candidate_paths:
+        if os.path.exists(p):
+            weights_path = p
+            break
 
     opt_threshold = DEFAULT_THRESHOLD
     temperature = 1.0
-    has_weights = os.path.exists(weights_path)
+    has_weights = weights_path is not None and os.path.exists(weights_path)
     
     state_dict = None
     if has_weights:
