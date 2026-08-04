@@ -1,9 +1,12 @@
 """
 True Leave-One-Type-Out (LOTO) Cross-Generator Training & Evaluation Experiment.
 
-Filters out 100% of a target generator domain (e.g., 'neuraltextures' or 'deepfakes') from
-training/validation splits, trains a dual-stream detector for N fast epochs, and evaluates
-true zero-shot cross-generator generalization on the held-out target set.
+Filters out 100% of FAKE samples (y=1) belonging to a target generator domain
+(e.g., 'neuraltextures' or 'deepfakes') from training/validation splits via strict folder token matching,
+while retaining ALL REAL samples (y=0).
+
+Includes valid_flags masking across all evaluation loops, drop_last=True for DDP batch safety,
+train_loader sampler set_epoch(epoch) for shuffle entropy, and exports results to JSON.
 
 Usage:
     accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_loto_experiment.py --holdout neuraltextures --epochs 3
@@ -11,6 +14,7 @@ Usage:
 
 import os
 import sys
+import re
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -30,112 +34,67 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
 from accelerate import Accelerator
 from src.models.hybrid_detector import HybridDeepfakeDetector
+from scripts.train_dual_stream_ddp import (
+    LEARNING_RATE_BACKBONE,
+    LEARNING_RATE_HEAD,
+    dedupe_split,
+    find_dataset_root,
+    get_differential_param_groups,
+    seed_everything,
+    seed_worker,
+    KaggleFastDataset
+)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 IMG_SIZE = 256
 BATCH_SIZE = 16
 
-def seed_everything(seed=42):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
 seed_everything(42)
 
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
+def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
+    """
+    Strict directory token matching to identify holdout generator domain.
+    Prevents false-positive matches on filename frames (e.g. 'id0_frame1').
+    """
+    path_norm = rel_path.replace("\\", "/")
+    path_parts = [p.lower() for p in path_norm.split("/")]
+    kw = holdout_keyword.lower()
 
-class KaggleFastDataset(Dataset):
-    def __init__(self, samples, root_dir, is_train=True):
-        self.samples = samples
-        self.root_dir = root_dir
-        self.is_train = is_train
+    for p in path_parts:
+        if kw == "neuraltextures" and (p == "neuraltextures" or p == "nt"):
+            return True
+        elif kw == "deepfakes" and (p == "deepfakes" or p == "df"):
+            return True
+        elif kw == "face2face" and (p == "face2face" or p == "f2f"):
+            return True
+        elif kw == "faceswap" and (p == "faceswap" or p == "fs"):
+            return True
+        elif kw == "celeb" and ("celeb" in p):
+            return True
 
-    def __len__(self):
-        return len(self.samples)
+    if re.search(r"/(?:" + re.escape(kw) + r")/", path_norm, re.IGNORECASE):
+        return True
 
-    def __getitem__(self, idx):
-        path_rel, label = self.samples[idx]
-        full_path = os.path.join(self.root_dir, path_rel)
-        valid_flag = 1.0
-        try:
-            bgr = cv2.imread(full_path, cv2.IMREAD_COLOR)
-            if bgr is None:
-                raise ValueError("Image read failed")
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            if rgb.shape[0] != IMG_SIZE or rgb.shape[1] != IMG_SIZE:
-                rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
-        except Exception as e:
-            logging.debug("Image load error %s: %s", full_path, e)
-            valid_flag = 0.0
-            rgb = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
+    return False
 
-        if self.is_train and random.random() > 0.5:
-            rgb = np.ascontiguousarray(np.fliplr(rgb))
+def filter_loto_split_strict(samples, holdout_keyword):
+    """
+    Strictly filters out FAKE samples (y=1) matching holdout_keyword for training/val sets.
+    Retains ALL REAL samples (y=0) in training set to preserve real face representation.
+    """
+    retained = []
+    held_out_fakes = []
 
-        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
-        return tensor, torch.tensor(label, dtype=torch.float32), torch.tensor(valid_flag, dtype=torch.float32)
-
-def dedupe_split(split_list):
-    seen, deduped = set(), []
-    for entry in split_list:
-        path = entry[0] if isinstance(entry, (list, tuple)) else entry
-        if path not in seen:
-            seen.add(path)
-            deduped.append(entry)
-    return deduped
-
-def find_dataset_root():
-    candidate_paths = [
-        '/kaggle/working/local_crops',
-        '/kaggle/input/datasets/yassinyasserr/deepfake-crops-512/deepfake_crops_512',
-        '/kaggle/input/deepfake-crops-512/deepfake_crops_512',
-        '/kaggle/input/deepfake_crops_512'
-    ]
-    for p in candidate_paths:
-        if os.path.exists(os.path.join(p, 'splits.json')):
-            return p
-    for r, d, f in os.walk('/kaggle/input'):
-        if 'splits.json' in f:
-            return r
-    raise FileNotFoundError("Could not locate dataset containing splits.json under /kaggle/input")
-
-def get_differential_param_groups(model):
-    backbone_decay, backbone_nodecay = [], []
-    head_decay, head_nodecay = [], []
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-        is_no_decay = len(param.shape) == 1 or name.endswith(".bias") or "bn" in name or "norm" in name
-        if "spatial_backbone" in name:
-            if is_no_decay:
-                backbone_nodecay.append(param)
-            else:
-                backbone_decay.append(param)
+    for s in samples:
+        path, label = s[0], s[1]
+        is_match = matches_holdout_domain(path, holdout_keyword)
+        if is_match and label == 1.0:
+            held_out_fakes.append(s)
         else:
-            if is_no_decay:
-                head_nodecay.append(param)
-            else:
-                head_decay.append(param)
+            retained.append(s)
 
-    return [
-        {'params': backbone_decay, 'lr': 1e-4, 'weight_decay': 1e-4},
-        {'params': backbone_nodecay, 'lr': 1e-4, 'weight_decay': 0.0},
-        {'params': head_decay, 'lr': 1e-3, 'weight_decay': 1e-4},
-        {'params': head_nodecay, 'lr': 1e-3, 'weight_decay': 0.0}
-    ]
-
-def filter_loto_split(samples, holdout_keyword):
-    """Filters out samples matching holdout_keyword for training/validation sets."""
-    keyword = holdout_keyword.lower()
-    retained = [s for s in samples if keyword not in s[0].lower()]
-    held_out = [s for s in samples if keyword in s[0].lower()]
-    return retained, held_out
+    return retained, held_out_fakes
 
 def main():
     parser = argparse.ArgumentParser(description="LOTO Dual-Stream Deepfake Training")
@@ -154,23 +113,26 @@ def main():
     raw_val = dedupe_split(splits['val'])
     raw_test = dedupe_split(splits['test'])
 
-    train_samples, train_heldout = filter_loto_split(raw_train, args.holdout)
-    val_samples, val_heldout = filter_loto_split(raw_val, args.holdout)
-    _, test_target_heldout = filter_loto_split(raw_test, args.holdout)
+    train_samples, train_heldout_fakes = filter_loto_split_strict(raw_train, args.holdout)
+    val_samples, val_heldout_fakes = filter_loto_split_strict(raw_val, args.holdout)
+    _, test_heldout_fakes = filter_loto_split_strict(raw_test, args.holdout)
 
-    # Combine all held-out samples for dedicated zero-shot testing
-    eval_target_samples = train_heldout + val_heldout + test_target_heldout
+    all_heldout_fakes = train_heldout_fakes + val_heldout_fakes + test_heldout_fakes
+    test_reals = [s for s in raw_test if s[1] == 0.0]
+    
+    eval_target_samples = all_heldout_fakes + test_reals
 
     if accelerator.is_main_process:
         logging.info("="*65)
         logging.info("🚀 STARTING TRUE LOTO EXPERIMENT (HOLDOUT: %s)", args.holdout.upper())
-        logging.info("  ├─ Retained Train Samples: %d (Filtered out %d '%s' samples)", len(train_samples), len(train_heldout), args.holdout)
+        logging.info("  ├─ Retained Train Samples: %d (Filtered out %d FAKE '%s' samples)", len(train_samples), len(train_heldout_fakes), args.holdout)
         logging.info("  ├─ Retained Val Samples:   %d", len(val_samples))
-        logging.info("  └─ Dedicated Held-Out Zero-Shot Test Samples: %d", len(eval_target_samples))
+        logging.info("  └─ Zero-Shot Test Evaluation Set: %d samples (%d Zero-Shot Fakes vs %d Reals)", 
+                     len(eval_target_samples), len(all_heldout_fakes), len(test_reals))
         logging.info("="*65)
 
-    if not eval_target_samples:
-        raise ValueError(f"No samples matching holdout keyword '{args.holdout}' were found in dataset!")
+    if len(all_heldout_fakes) < 5:
+        raise ValueError(f"Held-out fake sample count for keyword '{args.holdout}' is too small ({len(all_heldout_fakes)} < 5)!")
 
     train_ds = KaggleFastDataset(train_samples, data_root, is_train=True)
     val_ds = KaggleFastDataset(val_samples, data_root, is_train=False)
@@ -179,7 +141,8 @@ def main():
     g = torch.Generator()
     g.manual_seed(42)
 
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
+    # Added drop_last=True for DDP batch safety
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
     target_loader = DataLoader(target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
 
@@ -197,6 +160,10 @@ def main():
     )
 
     for epoch in range(args.epochs):
+        # Added DDP sampler set_epoch for shuffle entropy
+        if hasattr(train_loader, "sampler") and hasattr(train_loader.sampler, "set_epoch"):
+            train_loader.sampler.set_epoch(epoch)
+
         model.train()
         running_loss = torch.tensor(0.0, device=accelerator.device)
 
@@ -221,32 +188,50 @@ def main():
         train_loss = total_train_loss / len(train_loader.dataset)
 
         model.eval()
-        all_targets, all_preds = [], []
+        val_targets, val_preds = [], []
         with torch.no_grad():
             for images, labels, valid_flags in val_loader:
-                labels = labels.unsqueeze(1)
-                valid_flags = valid_flags.unsqueeze(1)
+                mask = valid_flags.bool()
+                if not mask.any():
+                    continue
+                images, labels = images[mask], labels[mask]
+                labels_un = labels.unsqueeze(1)
                 outputs = model(images)
-                preds_g, targets_g = accelerator.gather_for_metrics((torch.sigmoid(outputs), labels))
-                all_preds.extend(preds_g.cpu().numpy())
-                all_targets.extend(targets_g.cpu().numpy())
+                preds_g, targets_g = accelerator.gather_for_metrics((torch.sigmoid(outputs), labels_un))
+                val_preds.extend(preds_g.cpu().numpy())
+                val_targets.extend(targets_g.cpu().numpy())
 
+        val_preds = np.array(val_preds)
+        val_targets = np.array(val_targets)
         try:
-            val_auc = roc_auc_score(all_targets, all_preds)
+            val_auc = roc_auc_score(val_targets, val_preds)
         except Exception:
             val_auc = 0.5
 
         if accelerator.is_main_process:
             logging.info(f"LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}")
 
-    # Final Zero-Shot Evaluation on Excluded Holdout Generator Set
+    # Dynamic Validation Threshold Search on Retained Val Set
+    best_thresh = 0.5
+    best_val_f1 = 0.0
+    for thresh in np.arange(0.01, 0.95, 0.01):
+        f1 = f1_score(val_targets, (val_preds > thresh).astype(int), zero_division=0)
+        if f1 > best_val_f1:
+            best_val_f1 = f1
+            best_thresh = thresh
+
+    # Final Zero-Shot Evaluation on Held-Out Generator Set (Zero-Shot on Fake, In-Distribution on Real)
     model.eval()
     target_targets, target_preds = [], []
     with torch.no_grad():
         for images, labels, valid_flags in target_loader:
-            labels = labels.unsqueeze(1)
+            mask = valid_flags.bool()
+            if not mask.any():
+                continue
+            images, labels = images[mask], labels[mask]
+            labels_un = labels.unsqueeze(1)
             outputs = model(images)
-            preds_g, targets_g = accelerator.gather_for_metrics((torch.sigmoid(outputs), labels))
+            preds_g, targets_g = accelerator.gather_for_metrics((torch.sigmoid(outputs), labels_un))
             target_preds.extend(preds_g.cpu().numpy())
             target_targets.extend(targets_g.cpu().numpy())
 
@@ -254,21 +239,46 @@ def main():
         target_preds = np.array(target_preds)
         target_targets = np.array(target_targets)
 
-        if len(np.unique(target_targets)) > 1:
-            zero_shot_auc = roc_auc_score(target_targets, target_preds)
-            zero_shot_f1 = f1_score(target_targets, (target_preds > 0.01).astype(int))
-            zero_shot_prec = precision_score(target_targets, (target_preds > 0.01).astype(int), zero_division=0)
-            zero_shot_rec = recall_score(target_targets, (target_preds > 0.01).astype(int), zero_division=0)
-            logging.info("\n" + "="*65)
-            logging.info("🏆 ZERO-SHOT LOTO EVALUATION ON HELD-OUT '%s':", args.holdout.upper())
-            logging.info("  ├─ Zero-Shot AUC:   %.4f", zero_shot_auc)
-            logging.info("  ├─ Zero-Shot F1:    %.4f", zero_shot_f1)
-            logging.info("  ├─ Precision:       %.4f", zero_shot_prec)
-            logging.info("  └─ Recall:          %.4f", zero_shot_rec)
-            logging.info("="*65)
-        else:
-            acc = np.mean((target_preds > 0.01).astype(int) == target_targets)
-            logging.info("🏆 ZERO-SHOT ACCURACY ON HELD-OUT '%s': %.4f", args.holdout.upper(), acc)
+        zero_shot_auc = roc_auc_score(target_targets, target_preds)
+        binary_preds = (target_preds > best_thresh).astype(int)
+        zero_shot_f1 = f1_score(target_targets, binary_preds, zero_division=0)
+        zero_shot_prec = precision_score(target_targets, binary_preds, zero_division=0)
+        zero_shot_rec = recall_score(target_targets, binary_preds, zero_division=0)
+
+        logging.info("\n" + "="*65)
+        logging.info("🏆 ZERO-SHOT LOTO EVALUATION ON HELD-OUT '%s':", args.holdout.upper())
+        logging.info("   (Zero-Shot on Fake Generator, In-Distribution on Real Faces)")
+        logging.info("  ├─ Retained Val Optimal Threshold: %.2f", best_thresh)
+        logging.info("  ├─ Generalization AUC:            %.4f", zero_shot_auc)
+        logging.info("  ├─ Generalization F1:             %.4f", zero_shot_f1)
+        logging.info("  ├─ Precision:                    %.4f", zero_shot_prec)
+        logging.info("  └─ Recall:                       %.4f", zero_shot_rec)
+        logging.info("="*65)
+
+        # JSON Persistence
+        res_file = '/kaggle/working/loto_results.json'
+        results = []
+        if os.path.exists(res_file):
+            try:
+                with open(res_file, 'r') as f:
+                    results = json.load(f)
+            except Exception:
+                results = []
+
+        results.append({
+            "holdout": args.holdout,
+            "threshold": float(best_thresh),
+            "zero_shot_auc": float(zero_shot_auc),
+            "zero_shot_f1": float(zero_shot_f1),
+            "precision": float(zero_shot_prec),
+            "recall": float(zero_shot_rec),
+            "n_samples": len(eval_target_samples),
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        })
+
+        with open(res_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        logging.info("💾 Saved LOTO result entry to %s", res_file)
 
 if __name__ == '__main__':
     main()
