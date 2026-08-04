@@ -6,8 +6,8 @@ Filters out 100% of FAKE samples (y=1) belonging to a target generator domain
 while retaining ALL REAL samples (y=0).
 
 Includes valid_flags masking across all evaluation loops, drop_last=True for DDP batch safety,
-train_loader sampler set_epoch(epoch) for shuffle entropy, Log-Temperature scaling (T*),
-and exports results to JSON.
+train_loader sampler set_epoch(epoch) for shuffle entropy, Log-Temperature scaling (T*)
+calculated strictly on main process, and environment-agnostic JSON results persistence.
 
 Usage:
     accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_loto_experiment.py --holdout celeb --epochs 3
@@ -36,6 +36,7 @@ from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_sco
 from scipy.optimize import minimize
 from accelerate import Accelerator
 from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.config import load_config
 from scripts.train_dual_stream_ddp import (
     LEARNING_RATE_BACKBONE,
     LEARNING_RATE_HEAD,
@@ -47,10 +48,11 @@ from scripts.train_dual_stream_ddp import (
     KaggleFastDataset
 )
 
+CONFIG = load_config()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-IMG_SIZE = 256
-BATCH_SIZE = 16
+IMG_SIZE = CONFIG.get("preprocessing", {}).get("img_size", 256)
+BATCH_SIZE = CONFIG.get("training", {}).get("batch_size", 16)
 
 seed_everything(42)
 
@@ -200,31 +202,33 @@ def main():
                 images, labels = images[mask], labels[mask]
                 outputs = model(images).squeeze(-1)
                 logits_g, targets_g = accelerator.gather_for_metrics((outputs, labels))
-                val_logits.extend(logits_g.cpu().numpy())
-                val_targets.extend(targets_g.cpu().numpy())
-
-        val_logits = np.array(val_logits)
-        val_targets = np.array(val_targets)
-        val_probs_raw = 1.0 / (1.0 + np.exp(-val_logits))
-        try:
-            val_auc = roc_auc_score(val_targets, val_probs_raw)
-        except Exception:
-            val_auc = 0.5
+                if accelerator.is_main_process:
+                    val_logits.extend(logits_g.cpu().numpy())
+                    val_targets.extend(targets_g.cpu().numpy())
 
         if accelerator.is_main_process:
+            val_logits = np.array(val_logits)
+            val_targets = np.array(val_targets)
+            val_probs_raw = 1.0 / (1.0 + np.exp(-val_logits))
+            try:
+                val_auc = roc_auc_score(val_targets, val_probs_raw)
+            except Exception:
+                val_auc = 0.5
+
             logging.info(f"LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}")
 
-    # Log-Temperature Scaling and Dynamic Threshold Search on Retained Val Set
-    optimal_temp = fit_temperature_log(val_logits, val_targets)
-    val_probs_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
+    if accelerator.is_main_process:
+        # Log-Temperature Scaling and Dynamic Threshold Search on Main Process
+        optimal_temp = fit_temperature_log(val_logits, val_targets)
+        val_probs_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
 
-    best_thresh = 0.5
-    best_val_f1 = 0.0
-    for thresh in np.arange(0.01, 0.95, 0.01):
-        f1 = f1_score(val_targets, (val_probs_calibrated > thresh).astype(int), zero_division=0)
-        if f1 > best_val_f1:
-            best_val_f1 = f1
-            best_thresh = thresh
+        best_thresh = 0.5
+        best_val_f1 = 0.0
+        for thresh in np.arange(0.01, 0.95, 0.01):
+            f1 = f1_score(val_targets, (val_probs_calibrated > thresh).astype(int), zero_division=0)
+            if f1 > best_val_f1:
+                best_val_f1 = f1
+                best_thresh = thresh
 
     # Final Zero-Shot Evaluation on Held-Out Generator Set
     model.eval()
@@ -237,8 +241,9 @@ def main():
             images, labels = images[mask], labels[mask]
             outputs = model(images).squeeze(-1)
             logits_g, targets_g = accelerator.gather_for_metrics((outputs, labels))
-            target_logits.extend(logits_g.cpu().numpy())
-            target_targets.extend(targets_g.cpu().numpy())
+            if accelerator.is_main_process:
+                target_logits.extend(logits_g.cpu().numpy())
+                target_targets.extend(targets_g.cpu().numpy())
 
     if accelerator.is_main_process:
         target_logits = np.array(target_logits)
@@ -262,8 +267,9 @@ def main():
         logging.info("  └─ Recall:                       %.4f", zero_shot_rec)
         logging.info("="*65)
 
-        # JSON Persistence
-        res_file = '/kaggle/working/loto_results.json'
+        # Environment-Agnostic JSON Persistence
+        res_dir = "/kaggle/working" if os.path.exists("/kaggle/working") else REPO_ROOT
+        res_file = os.path.join(res_dir, "loto_results.json")
         results = []
         if os.path.exists(res_file):
             try:

@@ -38,6 +38,16 @@ def categorize_sample_path(rel_path: str) -> str:
     else:
         folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
         if re.match(r"^\d{3}_\d{3}$", folder):
+            # Map known FF++ pair ranges if present
+            pair_num = int(folder.split("_")[0]) if folder.split("_")[0].isdigit() else 0
+            if 0 <= pair_num <= 199:
+                return "FF++ Deepfakes (Pairs 0-199)"
+            elif 200 <= pair_num <= 399:
+                return "FF++ Face2Face (Pairs 200-399)"
+            elif 400 <= pair_num <= 599:
+                return "FF++ FaceSwap (Pairs 400-599)"
+            elif 600 <= pair_num <= 799:
+                return "FF++ NeuralTextures (Pairs 600-799)"
             return "FF++ Numeric Manipulation Pairs"
         return "FF++ Deepfakes / Mixed"
 
@@ -63,6 +73,9 @@ def run_subdomain_evaluation():
     calibrated_ckpt_path = '/kaggle/working/dual_stream_calibrated.pth'
     if not os.path.exists(calibrated_ckpt_path):
         calibrated_ckpt_path = os.path.join(data_root, 'dual_stream_calibrated.pth')
+
+    if not os.path.exists(calibrated_ckpt_path):
+        calibrated_ckpt_path = os.path.join(REPO_ROOT, 'dual_stream_calibrated.pth')
 
     if os.path.exists(calibrated_ckpt_path):
         ckpt = torch.load(calibrated_ckpt_path, map_location=device)
@@ -112,11 +125,11 @@ def run_subdomain_evaluation():
             f1 = f1_score(group_targets, preds)
             prec = precision_score(group_targets, preds, zero_division=0)
             rec = recall_score(group_targets, preds, zero_division=0)
-            print(f"  📌 {group_name:<30} | Samples: {len(group_list):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
+            print(f"  📌 {group_name:<36} | Samples: {len(group_list):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
         else:
             acc = np.mean(preds == group_targets)
             cls_name = "Fake (1.0)" if unique_classes[0] == 1.0 else "Real (0.0)"
-            print(f"  📌 {group_name:<30} | Samples: {len(group_list):<5} | Acc: {acc:.4f} (Single-Class: {cls_name})")
+            print(f"  📌 {group_name:<36} | Samples: {len(group_list):<5} | Acc: {acc:.4f} (Single-Class: {cls_name})")
 
     print("="*75 + "\n✅ PER-GENERATOR SUB-DOMAIN EVALUATION COMPLETE!")
 
