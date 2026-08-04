@@ -1,7 +1,8 @@
 """
 Evaluation script for Dual-Stream Deepfake Detector on held-out test split.
 Includes valid_flags corrupt image filtering, squeeze(-1) shape safety,
-optimal threshold search, and Temperature Scaling (L-BFGS) calibration evaluation (ECE).
+optimal threshold search, Log-Temperature Calibration (L-BFGS), ECE,
+and saves a calibrated checkpoint contract for app.py.
 """
 import os
 import json
@@ -26,25 +27,28 @@ def compute_ece(probs, targets, n_bins=10):
             ece += np.abs(accuracy - avg_confidence) * prop_in_bin
     return ece
 
-def fit_temperature(val_logits, val_targets):
+def fit_temperature_log(val_logits, val_targets):
     """
-    Fits single scalar Temperature parameter T using L-BFGS to minimize BCE on validation set.
+    Fits log_temperature to guarantee strictly positive T = exp(log_T) > 0
+    at every L-BFGS optimization step without transient sign flips.
     """
     logits_t = torch.tensor(val_logits, dtype=torch.float32)
     targets_t = torch.tensor(val_targets, dtype=torch.float32)
     
-    temperature = nn.Parameter(torch.ones(1) * 1.5)
+    log_temperature = nn.Parameter(torch.zeros(1))  # T = exp(0) = 1.0 initial
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.LBFGS([temperature], lr=0.01, max_iter=50)
+    optimizer = torch.optim.LBFGS([log_temperature], lr=0.01, max_iter=50)
 
     def eval_loss():
         optimizer.zero_grad()
-        loss = criterion(logits_t / temperature, targets_t)
+        T = torch.exp(log_temperature)
+        loss = criterion(logits_t / T, targets_t)
         loss.backward()
         return loss
 
     optimizer.step(eval_loss)
-    return max(0.1, temperature.item())
+    optimal_T = torch.exp(log_temperature).item()
+    return max(0.1, optimal_T)
 
 def evaluate():
     data_root = find_dataset_root()
@@ -96,8 +100,8 @@ def evaluate():
             best_val_f1 = f1
             best_thresh = thresh
 
-    # Temperature Scaling Fit
-    optimal_temp = fit_temperature(val_logits, val_targets)
+    # Log-Temperature Scaling Fit
+    optimal_temp = fit_temperature_log(val_logits, val_targets)
     val_preds_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
     
     val_ece_before = compute_ece(val_preds_uncalibrated, val_targets)
@@ -148,6 +152,15 @@ def evaluate():
     print(f"  └─ Test ECE:             {test_ece_before:.4f} (Raw) → {test_ece_after:.4f} (Calibrated)")
     print("="*50)
     print("\nClassification Report:\n", classification_report(test_targets, test_binary, target_names=['Real', 'Fake']))
+
+    # 3. Save Calibrated Checkpoint for app.py
+    calibrated_ckpt_path = '/kaggle/working/dual_stream_calibrated.pth'
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimal_threshold': float(best_thresh),
+        'temperature': float(optimal_temp),
+    }, calibrated_ckpt_path)
+    print(f"\n💾 Saved Calibrated Model Checkpoint contract to {calibrated_ckpt_path}")
 
 if __name__ == '__main__':
     evaluate()
