@@ -15,18 +15,6 @@ except ImportError:
     HAS_ALBUMENTATIONS = False
     A = None
 
-try:
-    import torchvision.transforms.v2 as transforms_v2
-    HAS_TV2 = True
-except ImportError:
-    HAS_TV2 = False
-
-try:
-    import torchvision.transforms as transforms_v1
-    HAS_TV1 = True
-except ImportError:
-    HAS_TV1 = False
-
 from PIL import Image
 
 try:
@@ -247,7 +235,6 @@ class SequenceVideoDataset(Dataset):
         mean_t = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
         std_t = torch.tensor(IMAGENET_STD).view(3, 1, 1)
 
-        # Consecutive 30 FPS frame sampling for contiguous temporal motion continuity
         if N >= self.seq_len:
             start_idx = max(0, (N - self.seq_len) // 2)
             selected_paths = frame_paths[start_idx : start_idx + self.seq_len]
@@ -256,11 +243,13 @@ class SequenceVideoDataset(Dataset):
             selected_paths = frame_paths[:N]
             n_pad = self.seq_len - N
 
-        img_rgb_list = [load_image_rgb(p) for p in selected_paths]
-        if n_pad > 0 and len(img_rgb_list) > 0:
-            last_frame = img_rgb_list[-1]
-            img_rgb_list.extend([last_frame] * n_pad)
-        elif n_pad > 0:
+        try:
+            img_rgb_list = [load_image_rgb(p) for p in selected_paths]
+            if n_pad > 0 and len(img_rgb_list) > 0:
+                last_frame = img_rgb_list[-1]
+                img_rgb_list.extend([last_frame] * n_pad)
+        except Exception as e:
+            logging.debug(f"Video frame sequence loading failed for {frame_paths}: {e}")
             dummy = np.zeros((256, 256, 3), dtype=np.uint8)
             img_rgb_list = [dummy] * self.seq_len
         frames = []
@@ -278,18 +267,14 @@ class SequenceVideoDataset(Dataset):
                     if hasattr(self.transform, '__call__'):
                         frames.append(self.transform(Image.fromarray(img_rgb)))
         else:
-            # Deterministic seed pinning
-            rng = np.random.RandomState(idx)
             for img_rgb in img_rgb_list:
                 img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
                 img_tensor = (img_tensor - mean_t) / std_t
                 frames.append(img_tensor)
 
-        # Pad with zero frames if video is shorter than seq_len, normalized
         if n_pad > 0:
             h = frames[0].shape[1] if frames else 256
             w = frames[0].shape[2] if frames else 256
-            # Zero padded frame normalized
             pad_frame = (torch.zeros(3, h, w) - mean_t) / std_t
             frames.extend([pad_frame] * n_pad)
 
