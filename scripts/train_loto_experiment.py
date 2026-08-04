@@ -82,7 +82,7 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     kw = holdout_keyword.lower()
 
     if kw in ("celeb", "celebdf", "celeb-df"):
-        return "id" in path_norm or "__" in path_norm or "celeb" in path_norm
+        return "fake/id" in path_norm or "/id" in path_norm or "__" in path_norm or "celeb" in path_norm
 
     folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
     if re.match(r"^\d{3}_\d{3}$", folder):
