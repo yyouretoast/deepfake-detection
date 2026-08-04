@@ -116,20 +116,25 @@ def run_subdomain_evaluation():
         group_targets = np.array(group_targets)
 
         probs = 1.0 / (1.0 + np.exp(-(group_logits / temp)))
-        preds = (probs > threshold).astype(int)
-
-        unique_classes = np.unique(group_targets)
         
+        # Default calibrated threshold
+        preds_default = (probs > threshold).astype(int)
+        unique_classes = np.unique(group_targets)
+
         if len(unique_classes) > 1:
             auc = roc_auc_score(group_targets, probs)
-            f1 = f1_score(group_targets, preds)
-            prec = precision_score(group_targets, preds, zero_division=0)
-            rec = recall_score(group_targets, preds, zero_division=0)
+            f1 = f1_score(group_targets, preds_default)
+            prec = precision_score(group_targets, preds_default, zero_division=0)
+            rec = recall_score(group_targets, preds_default, zero_division=0)
             print(f"  📌 {group_name:<36} | Samples: {len(group_list):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
         else:
-            acc = np.mean(preds == group_targets)
+            acc_001 = np.mean((probs > 0.01).astype(int) == group_targets)
+            acc_010 = np.mean((probs > 0.10).astype(int) == group_targets)
+            acc_020 = np.mean((probs > 0.20).astype(int) == group_targets)
+            acc_050 = np.mean((probs > 0.50).astype(int) == group_targets)
             cls_name = "Fake (1.0)" if unique_classes[0] == 1.0 else "Real (0.0)"
-            print(f"  📌 {group_name:<36} | Samples: {len(group_list):<5} | Acc: {acc:.4f} (Single-Class: {cls_name})")
+            print(f"  📌 {group_name:<36} | Samples: {len(group_list):<5} | Class: {cls_name}")
+            print(f"      └─ Accuracy across thresholds: [T=0.01: {acc_001:.4f} | T=0.10: {acc_010:.4f} | T=0.20: {acc_020:.4f} | T=0.50: {acc_050:.4f}]")
 
     print("="*75 + "\n✅ PER-GENERATOR SUB-DOMAIN EVALUATION COMPLETE!")
 
