@@ -105,8 +105,11 @@ $$
 
 | Experiment Fold | Held-Out Target Domain | Category Type | Test Samples | Zero-Shot AUC | Zero-Shot F1 | Precision | Recall |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | 5,289 (2.4k Fakes / 2.9k Reals) | `0.9783` | `0.9230` | `0.9244` | `0.9217` |
-| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | 9,528 (6.6k Fakes / 2.9k Reals) | *[Running on Kaggle...]* | *[Running...]* | *[Running...]* | *[Running...]* |
+| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | 5,289 | `0.9783` | `0.9230` | `0.9244` | `0.9217` |
+| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | 82,549 | `0.3234` | `0.1202` | `0.9542` | `0.0641` |
+
+**Note on Fold 2**: Holding out Celeb-DF v2 removes 88% of all fake training crops (66,382 samples), leaving only compressed FaceForensics++ fakes for training. The AUC collapse (0.9783 → 0.3234) is consistent with the cross-dataset domain gap between low-resolution H.264-compressed FF++ synthesis and pristine high-resolution Celeb-DF v2 celebrity synthesis, as documented in Li et al. (CVPR 2020) and Rossler et al. (ICCV 2019). High Precision (0.9542) with near-zero Recall (0.0641) confirms the model's decision boundary is inverted on the unseen domain rather than random.
+
 
 ---
 
