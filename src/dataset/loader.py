@@ -166,6 +166,10 @@ def get_transforms(img_size: int = 256) -> Tuple[Any, Any]:
         A.HorizontalFlip(p=0.5),
         A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.3),
         A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.3),
+        A.OneOf([
+            A.ImageCompression(quality_lower=40, quality_upper=90, p=0.5),
+            A.GaussianBlur(blur_limit=(3, 5), p=0.5),
+        ], p=0.4),
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
     ])
