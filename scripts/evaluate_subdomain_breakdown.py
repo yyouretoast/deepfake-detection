@@ -1,8 +1,7 @@
 """
 Per-Generator Sub-Domain Evaluation Script for Dual-Stream Deepfake Detector.
 Evaluates the calibrated checkpoint on held-out test split samples partitioned by exact
-generator manipulation category, pairing each fake generator set with Real faces to compute
-true 2-class AUC, F1, Precision, and Recall.
+generator manipulation category, caching Real face logits once to avoid redundant GPU forwards.
 """
 import os
 import sys
@@ -92,18 +91,36 @@ def run_subdomain_evaluation():
     print("="*85)
 
     real_samples = grouped_samples.get("Original Real Faces", [])
+    real_logits, real_targets = [], []
+
+    # Cache Real logits once
+    if real_samples:
+        real_loader = DataLoader(KaggleFastDataset(real_samples, data_root, is_train=False), batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+        with torch.no_grad():
+            for images, labels, valid_flags in real_loader:
+                mask = valid_flags.bool()
+                if not mask.any():
+                    continue
+                images, labels = images[mask].to(device), labels[mask]
+                logits = model(images).squeeze(-1).cpu().numpy()
+                if logits.ndim == 0:
+                    logits = np.array([logits])
+                real_logits.extend(logits)
+                real_targets.extend(labels.numpy())
+
+    real_logits = np.array(real_logits)
+    real_targets = np.array(real_targets)
 
     for group_name in sorted(grouped_samples.keys()):
         if group_name == "Original Real Faces":
             continue
 
         fake_samples = grouped_samples[group_name]
-        combined_eval_samples = fake_samples + real_samples
         if len(fake_samples) < 5:
             continue
 
-        loader = DataLoader(KaggleFastDataset(combined_eval_samples, data_root, is_train=False), batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
-        group_logits, group_targets = [], []
+        loader = DataLoader(KaggleFastDataset(fake_samples, data_root, is_train=False), batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+        fake_logits, fake_targets = [], []
 
         with torch.no_grad():
             for images, labels, valid_flags in loader:
@@ -114,11 +131,11 @@ def run_subdomain_evaluation():
                 logits = model(images).squeeze(-1).cpu().numpy()
                 if logits.ndim == 0:
                     logits = np.array([logits])
-                group_logits.extend(logits)
-                group_targets.extend(labels.numpy())
+                fake_logits.extend(logits)
+                fake_targets.extend(labels.numpy())
 
-        group_logits = np.array(group_logits)
-        group_targets = np.array(group_targets)
+        group_logits = np.concatenate([np.array(fake_logits), real_logits])
+        group_targets = np.concatenate([np.array(fake_targets), real_targets])
 
         probs = 1.0 / (1.0 + np.exp(-(group_logits / temp)))
         preds = (probs > threshold).astype(int)
