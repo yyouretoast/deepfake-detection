@@ -317,8 +317,7 @@ def render_ui() -> None:
     st.sidebar.markdown(
         f"""
     ---
-    ### System Configuration
-    - **Engine**: PyTorch Native
+    **Engine**: PyTorch Native
     - **Model**: {CONFIG.get('model', {}).get('backbone', 'ConvNeXt-Small').title()} + 2D FFT Frequency Stream
     - **Padding**: Relative 1.50x Scale Expansion
     - **Threshold (T*)**: {classification_threshold:.4f}

@@ -284,12 +284,10 @@ class DynamicFaceCropper:
         else:
             image_rgb = image_input
 
-        # Primary Engine: YuNet
         yunet_boxes, yunet_landmarks = self._detect_yunet(image_rgb)
         if yunet_boxes is not None and len(yunet_boxes) > 0:
             return self._crop_from_box(image_rgb, yunet_boxes, yunet_landmarks, target_size=out_size)
 
-        # Fallback Engine 1: MTCNN
         if self.detector is not None:
             try:
                 with torch.no_grad():
@@ -305,12 +303,10 @@ class DynamicFaceCropper:
             except Exception as e:
                 logging.debug("MTCNN fallback detection exception: %s", e)
 
-        # Fallback Engine 2: Haar Cascade
         cascade_boxes = self._detect_cpu_cascade(image_rgb)
         if cascade_boxes is not None and len(cascade_boxes) > 0:
             return self._crop_from_box(image_rgb, cascade_boxes, None, target_size=out_size)
 
-        # Final Fallback: Center Crop
         c = self._center_crop(image_rgb, target_size=out_size)
         return c, c
 

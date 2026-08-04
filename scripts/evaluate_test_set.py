@@ -79,8 +79,6 @@ def evaluate():
     model.load_state_dict(torch.load(weights_path, map_location=device))
     model.eval()
 
-    # 1. Validation set evaluation
-    print("🔍 Evaluating Validation Set for Threshold & Temperature Calibration...")
     val_logits, val_targets = [], []
     with torch.no_grad():
         for images, labels, valid_flags in val_loader:
@@ -98,7 +96,6 @@ def evaluate():
     val_targets = np.array(val_targets)
     val_preds_uncalibrated = 1.0 / (1.0 + np.exp(-val_logits))
 
-    # Threshold optimization
     best_thresh = 0.5
     best_val_f1 = 0.0
     for thresh in np.arange(0.01, 0.95, 0.01):
@@ -107,7 +104,6 @@ def evaluate():
             best_val_f1 = f1
             best_thresh = thresh
 
-    # Log-Temperature Scaling Fit
     optimal_temp = fit_temperature_log(val_logits, val_targets)
     val_preds_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
     
@@ -118,7 +114,6 @@ def evaluate():
     print(f"🌡️  Optimal Temperature (T*): {optimal_temp:.4f}")
     print(f"📊 Validation ECE: {val_ece_before:.4f} (Raw) → {val_ece_after:.4f} (Calibrated)")
 
-    # 2. Test Set Evaluation
     print("\n📊 Running Final Test Set Evaluation...")
     test_logits, test_targets = [], []
     with torch.no_grad():
@@ -160,7 +155,6 @@ def evaluate():
     print("="*50)
     print("\nClassification Report:\n", classification_report(test_targets, test_binary, target_names=['Real', 'Fake']))
 
-    # 3. Save Calibrated Checkpoint for app.py
     calibrated_ckpt_path = '/kaggle/working/dual_stream_calibrated.pth'
     torch.save({
         'model_state_dict': model.state_dict(),

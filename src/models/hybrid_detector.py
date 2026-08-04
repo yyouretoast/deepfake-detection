@@ -9,18 +9,14 @@ from src.config import load_config
 
 
 class SRMConv2d(nn.Module):
-    """
-    Fixed Steganographic Rich Model (SRM) High-Pass Residual Filter Kernels.
-    Registers 3 fixed 5x5 SRM residual filters as PyTorch buffer to prevent parameter upcasting.
-    """
     def __init__(self) -> None:
         super().__init__()
         srm1 = np.array([[0, 0, 0, 0, 0], [0, -1, 2, -1, 0], [0, 2, -4, 2, 0], [0, -1, 2, -1, 0], [0, 0, 0, 0, 0]], dtype=np.float32) / 4.0
         srm2 = np.array([[-1, 2, -2, 2, -1], [2, -6, 8, -6, 2], [-2, 8, -12, 8, -2], [2, -6, 8, -6, 2], [-1, 2, -2, 2, -1]], dtype=np.float32) / 12.0
         srm3 = np.array([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 1, -2, 1, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], dtype=np.float32) / 2.0
         
-        filters = np.stack([srm1, srm2, srm3], axis=0)[:, np.newaxis, :, :]  # [3, 1, 5, 5]
-        filters = np.tile(filters, (3, 1, 1, 1))                            # [3, 3, 5, 5] grouped
+        filters = np.stack([srm1, srm2, srm3], axis=0)[:, np.newaxis, :, :]
+        filters = np.tile(filters, (3, 1, 1, 1))
         self.register_buffer("weights", torch.from_numpy(filters))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -29,10 +25,6 @@ class SRMConv2d(nn.Module):
 
 
 class BayarConv2d(nn.Module):
-    """
-    Learnable Bayar-Stamm Constrained High-Pass Residual Filter Kernel.
-    Enforces sum-to-zero and center=-1 constraints without in-place tensor mutations.
-    """
     def __init__(self, in_channels: int = 3, out_channels: int = 1) -> None:
         super().__init__()
         self.kernel = nn.Parameter(torch.randn(out_channels, in_channels, 5, 5))
@@ -57,11 +49,6 @@ class BayarConv2d(nn.Module):
 
 
 class RealFFT2DModule(nn.Module):
-    """
-    2D Real-FFT Spectral Feature Extractor.
-    Extracts 2D Real Fast Fourier Transform log-magnitude and phase angle maps
-    with FP32 autocast protection and clamped [-1.0, 1.0] phase normalization.
-    """
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         device_type = x.device.type if x.is_cuda else 'cpu'
         with torch.amp.autocast(device_type=device_type, enabled=False):
@@ -175,12 +162,3 @@ class HybridDeepfakeDetector(nn.Module):
         return frame_logits.mean(dim=1, keepdim=True)
 
 
-def build_model(
-    pretrained: bool = True,
-    use_fft: bool = True,
-    config: Optional[Dict[str, Any]] = None
-) -> HybridDeepfakeDetector:
-    """
-    Factory function to instantiate the canonical HybridDeepfakeDetector.
-    """
-    return HybridDeepfakeDetector(pretrained=pretrained, use_fft_branch=use_fft, config=config)

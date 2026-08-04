@@ -1,5 +1,5 @@
 from src.config import load_config
-from src.models.hybrid_detector import HybridDeepfakeDetector, build_model
+from src.models.hybrid_detector import HybridDeepfakeDetector
 
 try:
     from src.dataset.loader import DeepfakeDataset, group_video_split, extract_video_id, extract_identities, perform_graph_split, create_dataloaders
