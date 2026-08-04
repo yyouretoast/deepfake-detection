@@ -71,17 +71,30 @@ def fit_temperature_log(logits: np.ndarray, labels: np.ndarray) -> float:
 def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     """
     Identifies if a sample path belongs to the holdout generator domain.
-    Supports 'celeb' (Celeb-DF v2 synthesis: id0_id..., double underscores __)
-    and 'ffpp' / 'numeric' (FF++ numeric swap pairs: fake/000_003).
+    Supports:
+      - 'neuraltextures' / 'nt': FF++ NeuralTextures (Pairs 600-799)
+      - 'deepfakes' / 'df': FF++ Deepfakes (Pairs 0-199)
+      - 'face2face' / 'f2f': FF++ Face2Face (Pairs 200-399)
+      - 'faceswap' / 'fs': FF++ FaceSwap (Pairs 400-599)
+      - 'celeb' / 'celebdf': Celeb-DF v2 synthesis (id0_id..., __)
     """
     path_norm = rel_path.replace("\\", "/").lower()
     kw = holdout_keyword.lower()
 
-    if kw == "celeb" or kw == "celebdf" or kw == "celeb-df":
+    if kw in ("celeb", "celebdf", "celeb-df"):
         return "id" in path_norm or "__" in path_norm or "celeb" in path_norm
-    elif kw == "ffpp" or kw == "numeric" or kw == "ffpp_pairs":
-        folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
-        return bool(re.match(r"^\d{3}_\d{3}$", folder))
+
+    folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
+    if re.match(r"^\d{3}_\d{3}$", folder):
+        pair_num = int(folder.split("_")[0])
+        if kw in ("neuraltextures", "nt") and (600 <= pair_num <= 799):
+            return True
+        elif kw in ("deepfakes", "df") and (0 <= pair_num <= 199):
+            return True
+        elif kw in ("face2face", "f2f") and (200 <= pair_num <= 399):
+            return True
+        elif kw in ("faceswap", "fs") and (400 <= pair_num <= 599):
+            return True
 
     return kw in path_norm
 
