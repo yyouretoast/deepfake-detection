@@ -94,7 +94,7 @@ def evaluate():
     # Threshold optimization
     best_thresh = 0.5
     best_val_f1 = 0.0
-    for thresh in np.arange(0.1, 0.9, 0.02):
+    for thresh in np.arange(0.01, 0.95, 0.01):
         f1 = f1_score(val_targets, (val_preds_uncalibrated > thresh).astype(int))
         if f1 > best_val_f1:
             best_val_f1 = f1
