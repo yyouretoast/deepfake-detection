@@ -129,7 +129,10 @@ class HybridDeepfakeDetector(nn.Module):
         """
         Forward pass for 4D image input tensor [B, 3, H, W].
         """
-        x_spatial = self.imagenet_norm(x).to(dtype=x.dtype)
+        # ImageNet normalization without torchvision data-dependent branch guards
+        mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=x.dtype).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=x.dtype).view(1, 3, 1, 1)
+        x_spatial = (x - mean) / std
         f_s = self.spatial_pool(self.spatial_backbone(x_spatial)).flatten(1)
         f_s = self.spatial_fc(f_s)
 

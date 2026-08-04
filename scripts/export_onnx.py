@@ -67,8 +67,9 @@ def export_to_onnx(checkpoint_path: str, output_path: str, quantize: bool = Fals
 
     logging.info("🚀 Exporting PyTorch model (resolution %dx%d) to ONNX format (Opset 17) at '%s'...", IMG_SIZE, IMG_SIZE, output_path)
 
-    dynamic_shapes = {
-        'input': {0: torch.export.Dim('batch_size'), 2: torch.export.Dim('height'), 3: torch.export.Dim('width')}
+    dynamic_axes = {
+        'input': {0: 'batch_size'},
+        'output': {0: 'batch_size'}
     }
 
     try:
@@ -81,8 +82,8 @@ def export_to_onnx(checkpoint_path: str, output_path: str, quantize: bool = Fals
             do_constant_folding=True,
             input_names=['input'],
             output_names=['output'],
-            dynamic_shapes=dynamic_shapes,
-            dynamo=True
+            dynamic_axes=dynamic_axes,
+            dynamo=False
         )
     except Exception as e:
         logging.error("❌ ONNX Export failed during PyTorch C++ graph tracing: %s", e)

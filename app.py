@@ -57,6 +57,21 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
 
     opt_threshold = DEFAULT_THRESHOLD
     temperature = 1.0
+
+    # Load sidecar calibration metadata if present
+    sidecar_paths = ["models/dual_stream_detector.json", "dual_stream_detector.json"]
+    for sp in sidecar_paths:
+        if os.path.exists(sp):
+            try:
+                with open(sp, "r") as f:
+                    meta = json.load(f)
+                    opt_threshold = float(meta.get("optimal_threshold", DEFAULT_THRESHOLD))
+                    temperature = float(meta.get("temperature", 1.0))
+                    logging.info(f"Loaded sidecar calibration metadata from {sp}: Threshold={opt_threshold:.2f}, Temp={temperature:.4f}")
+                    break
+            except Exception as e:
+                logging.warning(f"Could not load sidecar metadata: {e}")
+
     has_weights = weights_path is not None and os.path.exists(weights_path)
     
     state_dict = None
@@ -64,8 +79,8 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
         checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=False)
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
-            opt_threshold = float(checkpoint.get("optimal_threshold", DEFAULT_THRESHOLD))
-            temperature = float(checkpoint.get("temperature", 1.0))
+            opt_threshold = float(checkpoint.get("optimal_threshold", opt_threshold))
+            temperature = float(checkpoint.get("temperature", temperature))
         elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             state_dict = checkpoint["state_dict"]
         else:
