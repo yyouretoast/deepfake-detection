@@ -2,14 +2,15 @@
 True Leave-One-Type-Out (LOTO) Cross-Generator Training & Evaluation Experiment.
 
 Filters out 100% of FAKE samples (y=1) belonging to a target generator domain
-(e.g., 'neuraltextures' or 'deepfakes') from training/validation splits via strict folder token matching,
+(e.g., 'celeb' or 'ffpp') from training/validation splits via strict folder token matching,
 while retaining ALL REAL samples (y=0).
 
 Includes valid_flags masking across all evaluation loops, drop_last=True for DDP batch safety,
-train_loader sampler set_epoch(epoch) for shuffle entropy, and exports results to JSON.
+train_loader sampler set_epoch(epoch) for shuffle entropy, Log-Temperature scaling (T*),
+and exports results to JSON.
 
 Usage:
-    accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_loto_experiment.py --holdout neuraltextures --epochs 3
+    accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_loto_experiment.py --holdout celeb --epochs 3
 """
 
 import os
@@ -32,6 +33,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
+from scipy.optimize import minimize
 from accelerate import Accelerator
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from scripts.train_dual_stream_ddp import (
@@ -52,6 +54,18 @@ BATCH_SIZE = 16
 
 seed_everything(42)
 
+def fit_temperature_log(logits: np.ndarray, labels: np.ndarray) -> float:
+    """Fits temperature T = exp(log_T) via NLL optimization using L-BFGS-B."""
+    def nll_func(log_t):
+        t = np.exp(log_t[0])
+        scaled_logits = logits / t
+        p = 1.0 / (1.0 + np.exp(-scaled_logits))
+        p = np.clip(p, 1e-7, 1.0 - 1e-7)
+        return -np.mean(labels * np.log(p) + (1.0 - labels) * np.log(1.0 - p))
+
+    res = minimize(nll_func, [0.0], method='L-BFGS-B', bounds=[(-5.0, 5.0)])
+    return float(np.exp(res.x[0]))
+
 def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     """
     Identifies if a sample path belongs to the holdout generator domain.
@@ -64,7 +78,6 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     if kw == "celeb" or kw == "celebdf" or kw == "celeb-df":
         return "id" in path_norm or "__" in path_norm or "celeb" in path_norm
     elif kw == "ffpp" or kw == "numeric" or kw == "ffpp_pairs":
-        # Matches numeric pair format like fake/000_003
         folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
         return bool(re.match(r"^\d{3}_\d{3}$", folder))
 
@@ -90,7 +103,7 @@ def filter_loto_split_strict(samples, holdout_keyword):
 
 def main():
     parser = argparse.ArgumentParser(description="LOTO Dual-Stream Deepfake Training")
-    parser.add_argument("--holdout", type=str, required=True, help="Generator domain to hold out (e.g. neuraltextures, deepfakes)")
+    parser.add_argument("--holdout", type=str, required=True, help="Generator domain to hold out (e.g. celeb, ffpp)")
     parser.add_argument("--epochs", type=int, default=3, help="Number of LOTO training epochs")
     args = parser.parse_args()
 
@@ -133,7 +146,6 @@ def main():
     g = torch.Generator()
     g.manual_seed(42)
 
-    # Added drop_last=True for DDP batch safety
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
     target_loader = DataLoader(target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
@@ -152,7 +164,6 @@ def main():
     )
 
     for epoch in range(args.epochs):
-        # Added DDP sampler set_epoch for shuffle entropy
         if hasattr(train_loader, "sampler") and hasattr(train_loader.sampler, "set_epoch"):
             train_loader.sampler.set_epoch(epoch)
 
@@ -180,59 +191,62 @@ def main():
         train_loss = total_train_loss / len(train_loader.dataset)
 
         model.eval()
-        val_targets, val_preds = [], []
+        val_logits, val_targets = [], []
         with torch.no_grad():
             for images, labels, valid_flags in val_loader:
                 mask = valid_flags.bool()
                 if not mask.any():
                     continue
                 images, labels = images[mask], labels[mask]
-                labels_un = labels.unsqueeze(1)
-                outputs = model(images)
-                preds_g, targets_g = accelerator.gather_for_metrics((torch.sigmoid(outputs), labels_un))
-                val_preds.extend(preds_g.cpu().numpy())
+                outputs = model(images).squeeze(-1)
+                logits_g, targets_g = accelerator.gather_for_metrics((outputs, labels))
+                val_logits.extend(logits_g.cpu().numpy())
                 val_targets.extend(targets_g.cpu().numpy())
 
-        val_preds = np.array(val_preds)
+        val_logits = np.array(val_logits)
         val_targets = np.array(val_targets)
+        val_probs_raw = 1.0 / (1.0 + np.exp(-val_logits))
         try:
-            val_auc = roc_auc_score(val_targets, val_preds)
+            val_auc = roc_auc_score(val_targets, val_probs_raw)
         except Exception:
             val_auc = 0.5
 
         if accelerator.is_main_process:
             logging.info(f"LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}")
 
-    # Dynamic Validation Threshold Search on Retained Val Set
+    # Log-Temperature Scaling and Dynamic Threshold Search on Retained Val Set
+    optimal_temp = fit_temperature_log(val_logits, val_targets)
+    val_probs_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
+
     best_thresh = 0.5
     best_val_f1 = 0.0
     for thresh in np.arange(0.01, 0.95, 0.01):
-        f1 = f1_score(val_targets, (val_preds > thresh).astype(int), zero_division=0)
+        f1 = f1_score(val_targets, (val_probs_calibrated > thresh).astype(int), zero_division=0)
         if f1 > best_val_f1:
             best_val_f1 = f1
             best_thresh = thresh
 
-    # Final Zero-Shot Evaluation on Held-Out Generator Set (Zero-Shot on Fake, In-Distribution on Real)
+    # Final Zero-Shot Evaluation on Held-Out Generator Set
     model.eval()
-    target_targets, target_preds = [], []
+    target_logits, target_targets = [], []
     with torch.no_grad():
         for images, labels, valid_flags in target_loader:
             mask = valid_flags.bool()
             if not mask.any():
                 continue
             images, labels = images[mask], labels[mask]
-            labels_un = labels.unsqueeze(1)
-            outputs = model(images)
-            preds_g, targets_g = accelerator.gather_for_metrics((torch.sigmoid(outputs), labels_un))
-            target_preds.extend(preds_g.cpu().numpy())
+            outputs = model(images).squeeze(-1)
+            logits_g, targets_g = accelerator.gather_for_metrics((outputs, labels))
+            target_logits.extend(logits_g.cpu().numpy())
             target_targets.extend(targets_g.cpu().numpy())
 
     if accelerator.is_main_process:
-        target_preds = np.array(target_preds)
+        target_logits = np.array(target_logits)
         target_targets = np.array(target_targets)
 
-        zero_shot_auc = roc_auc_score(target_targets, target_preds)
-        binary_preds = (target_preds > best_thresh).astype(int)
+        target_probs_calibrated = 1.0 / (1.0 + np.exp(-(target_logits / optimal_temp)))
+        zero_shot_auc = roc_auc_score(target_targets, target_probs_calibrated)
+        binary_preds = (target_probs_calibrated > best_thresh).astype(int)
         zero_shot_f1 = f1_score(target_targets, binary_preds, zero_division=0)
         zero_shot_prec = precision_score(target_targets, binary_preds, zero_division=0)
         zero_shot_rec = recall_score(target_targets, binary_preds, zero_division=0)
@@ -241,6 +255,7 @@ def main():
         logging.info("🏆 ZERO-SHOT LOTO EVALUATION ON HELD-OUT '%s':", args.holdout.upper())
         logging.info("   (Zero-Shot on Fake Generator, In-Distribution on Real Faces)")
         logging.info("  ├─ Retained Val Optimal Threshold: %.2f", best_thresh)
+        logging.info("  ├─ Fitted Log-Temperature (T*):    %.4f", optimal_temp)
         logging.info("  ├─ Generalization AUC:            %.4f", zero_shot_auc)
         logging.info("  ├─ Generalization F1:             %.4f", zero_shot_f1)
         logging.info("  ├─ Precision:                    %.4f", zero_shot_prec)
@@ -260,6 +275,7 @@ def main():
         results.append({
             "holdout": args.holdout,
             "threshold": float(best_thresh),
+            "temperature": float(optimal_temp),
             "zero_shot_auc": float(zero_shot_auc),
             "zero_shot_f1": float(zero_shot_f1),
             "precision": float(zero_shot_prec),

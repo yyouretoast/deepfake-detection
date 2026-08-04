@@ -1,13 +1,12 @@
 """
 Per-Generator Sub-Domain Evaluation Script for Dual-Stream Deepfake Detector.
 Evaluates the calibrated checkpoint on held-out test split samples partitioned by exact
-generator manipulation category (FF++ Deepfakes, Face2Face, FaceSwap, NeuralTextures, Celeb-DF).
+generator manipulation category (FF++ Numeric Manipulation Pairs, Celeb-DF v2 Synthesis).
 """
 import os
 import sys
 import re
 
-# Ensure repository root is on sys.path for standalone subprocess execution
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
@@ -18,7 +17,11 @@ import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
 from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.config import load_config
 from scripts.train_dual_stream_ddp import KaggleFastDataset, find_dataset_root, dedupe_split
+
+CONFIG = load_config()
+BATCH_SIZE = CONFIG.get("training", {}).get("batch_size", 32) * 2
 
 def categorize_sample_path(rel_path: str) -> str:
     """
@@ -81,7 +84,7 @@ def run_subdomain_evaluation():
         if len(group_list) < 5:
             continue
 
-        loader = DataLoader(KaggleFastDataset(group_list, data_root, is_train=False), batch_size=32, shuffle=False, num_workers=2)
+        loader = DataLoader(KaggleFastDataset(group_list, data_root, is_train=False), batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
         group_logits, group_targets = [], []
 
         with torch.no_grad():
@@ -109,11 +112,11 @@ def run_subdomain_evaluation():
             f1 = f1_score(group_targets, preds)
             prec = precision_score(group_targets, preds, zero_division=0)
             rec = recall_score(group_targets, preds, zero_division=0)
-            print(f"  📌 {group_name:<24} | Samples: {len(group_list):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
+            print(f"  📌 {group_name:<30} | Samples: {len(group_list):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
         else:
             acc = np.mean(preds == group_targets)
             cls_name = "Fake (1.0)" if unique_classes[0] == 1.0 else "Real (0.0)"
-            print(f"  📌 {group_name:<24} | Samples: {len(group_list):<5} | Acc: {acc:.4f} (Single-Class: {cls_name})")
+            print(f"  📌 {group_name:<30} | Samples: {len(group_list):<5} | Acc: {acc:.4f} (Single-Class: {cls_name})")
 
     print("="*75 + "\n✅ PER-GENERATOR SUB-DOMAIN EVALUATION COMPLETE!")
 
