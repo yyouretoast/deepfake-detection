@@ -178,6 +178,7 @@ def main():
         model, optimizer, train_loader, val_loader, target_loader, scheduler
     )
 
+    from tqdm import tqdm
     for epoch in range(args.epochs):
         if hasattr(train_loader, "sampler") and hasattr(train_loader.sampler, "set_epoch"):
             train_loader.sampler.set_epoch(epoch)
@@ -185,7 +186,8 @@ def main():
         model.train()
         running_loss = torch.tensor(0.0, device=accelerator.device)
 
-        for images, labels, valid_flags in train_loader:
+        train_iter = tqdm(train_loader, desc=f"LOTO Epoch {epoch+1}/{args.epochs}", disable=not accelerator.is_main_process)
+        for images, labels, valid_flags in train_iter:
             labels = labels.unsqueeze(1)
             valid_flags = valid_flags.unsqueeze(1)
             optimizer.zero_grad(set_to_none=True)
@@ -199,6 +201,7 @@ def main():
             accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             running_loss += loss.detach() * images.size(0)
+            train_iter.set_postfix({"loss": f"{loss.item():.4f}"})
 
         scheduler.step()
 
@@ -208,7 +211,8 @@ def main():
         model.eval()
         val_logits, val_targets = [], []
         with torch.no_grad():
-            for images, labels, valid_flags in val_loader:
+            val_iter = tqdm(val_loader, desc="Validating", disable=not accelerator.is_main_process)
+            for images, labels, valid_flags in val_iter:
                 mask = valid_flags.bool()
                 if not mask.any():
                     continue
@@ -228,7 +232,7 @@ def main():
             except Exception:
                 val_auc = 0.5
 
-            logging.info(f"LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}")
+            print(f"📊 LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}", flush=True)
 
     if accelerator.is_main_process:
         optimal_temp = fit_temperature_log(val_logits, val_targets)

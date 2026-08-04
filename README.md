@@ -52,6 +52,37 @@ accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/t
 
 ---
 
+## Benchmark & Experimental Results
+
+### 🏆 1. Held-Out Test Set Metrics (10,528 Crops)
+- **Test AUC**: **`0.9987`**
+- **Test F1-Score**: **`0.9830`**
+- **Precision (Fake)**: **`0.9686`**
+- **Recall (Fake)**: **`0.9979`**
+- **Optimal Temperature ($T^*$)**: **`1.4788`**
+- **Expected Calibration Error (ECE)**: **`0.0122` (Raw) $\rightarrow$ `0.0093` (Calibrated)**
+
+### 🔬 2. Per-Generator Sub-Domain Evaluation (2-Class AUC vs Real Faces)
+*Evaluates the primary calibrated checkpoint on held-out test split samples partitioned by exact generator domain paired with 2,889 Real face test samples.*
+
+| Generator Sub-Domain | Sample Count | **AUC (2-Class Separation)** | F1-Score | Recall |
+| :--- | :---: | :---: | :---: | :---: |
+| **Celeb-DF v2 Synthesis** | 6,639 | **`0.9992`** | **`0.9630`** | **`99.97%`** |
+| **FF++ Deepfakes (Pairs 0-199)** | 200 | **`0.9963`** | `0.4405` | **`100.00%`** |
+| **FF++ Face2Face (Pairs 200-399)** | 200 | **`0.9967`** | `0.4405` | **`100.00%`** |
+| **FF++ FaceSwap (Pairs 400-599)** | 200 | **`0.9961`** | `0.4405` | **`100.00%`** |
+| **FF++ NeuralTextures (Pairs 600-799)** | 200 | **`0.9940`** | `0.4405` | **`100.00%`** |
+
+### 🛡️ 3. True LOTO (Leave-One-Type-Out) Cross-Generator Generalization
+*Evaluates models trained for 3 epochs with 100% of a target generator domain excluded from training/validation splits.*
+
+| Experiment Fold | Held-Out Target Domain | Category Type | **Zero-Shot Generalization AUC** | Zero-Shot F1 |
+| :--- | :--- | :--- | :---: | :---: |
+| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | *[Running in Kaggle...]* | *[Running...]* |
+| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | *[Queued...]* | *[Queued...]* |
+
+---
+
 ## System Architecture
 
 ```
