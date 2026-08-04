@@ -1,17 +1,50 @@
 """
 Evaluation script for Dual-Stream Deepfake Detector on held-out test split.
 Includes valid_flags corrupt image filtering, squeeze(-1) shape safety,
-optimal threshold search, and temperature scaling calibration evaluation.
+optimal threshold search, and Temperature Scaling (L-BFGS) calibration evaluation (ECE).
 """
 import os
 import json
 import torch
+import torch.nn as nn
 import numpy as np
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score, classification_report
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from scripts.train_dual_stream_ddp import KaggleFastDataset, find_dataset_root, dedupe_split
+
+def compute_ece(probs, targets, n_bins=10):
+    bin_boundaries = np.linspace(0, 1, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        bin_lower, bin_upper = bin_boundaries[i], bin_boundaries[i+1]
+        in_bin = (probs > bin_lower) & (probs <= bin_upper)
+        prop_in_bin = np.mean(in_bin)
+        if prop_in_bin > 0:
+            accuracy = np.mean(targets[in_bin])
+            avg_confidence = np.mean(probs[in_bin])
+            ece += np.abs(accuracy - avg_confidence) * prop_in_bin
+    return ece
+
+def fit_temperature(val_logits, val_targets):
+    """
+    Fits single scalar Temperature parameter T using L-BFGS to minimize BCE on validation set.
+    """
+    logits_t = torch.tensor(val_logits, dtype=torch.float32)
+    targets_t = torch.tensor(val_targets, dtype=torch.float32)
+    
+    temperature = nn.Parameter(torch.ones(1) * 1.5)
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = torch.optim.LBFGS([temperature], lr=0.01, max_iter=50)
+
+    def eval_loss():
+        optimizer.zero_grad()
+        loss = criterion(logits_t / temperature, targets_t)
+        loss.backward()
+        return loss
+
+    optimizer.step(eval_loss)
+    return max(0.1, temperature.item())
 
 def evaluate():
     data_root = find_dataset_root()
@@ -35,8 +68,8 @@ def evaluate():
     model.load_state_dict(torch.load(weights_path, map_location=device))
     model.eval()
 
-    # 1. Validation set logits and targets with valid_flags mask & squeeze(-1)
-    print("🔍 Evaluating Validation Set for Threshold & Calibration Optimization...")
+    # 1. Validation set evaluation
+    print("🔍 Evaluating Validation Set for Threshold & Temperature Calibration...")
     val_logits, val_targets = [], []
     with torch.no_grad():
         for images, labels, valid_flags in val_loader:
@@ -51,18 +84,28 @@ def evaluate():
             val_targets.extend(labels.numpy())
 
     val_logits = np.array(val_logits)
-    val_preds = 1.0 / (1.0 + np.exp(-val_logits))  # Sigmoid
     val_targets = np.array(val_targets)
+    val_preds_uncalibrated = 1.0 / (1.0 + np.exp(-val_logits))
 
+    # Threshold optimization
     best_thresh = 0.5
     best_val_f1 = 0.0
     for thresh in np.arange(0.1, 0.9, 0.02):
-        f1 = f1_score(val_targets, (val_preds > thresh).astype(int))
+        f1 = f1_score(val_targets, (val_preds_uncalibrated > thresh).astype(int))
         if f1 > best_val_f1:
             best_val_f1 = f1
             best_thresh = thresh
 
-    print(f"✅ Optimal Val Threshold: {best_thresh:.2f} (Val F1: {best_val_f1:.4f})")
+    # Temperature Scaling Fit
+    optimal_temp = fit_temperature(val_logits, val_targets)
+    val_preds_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
+    
+    val_ece_before = compute_ece(val_preds_uncalibrated, val_targets)
+    val_ece_after = compute_ece(val_preds_calibrated, val_targets)
+
+    print(f"✅ Optimal Val Decision Threshold: {best_thresh:.2f} (Val F1: {best_val_f1:.4f})")
+    print(f"🌡️  Optimal Temperature (T*): {optimal_temp:.4f}")
+    print(f"📊 Validation ECE: {val_ece_before:.4f} (Raw) → {val_ece_after:.4f} (Calibrated)")
 
     # 2. Test Set Evaluation
     print("\n📊 Running Final Test Set Evaluation...")
@@ -80,22 +123,29 @@ def evaluate():
             test_targets.extend(labels.numpy())
 
     test_logits = np.array(test_logits)
-    test_preds = 1.0 / (1.0 + np.exp(-test_logits))
     test_targets = np.array(test_targets)
 
-    test_auc = roc_auc_score(test_targets, test_preds)
-    test_binary = (test_preds > best_thresh).astype(int)
+    test_preds_raw = 1.0 / (1.0 + np.exp(-test_logits))
+    test_preds_cal = 1.0 / (1.0 + np.exp(-(test_logits / optimal_temp)))
+
+    test_auc = roc_auc_score(test_targets, test_preds_raw)
+    test_binary = (test_preds_raw > best_thresh).astype(int)
     test_f1 = f1_score(test_targets, test_binary)
     test_prec = precision_score(test_targets, test_binary)
     test_rec = recall_score(test_targets, test_binary)
 
+    test_ece_before = compute_ece(test_preds_raw, test_targets)
+    test_ece_after = compute_ece(test_preds_cal, test_targets)
+
     print("\n" + "="*50)
     print("🏆 FINAL HELD-OUT TEST SET RESULTS:")
-    print(f"  ├─ Test AUC:       {test_auc:.4f}")
-    print(f"  ├─ Test F1-Score:  {test_f1:.4f}")
-    print(f"  ├─ Precision:      {test_prec:.4f}")
-    print(f"  └─ Recall:         {test_rec:.4f}")
-    print(f"  └─ Applied Thresh: {best_thresh:.2f}")
+    print(f"  ├─ Test AUC:             {test_auc:.4f}")
+    print(f"  ├─ Test F1-Score:        {test_f1:.4f}")
+    print(f"  ├─ Precision:            {test_prec:.4f}")
+    print(f"  ├─ Recall:               {test_rec:.4f}")
+    print(f"  ├─ Optimal Threshold:    {best_thresh:.2f}")
+    print(f"  ├─ Temperature (T*):     {optimal_temp:.4f}")
+    print(f"  └─ Test ECE:             {test_ece_before:.4f} (Raw) → {test_ece_after:.4f} (Calibrated)")
     print("="*50)
     print("\nClassification Report:\n", classification_report(test_targets, test_binary, target_names=['Real', 'Fake']))
 
