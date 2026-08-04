@@ -76,10 +76,10 @@ accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/t
 ### 🛡️ 3. True LOTO (Leave-One-Type-Out) Cross-Generator Generalization
 *Evaluates models trained for 3 epochs with 100% of a target generator domain excluded from training/validation splits.*
 
-| Experiment Fold | Held-Out Target Domain | Category Type | **Zero-Shot Generalization AUC** | Zero-Shot F1 |
-| :--- | :--- | :--- | :---: | :---: |
-| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | *[Running in Kaggle...]* | *[Running...]* |
-| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | *[Queued...]* | *[Queued...]* |
+| Experiment Fold | Held-Out Target Domain | Category Type | Test Samples | **Zero-Shot Generalization AUC** | Zero-Shot F1 | Precision | Recall |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | 5,289 (2.4k Fakes / 2.9k Reals) | **`0.9783`** | **`0.9230`** | `0.9244` | `0.9217` |
+| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | 9,528 (6.6k Fakes / 2.9k Reals) | *[Running on Kaggle...]* | *[Running...]* | *[Running...]* | *[Running...]* |
 
 ---
 
