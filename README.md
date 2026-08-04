@@ -22,66 +22,7 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
 
 ---
 
-## Quickstart
-
-### 1. Installation
-
-```bash
-git clone https://github.com/yyouretoast/deepfake-detection.git
-cd deepfake-detection
-pip install -r requirements.txt
-```
-
-### 2. Run Tests
-
-```bash
-pytest tests/ -v
-```
-
-### 3. Launch Web Application
-
-```bash
-streamlit run app.py
-```
-
-### 4. Multi-GPU Training
-
-```bash
-accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_dual_stream_ddp.py
-```
-
----
-
-## Benchmark & Experimental Results
-
-### 1. Held-Out Test Set Metrics (10,528 Crops)
-- **Test AUC**: `0.9987`
-- **Test F1-Score**: `0.9830`
-- **Precision (Fake)**: `0.9686`
-- **Recall (Fake)**: `0.9979`
-- **Optimal Temperature ($T^*$)**: `1.4788`
-- **Expected Calibration Error (ECE)**: `0.0122` (Raw) $\rightarrow$ `0.0093` (Calibrated)
-
-### 2. Per-Generator Sub-Domain Evaluation (2-Class AUC vs Real Faces)
-
-| Generator Sub-Domain | Sample Count | AUC | F1-Score | Recall |
-| :--- | :---: | :---: | :---: | :---: |
-| **Celeb-DF v2 Synthesis** | 6,639 | `0.9992` | `0.9630` | `99.97%` |
-| **FF++ Deepfakes (Pairs 0-199)** | 200 | `0.9963` | `0.4405` | `100.00%` |
-| **FF++ Face2Face (Pairs 200-399)** | 200 | `0.9967` | `0.4405` | `100.00%` |
-| **FF++ FaceSwap (Pairs 400-599)** | 200 | `0.9961` | `0.4405` | `100.00%` |
-| **FF++ NeuralTextures (Pairs 600-799)** | 200 | `0.9940` | `0.4405` | `100.00%` |
-
-### 3. True LOTO (Leave-One-Type-Out) Cross-Generator Generalization
-
-| Experiment Fold | Held-Out Target Domain | Category Type | Test Samples | Zero-Shot AUC | Zero-Shot F1 | Precision | Recall |
-| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | 5,289 (2.4k Fakes / 2.9k Reals) | `0.9783` | `0.9230` | `0.9244` | `0.9217` |
-| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | 9,528 (6.6k Fakes / 2.9k Reals) | *[Running on Kaggle...]* | *[Running...]* | *[Running...]* | *[Running...]* |
-
----
-
-## Architecture
+## System Architecture
 
 ```
 [ Input Video ] ──► [ Thread-Local YuNet ] ──► [ 512x512 Face Crops (1.50x Scale Margin) ]
@@ -132,6 +73,65 @@ $$
 - **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals before FFT extraction.
 - **Multi-GPU DDP Engine**: Hugging Face `Accelerate` DistributedDataParallel with `SyncBatchNorm` and OpenCV C++ binary loader.
 - **Per-Sample Loss Masking**: Excludes corrupt or invalid image frames from backpropagation gradient updates.
+
+---
+
+## Benchmark & Experimental Results
+
+### 1. Held-Out Test Set Metrics (10,528 Crops)
+- **Test AUC**: `0.9987`
+- **Test F1-Score**: `0.9830`
+- **Precision (Fake)**: `0.9686`
+- **Recall (Fake)**: `0.9979`
+- **Optimal Temperature ($T^*$)**: `1.4788`
+- **Expected Calibration Error (ECE)**: `0.0122` (Raw) $\rightarrow$ `0.0093` (Calibrated)
+
+### 2. Per-Generator Sub-Domain Evaluation (2-Class AUC vs Real Faces)
+
+| Generator Sub-Domain | Sample Count | AUC | F1-Score | Recall |
+| :--- | :---: | :---: | :---: | :---: |
+| **Celeb-DF v2 Synthesis** | 6,639 | `0.9992` | `0.9630` | `99.97%` |
+| **FF++ Deepfakes (Pairs 0-199)** | 200 | `0.9963` | `0.4405` | `100.00%` |
+| **FF++ Face2Face (Pairs 200-399)** | 200 | `0.9967` | `0.4405` | `100.00%` |
+| **FF++ FaceSwap (Pairs 400-599)** | 200 | `0.9961` | `0.4405` | `100.00%` |
+| **FF++ NeuralTextures (Pairs 600-799)** | 200 | `0.9940` | `0.4405` | `100.00%` |
+
+### 3. True LOTO (Leave-One-Type-Out) Cross-Generator Generalization
+
+| Experiment Fold | Held-Out Target Domain | Category Type | Test Samples | Zero-Shot AUC | Zero-Shot F1 | Precision | Recall |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | 5,289 (2.4k Fakes / 2.9k Reals) | `0.9783` | `0.9230` | `0.9244` | `0.9217` |
+| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | 9,528 (6.6k Fakes / 2.9k Reals) | *[Running on Kaggle...]* | *[Running...]* | *[Running...]* | *[Running...]* |
+
+---
+
+## Quickstart
+
+### 1. Installation
+
+```bash
+git clone https://github.com/yyouretoast/deepfake-detection.git
+cd deepfake-detection
+pip install -r requirements.txt
+```
+
+### 2. Run Test Suite
+
+```bash
+pytest tests/ -v
+```
+
+### 3. Launch Web Application
+
+```bash
+streamlit run app.py
+```
+
+### 4. Multi-GPU Training
+
+```bash
+accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_dual_stream_ddp.py
+```
 
 ---
 
