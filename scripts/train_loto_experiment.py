@@ -82,7 +82,14 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     kw = holdout_keyword.lower()
 
     if kw in ("celeb", "celebdf", "celeb-df"):
-        return "fake/id" in path_norm or "/id" in path_norm or "__" in path_norm or "celeb" in path_norm
+        filename = os.path.basename(path_norm)
+        parts = [p for p in path_norm.split("/") if p not in ("kaggle", "input", "working")]
+        return (
+            filename.startswith("id") or 
+            "_id" in filename or 
+            "__" in filename or 
+            any("celeb" in p for p in parts)
+        )
 
     folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
     if re.match(r"^\d{3}_\d{3}$", folder):
