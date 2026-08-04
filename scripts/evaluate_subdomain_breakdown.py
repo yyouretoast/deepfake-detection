@@ -1,7 +1,8 @@
 """
 Per-Generator Sub-Domain Evaluation Script for Dual-Stream Deepfake Detector.
 Evaluates the calibrated checkpoint on held-out test split samples partitioned by exact
-generator manipulation category (FF++ Numeric Manipulation Pairs, Celeb-DF v2 Synthesis).
+generator manipulation category, pairing each fake generator set with Real faces to compute
+true 2-class AUC, F1, Precision, and Recall.
 """
 import os
 import sys
@@ -38,7 +39,6 @@ def categorize_sample_path(rel_path: str) -> str:
     else:
         folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
         if re.match(r"^\d{3}_\d{3}$", folder):
-            # Map known FF++ pair ranges if present
             pair_num = int(folder.split("_")[0]) if folder.split("_")[0].isdigit() else 0
             if 0 <= pair_num <= 199:
                 return "FF++ Deepfakes (Pairs 0-199)"
@@ -73,7 +73,6 @@ def run_subdomain_evaluation():
     calibrated_ckpt_path = '/kaggle/working/dual_stream_calibrated.pth'
     if not os.path.exists(calibrated_ckpt_path):
         calibrated_ckpt_path = os.path.join(data_root, 'dual_stream_calibrated.pth')
-
     if not os.path.exists(calibrated_ckpt_path):
         calibrated_ckpt_path = os.path.join(REPO_ROOT, 'dual_stream_calibrated.pth')
 
@@ -88,16 +87,22 @@ def run_subdomain_evaluation():
 
     model.eval()
 
-    print("\n" + "="*75)
-    print("🔬 PER-GENERATOR SUB-DOMAIN EVALUATION (HELD-OUT TEST SET)")
-    print("="*75)
+    print("\n" + "="*85)
+    print("🔬 PER-GENERATOR SUB-DOMAIN EVALUATION (2-Class AUC vs Real Faces)")
+    print("="*85)
+
+    real_samples = grouped_samples.get("Original Real Faces", [])
 
     for group_name in sorted(grouped_samples.keys()):
-        group_list = grouped_samples[group_name]
-        if len(group_list) < 5:
+        if group_name == "Original Real Faces":
             continue
 
-        loader = DataLoader(KaggleFastDataset(group_list, data_root, is_train=False), batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
+        fake_samples = grouped_samples[group_name]
+        combined_eval_samples = fake_samples + real_samples
+        if len(fake_samples) < 5:
+            continue
+
+        loader = DataLoader(KaggleFastDataset(combined_eval_samples, data_root, is_train=False), batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
         group_logits, group_targets = [], []
 
         with torch.no_grad():
@@ -116,27 +121,15 @@ def run_subdomain_evaluation():
         group_targets = np.array(group_targets)
 
         probs = 1.0 / (1.0 + np.exp(-(group_logits / temp)))
-        
-        # Default calibrated threshold
-        preds_default = (probs > threshold).astype(int)
-        unique_classes = np.unique(group_targets)
+        preds = (probs > threshold).astype(int)
 
-        if len(unique_classes) > 1:
-            auc = roc_auc_score(group_targets, probs)
-            f1 = f1_score(group_targets, preds_default)
-            prec = precision_score(group_targets, preds_default, zero_division=0)
-            rec = recall_score(group_targets, preds_default, zero_division=0)
-            print(f"  📌 {group_name:<36} | Samples: {len(group_list):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
-        else:
-            acc_001 = np.mean((probs > 0.01).astype(int) == group_targets)
-            acc_010 = np.mean((probs > 0.10).astype(int) == group_targets)
-            acc_020 = np.mean((probs > 0.20).astype(int) == group_targets)
-            acc_050 = np.mean((probs > 0.50).astype(int) == group_targets)
-            cls_name = "Fake (1.0)" if unique_classes[0] == 1.0 else "Real (0.0)"
-            print(f"  📌 {group_name:<36} | Samples: {len(group_list):<5} | Class: {cls_name}")
-            print(f"      └─ Accuracy across thresholds: [T=0.01: {acc_001:.4f} | T=0.10: {acc_010:.4f} | T=0.20: {acc_020:.4f} | T=0.50: {acc_050:.4f}]")
+        auc = roc_auc_score(group_targets, probs)
+        f1 = f1_score(group_targets, preds, zero_division=0)
+        prec = precision_score(group_targets, preds, zero_division=0)
+        rec = recall_score(group_targets, preds, zero_division=0)
+        print(f"  📌 {group_name:<36} | Fakes: {len(fake_samples):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
 
-    print("="*75 + "\n✅ PER-GENERATOR SUB-DOMAIN EVALUATION COMPLETE!")
+    print("="*85 + "\n✅ PER-GENERATOR SUB-DOMAIN EVALUATION COMPLETE!")
 
 if __name__ == '__main__':
     run_subdomain_evaluation()

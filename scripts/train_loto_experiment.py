@@ -2,7 +2,7 @@
 True Leave-One-Type-Out (LOTO) Cross-Generator Training & Evaluation Experiment.
 
 Filters out 100% of FAKE samples (y=1) belonging to a target generator domain
-(e.g., 'celeb' or 'ffpp') from training/validation splits via strict folder token matching,
+(e.g., 'celeb' or 'neuraltextures') from training/validation splits via strict folder token matching,
 while retaining ALL REAL samples (y=0).
 
 Includes valid_flags masking across all evaluation loops, drop_last=True for DDP batch safety,
@@ -118,7 +118,7 @@ def filter_loto_split_strict(samples, holdout_keyword):
 
 def main():
     parser = argparse.ArgumentParser(description="LOTO Dual-Stream Deepfake Training")
-    parser.add_argument("--holdout", type=str, required=True, help="Generator domain to hold out (e.g. celeb, ffpp)")
+    parser.add_argument("--holdout", type=str, required=True, help="Generator domain to hold out (e.g. celeb, neuraltextures)")
     parser.add_argument("--epochs", type=int, default=3, help="Number of LOTO training epochs")
     args = parser.parse_args()
 
@@ -231,7 +231,6 @@ def main():
             logging.info(f"LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}")
 
     if accelerator.is_main_process:
-        # Log-Temperature Scaling and Dynamic Threshold Search on Main Process
         optimal_temp = fit_temperature_log(val_logits, val_targets)
         val_probs_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
 
@@ -259,8 +258,8 @@ def main():
                 target_targets.extend(targets_g.cpu().numpy())
 
     if accelerator.is_main_process:
-        target_logits = np.array(target_logits)
-        target_targets = np.array(target_targets)
+        target_logits = np.array(target_logits)[:len(eval_target_samples)]
+        target_targets = np.array(target_targets)[:len(eval_target_samples)]
 
         target_probs_calibrated = 1.0 / (1.0 + np.exp(-(target_logits / optimal_temp)))
         zero_shot_auc = roc_auc_score(target_targets, target_probs_calibrated)
@@ -280,7 +279,6 @@ def main():
         logging.info("  └─ Recall:                       %.4f", zero_shot_rec)
         logging.info("="*65)
 
-        # Environment-Agnostic JSON Persistence
         res_dir = "/kaggle/working" if os.path.exists("/kaggle/working") else REPO_ROOT
         res_file = os.path.join(res_dir, "loto_results.json")
         results = []
