@@ -1,4 +1,7 @@
 import gc
+import hashlib
+import json
+import logging
 from typing import List, Tuple, Dict, Any, Optional
 import os
 import tempfile
@@ -76,7 +79,7 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     
     state_dict = None
     if has_weights:
-        checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=False)
+        checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=True)
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
             opt_threshold = float(checkpoint.get("optimal_threshold", opt_threshold))
@@ -198,7 +201,7 @@ def process_video_frames(
             seq_logits = unwrapped.forward_sequence(sequence_tensor)
             video_prob = float(torch.sigmoid(seq_logits.float() / temperature).mean().item())
 
-    BATCH_SIZE = 16
+    BATCH_SIZE = CONFIG.get("training", {}).get("batch_size", 16)
     all_probs = []
 
     for i in range(0, len(all_faces), BATCH_SIZE):
@@ -347,7 +350,14 @@ def render_ui() -> None:
             st.error("File size exceeds 50MB limit.")
             st.stop()
 
-        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        # Use a content hash so two different videos with the same name+size aren't conflated.
+        _hasher = hashlib.md5()
+        _hasher.update(uploaded_file.name.encode())
+        _hasher.update(str(uploaded_file.size).encode())
+        uploaded_file.seek(0)
+        _hasher.update(uploaded_file.read(65536))  # first 64 KB is sufficient for a fingerprint
+        uploaded_file.seek(0)
+        file_id = _hasher.hexdigest()
         if st.session_state.last_file_id != file_id or st.session_state.analysis_results is None:
             tmp_path: Optional[str] = None
             try:

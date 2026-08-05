@@ -43,6 +43,9 @@ def test_perform_graph_split_zero_identity_leakage():
     val_ids = get_identities(val_split)
     test_ids = get_identities(test_split)
 
+    assert len(train_ids) > 0, "Train split must not be empty — identity parser may have silently failed"
+    assert len(val_ids) > 0, "Val split must not be empty — identity parser may have silently failed"
+    assert len(test_ids) > 0, "Test split must not be empty — identity parser may have silently failed"
     assert len(train_ids.intersection(val_ids)) == 0, f"Identity leakage between Train and Val: {train_ids.intersection(val_ids)}"
     assert len(train_ids.intersection(test_ids)) == 0, f"Identity leakage between Train and Test: {train_ids.intersection(test_ids)}"
     assert len(val_ids.intersection(test_ids)) == 0, f"Identity leakage between Val and Test: {val_ids.intersection(test_ids)}"
@@ -75,6 +78,7 @@ def test_perform_graph_split_nested_kaggle_paths():
     val_ids = get_identities(val_split)
     test_ids = get_identities(test_split)
 
+    assert len(train_ids) > 0, "Train split must not be empty — identity parser may have silently failed"
     assert len(train_ids.intersection(val_ids)) == 0
     assert len(train_ids.intersection(test_ids)) == 0
     assert len(val_ids.intersection(test_ids)) == 0

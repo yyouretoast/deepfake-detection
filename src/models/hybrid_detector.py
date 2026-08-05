@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import models, transforms
+from torchvision import models
 
 from src.config import load_config
 
@@ -91,7 +91,14 @@ class HybridDeepfakeDetector(nn.Module):
             nn.Linear(768, 512),
             nn.ReLU()
         )
-        self.imagenet_norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        self.register_buffer(
+            "imagenet_mean",
+            torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        )
+        self.register_buffer(
+            "imagenet_std",
+            torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        )
 
         if self.use_fft_branch:
             self.srm = SRMConv2d()
@@ -130,8 +137,8 @@ class HybridDeepfakeDetector(nn.Module):
         Forward pass for 4D image input tensor [B, 3, H, W].
         """
         # ImageNet normalization without torchvision data-dependent branch guards
-        mean = torch.tensor([0.485, 0.456, 0.406], device=x.device, dtype=x.dtype).view(1, 3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225], device=x.device, dtype=x.dtype).view(1, 3, 1, 1)
+        mean = self.imagenet_mean.to(dtype=x.dtype)
+        std = self.imagenet_std.to(dtype=x.dtype)
         x_spatial = (x - mean) / std
         f_s = self.spatial_pool(self.spatial_backbone(x_spatial)).flatten(1)
         f_s = self.spatial_fc(f_s)

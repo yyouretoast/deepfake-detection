@@ -20,6 +20,7 @@ def test_export_onnx_raises_unsupported_for_pure_fft2d(tmp_path):
         'temperature': 1.4788
     }, ckpt_path)
 
-    # Pure 2D FFT models cannot be exported to ONNX without approximation
-    with pytest.raises(Exception):
+    # Pure 2D FFT models cannot be exported to ONNX without approximation.
+    # torch.onnx.export raises RuntimeError for unsupported ops.
+    with pytest.raises((RuntimeError, torch.onnx.errors.OnnxExporterError)):
         export_to_onnx(str(ckpt_path), str(onnx_path), quantize=False)

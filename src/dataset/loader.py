@@ -1,4 +1,5 @@
 from typing import List, Tuple, Dict, Any, Optional
+import logging
 import os
 import re
 import cv2
@@ -210,10 +211,8 @@ class DeepfakeDataset(Dataset):
             if HAS_ALBUMENTATIONS and isinstance(self.transform, A.Compose):
                 augmented = self.transform(image=img_rgb)
                 return augmented['image'], label
-            elif HAS_TV2 and getattr(transforms_v2, 'Compose', None) and isinstance(self.transform, transforms_v2.Compose):
-                img_pil = Image.fromarray(img_rgb)
-                return self.transform(img_pil), label
-            elif HAS_TV1 and getattr(transforms_v1, 'Compose', None) and isinstance(self.transform, transforms_v1.Compose):
+            else:
+                # Generic callable fallback (e.g. torchvision transforms).
                 img_pil = Image.fromarray(img_rgb)
                 return self.transform(img_pil), label
 
@@ -344,8 +343,8 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
                         "val": [(os.path.relpath(p, cropped_dir), l) for p, l in val_samples],
                         "test": [(os.path.relpath(p, cropped_dir), l) for p, l in test_samples]
                     }, f)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning("Failed to write splits manifest to %s: %s", manifest_path, e)
     
     if not samples:
         train_samples, val_samples, test_samples = [], [], []

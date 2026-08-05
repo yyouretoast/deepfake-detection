@@ -54,3 +54,26 @@ def test_loss_masking_amp_autocast_precision(eval_model_factory):
 
     assert torch.isfinite(loss), "Loss value under AMP autocast contains NaN or Inf"
     assert (loss_unreduced[1] * valid_flags[1]).item() == 0.0
+
+def test_loss_masking_all_corrupt_batch(eval_model_factory):
+    """
+    Asserts that a 100% corrupted batch (all valid_flags = 0.0) produces a zero
+    loss and a finite backward pass — no NaN or Inf gradients.
+    """
+    model = eval_model_factory(use_fft=True)
+    images = torch.randn(2, 3, 256, 256)
+    labels = torch.tensor([1.0, 0.0])
+    valid_flags = torch.tensor([0.0, 0.0])  # every sample is corrupt
+
+    outputs = model(images).squeeze(1)
+    loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
+    loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+
+    assert loss.item() == 0.0, "All-corrupt batch loss must be exactly 0.0"
+
+    model.zero_grad()
+    loss.backward()
+
+    for p in model.parameters():
+        if p.requires_grad and p.grad is not None:
+            assert torch.isfinite(p.grad).all(), "NaN/Inf gradient detected in all-corrupt batch backward pass"

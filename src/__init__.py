@@ -11,7 +11,6 @@ except ImportError:
 __all__ = [
     "load_config",
     "HybridDeepfakeDetector",
-    "build_model",
     "DeepfakeDataset",
     "group_video_split",
     "extract_video_id",
