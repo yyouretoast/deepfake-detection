@@ -234,7 +234,7 @@ def main():
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
     state_dict = clean_state_dict(state_dict)
-    model.load_state_dict(state_dict, strict=True)
+    model.load_state_dict(state_dict, strict=False)
     model.to(device)
     model.eval()
 
