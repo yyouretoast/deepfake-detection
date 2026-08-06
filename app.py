@@ -59,6 +59,18 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
             weights_path = p
             break
 
+    if weights_path is None:
+        try:
+            from huggingface_hub import hf_hub_download
+            logging.info("No local checkpoint found. Attempting download from HuggingFace Hub...")
+            weights_path = hf_hub_download(
+                repo_id="yyouretoast/deepfake-detector",
+                filename="dual_stream_calibrated.pth"
+            )
+            logging.info(f"Downloaded weights from HuggingFace Hub to {weights_path}")
+        except Exception as e:
+            logging.warning(f"Could not download weights from HuggingFace Hub: {e}")
+
     opt_threshold = DEFAULT_THRESHOLD
     temperature = 1.0
 
