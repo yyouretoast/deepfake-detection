@@ -1,4 +1,5 @@
 import gc
+from src.utils.temporal_aggregation import aggregate_video_predictions
 import hashlib
 import json
 import logging
@@ -215,6 +216,16 @@ def process_video_frames(
                 batch_probs = ((p1 + p2) / 2.0).cpu().numpy().tolist()
 
         all_probs.extend(batch_probs)
+
+    # Blend forward_sequence temporal score with frame-level soft-max aggregation.
+    # Averaged (not max'd) because both scores come from the same model on the same
+    # faces — correlated estimators have no business being max'd.
+    _agg = aggregate_video_predictions(
+        scores=all_probs,
+        method="soft_max",
+        threshold=classification_threshold,
+    )
+    video_prob = (video_prob + _agg["video_score"]) / 2.0
 
     zipped_data = list(zip(all_faces, all_probs))
     zipped_data.sort(key=lambda x: x[1], reverse=True)

@@ -1,150 +1,211 @@
 """
-Production-Grade Video Temporal Aggregation Utilities for Deepfake Detection.
+Production-grade video temporal aggregation utilities for deepfake detection.
 
-Provides logit/probability space frame score pooling algorithms:
-  - mean_aggregation: Standard temporal expectation
-  - top_k_aggregation: Top-K highest confidence fake frame pooling
-  - soft_max_weighted_aggregation: Soft-Max weighted probability pooling
-  - ema_aggregation: Chronologically sorted exponential moving average
-  - aggregate_video_predictions: Unified production API wrapper
+Provides frame-level probability score pooling algorithms for aggregating
+per-frame deepfake predictions into a single video-level score.
+
+Functions:
+    mean_aggregation: Standard temporal mean.
+    top_k_aggregation: Top-K highest confidence frame pooling.
+    soft_max_weighted_aggregation: Log-sum-exp stabilized soft-max weighted pooling.
+    ema_aggregation: Chronologically sorted exponential moving average.
+    aggregate_video_predictions: Unified production API dispatcher.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 def _sanitize_scores(
-    scores: Union[List[float], np.ndarray],
-    is_logits: bool = False,
-    temperature: float = 1.4788
+    scores: Union[List[float], List[List[float]], np.ndarray],
 ) -> np.ndarray:
     """
-    Cleans score array, filters NaN/Inf, and converts logits to probabilities if requested.
+    Sanitizes and flattens a frame score array.
+
+    Handles nested lists produced by app.py's per-batch `.tolist()` calls
+    (e.g. [[0.5], [0.3], ...]) via flatten(). Filters NaN/Inf and clips to [0, 1].
+
+    Args:
+        scores: Raw frame probabilities. May be a flat list, nested list, or ndarray.
+
+    Returns:
+        1-D float32 ndarray of finite, clipped probability values.
+        Returns np.array([], dtype=np.float32) if all values are invalid.
     """
-    if scores is None or len(scores) == 0:
+    if scores is None:
         return np.array([], dtype=np.float32)
+    arr = np.asarray(scores, dtype=np.float32).flatten()
+    valid = arr[np.isfinite(arr)]
+    return np.clip(valid, 0.0, 1.0)
 
-    arr = np.array(scores, dtype=np.float32).flatten()
-    valid_mask = np.isfinite(arr)
-    valid_arr = arr[valid_mask]
-
-    if len(valid_arr) == 0:
-        return np.array([], dtype=np.float32)
-
-    if is_logits:
-        # Convert logits to calibrated probabilities via Temperature Scaling
-        scaled_logits = valid_arr / max(1e-5, temperature)
-        valid_arr = 1.0 / (1.0 + np.exp(-scaled_logits))
-
-    # Clamp probabilities to [0, 1] bounds
-    return np.clip(valid_arr, 0.0, 1.0)
 
 def mean_aggregation(
-    scores: Union[List[float], np.ndarray],
-    is_logits: bool = False,
-    temperature: float = 1.4788
+    scores: Union[List[float], List[List[float]], np.ndarray],
 ) -> float:
-    """Computes standard temporal mean across valid frame predictions."""
-    clean = _sanitize_scores(scores, is_logits=is_logits, temperature=temperature)
-    if len(clean) == 0:
+    """
+    Computes the temporal mean of frame-level fake probabilities.
+
+    Args:
+        scores: Frame-level probabilities in [0, 1].
+
+    Returns:
+        Mean probability. Returns 0.5 if no valid frames.
+    """
+    valid = _sanitize_scores(scores)
+    if len(valid) == 0:
         return 0.5
-    return float(np.mean(clean))
+    return float(np.mean(valid))
+
 
 def top_k_aggregation(
-    scores: Union[List[float], np.ndarray],
+    scores: Union[List[float], List[List[float]], np.ndarray],
     k: int = 5,
-    is_logits: bool = False,
-    temperature: float = 1.4788
 ) -> float:
-    """Averages the top-K highest confidence fake frame scores."""
-    clean = _sanitize_scores(scores, is_logits=is_logits, temperature=temperature)
-    if len(clean) == 0:
+    """
+    Averages the top-K highest confidence fake frame probabilities.
+
+    Uses np.partition (O(N)) instead of full sort (O(N log N)).
+    K is clamped to the number of valid frames if fewer than K exist.
+
+    Args:
+        scores: Frame-level probabilities in [0, 1].
+        k: Number of top frames to average.
+
+    Returns:
+        Mean of top-K probabilities. Returns 0.5 if no valid frames.
+    """
+    valid = _sanitize_scores(scores)
+    if len(valid) == 0:
         return 0.5
-    k_effective = max(1, min(k, len(clean)))
-    sorted_scores = np.sort(clean)[::-1]
-    return float(np.mean(sorted_scores[:k_effective]))
+    k_eff = max(1, min(k, len(valid)))
+    top_k = np.partition(valid, -k_eff)[-k_eff:]
+    return float(np.mean(top_k))
+
 
 def soft_max_weighted_aggregation(
-    scores: Union[List[float], np.ndarray],
+    scores: Union[List[float], List[List[float]], np.ndarray],
     tau: float = 1.0,
-    is_logits: bool = False,
-    temperature: float = 1.4788
 ) -> float:
     """
-    Computes Soft-Max Temperature Weighting to emphasize high-confidence forgery anomalies
-    without artificially inflating scores on 100% real videos.
+    Computes a soft-max weighted average of frame probabilities.
+
+    High-confidence frames receive exponentially more weight, emphasising
+    localised manipulation artefacts without inflating scores on clean videos.
+    Log-sum-exp shift applied for numerical stability.
+
+    Args:
+        scores: Frame-level probabilities in [0, 1].
+        tau: Temperature for soft-max sharpness. Smaller tau → sharper focus
+             on the highest-scoring frames.
+
+    Returns:
+        Soft-max weighted probability. Returns 0.5 if no valid frames.
     """
-    clean = _sanitize_scores(scores, is_logits=is_logits, temperature=temperature)
-    if len(clean) == 0:
+    valid = _sanitize_scores(scores)
+    if len(valid) == 0:
         return 0.5
-    
-    # Softmax weights over score magnitude
-    scaled = clean / max(1e-5, tau)
-    exp_scores = np.exp(scaled - np.max(scaled))  # Log-sum-exp stability trick
-    weights = exp_scores / np.sum(exp_scores)
-    return float(np.sum(clean * weights))
+    scaled = valid / max(tau, 1e-8)
+    shifted = scaled - np.max(scaled)          # log-sum-exp stability
+    weights = np.exp(shifted)
+    weights /= np.sum(weights)
+    return float(np.dot(valid, weights))
+
 
 def ema_aggregation(
-    scores: Union[List[float], np.ndarray],
+    scores: Union[List[float], List[List[float]], np.ndarray],
     frame_indices: Optional[List[int]] = None,
     alpha: float = 0.3,
-    is_logits: bool = False,
-    temperature: float = 1.4788
 ) -> float:
     """
-    Computes exponential moving average (EMA) across chronologically sorted video frames.
+    Computes a sequential exponential moving average over chronologically
+    ordered video frames.
+
+    If frame_indices are provided the scores are sorted chronologically first.
+    Uses a plain Python for loop — for N ≤ 100 video frames the overhead is
+    immeasurable and clarity is more valuable than a false vectorization.
+
+    EMA recurrence: S_0 = p_0,  S_t = alpha * p_t + (1 - alpha) * S_{t-1}
+
+    Args:
+        scores: Frame-level probabilities in [0, 1].
+        frame_indices: Optional integer indices for chronological ordering.
+                       Must be the same length as the original scores list.
+        alpha: EMA smoothing factor in (0, 1]. Higher → more weight on recent frames.
+
+    Returns:
+        Final EMA value. Returns 0.5 if no valid frames.
     """
-    clean = _sanitize_scores(scores, is_logits=is_logits, temperature=temperature)
-    if len(clean) == 0:
+    valid = _sanitize_scores(scores)
+    if len(valid) == 0:
         return 0.5
 
-    if frame_indices is not None and len(frame_indices) == len(scores):
-        indices = np.array(frame_indices).flatten()
-        valid_mask = np.isfinite(np.array(scores, dtype=np.float32).flatten())
-        indices = indices[valid_mask]
-        sort_order = np.argsort(indices)
-        clean = clean[sort_order]
+    if frame_indices is not None:
+        raw = np.asarray(scores, dtype=np.float32).flatten()
+        idx = np.asarray(frame_indices, dtype=np.int64).flatten()
+        # Only sort the frames that survived sanitization (finite values)
+        finite_mask = np.isfinite(raw)
+        idx = idx[finite_mask]
+        order = np.argsort(idx)
+        valid = valid[order]
 
-    ema = clean[0]
-    for s in clean[1:]:
-        ema = alpha * s + (1.0 - alpha) * ema
-    return float(ema)
+    s = float(valid[0])
+    for p in valid[1:]:
+        s = alpha * float(p) + (1.0 - alpha) * s
+    return s
+
 
 def aggregate_video_predictions(
-    scores: Union[List[float], np.ndarray],
-    method: str = "top_k",
+    scores: Union[List[float], List[List[float]], np.ndarray],
+    method: str = "soft_max",
     k: int = 5,
     alpha: float = 0.3,
     tau: float = 1.0,
     threshold: float = 0.01,
-    is_logits: bool = False,
-    temperature: float = 1.4788,
-    frame_indices: Optional[List[int]] = None
+    frame_indices: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """
-    Unified production wrapper for video-level score aggregation.
+    Unified production dispatcher for video-level score aggregation.
+
+    Args:
+        scores: Frame-level probabilities in [0, 1].
+        method: One of 'mean', 'top_k', 'soft_max', 'ema'.
+        k: Top-K parameter for 'top_k' method.
+        alpha: EMA smoothing factor for 'ema' method.
+        tau: Temperature for 'soft_max' method.
+        threshold: Decision threshold for is_fake.
+        frame_indices: Optional chronological frame indices for 'ema' method.
+
+    Returns:
+        Dict with keys:
+            video_score (float): Aggregated score in [0, 1].
+            is_fake (bool): video_score > threshold.
+            aggregation_method (str): Method used.
+            valid_frames_count (int): Number of valid frames used.
+            threshold_used (float): Decision threshold applied.
     """
-    clean = _sanitize_scores(scores, is_logits=is_logits, temperature=temperature)
-    valid_count = len(clean)
+    valid = _sanitize_scores(scores)
+    valid_count = len(valid)
 
     if method == "mean":
-        score = mean_aggregation(clean, is_logits=False)
+        score = mean_aggregation(scores)
     elif method == "top_k":
-        score = top_k_aggregation(clean, k=k, is_logits=False)
+        score = top_k_aggregation(scores, k=k)
     elif method == "soft_max":
-        score = soft_max_weighted_aggregation(clean, tau=tau, is_logits=False)
+        score = soft_max_weighted_aggregation(scores, tau=tau)
     elif method == "ema":
-        score = ema_aggregation(clean, frame_indices=frame_indices, alpha=alpha, is_logits=False)
+        score = ema_aggregation(scores, frame_indices=frame_indices, alpha=alpha)
     else:
-        logging.warning(f"Unknown aggregation method '{method}', defaulting to 'top_k'.")
-        score = top_k_aggregation(clean, k=k, is_logits=False)
+        logger.warning("Unknown aggregation method '%s', defaulting to 'soft_max'.", method)
+        score = soft_max_weighted_aggregation(scores, tau=tau)
 
     return {
         "video_score": score,
         "is_fake": score > threshold,
         "aggregation_method": method,
         "valid_frames_count": valid_count,
-        "threshold_used": threshold
+        "threshold_used": threshold,
     }
