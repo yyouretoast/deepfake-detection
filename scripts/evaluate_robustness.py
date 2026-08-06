@@ -172,7 +172,14 @@ def run_eval(model, samples, root_dir, degradation_fn, threshold, temperature,
     Returns:
         auc (float), f1 (float), n_samples (int)
     """
-    capped = samples[:max_samples] if max_samples else samples
+    if max_samples:
+        # Stratified sampling: equal real/fake split to guarantee both classes present.
+        reals = [s for s in samples if s[1] == 0]
+        fakes = [s for s in samples if s[1] == 1]
+        n_each = max_samples // 2
+        capped = reals[:n_each] + fakes[:n_each]
+    else:
+        capped = samples
     dataset = RobustnessDataset(capped, root_dir, degradation_fn)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
                         num_workers=2, pin_memory=(device.type == "cuda"))
