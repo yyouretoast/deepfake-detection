@@ -110,6 +110,49 @@ $$
 
 **Note on Fold 2**: Holding out Celeb-DF v2 removes 88% of all fake training crops (66,382 samples), leaving only compressed FaceForensics++ fakes for training. The AUC collapse (0.9783 → 0.3234) is consistent with the cross-dataset domain gap between low-resolution H.264-compressed FF++ synthesis and pristine high-resolution Celeb-DF v2 celebrity synthesis, as documented in Li et al. (CVPR 2020) and Rossler et al. (ICCV 2019). High Precision (0.9542) with near-zero Recall (0.0641) confirms the model's decision boundary is inverted on the unseen domain rather than random.
 
+### 4. Robustness Under Image Degradation
+
+Evaluated on full held-out test split (10,528 crops) at 256×256 resolution using calibrated checkpoint (T\*=1.4788, threshold=0.01).
+
+**JPEG Compression**
+
+| Quality | AUC | F1 | ΔAUC |
+| :---: | :---: | :---: | :---: |
+| Clean (baseline) | `0.9988` | `0.9677` | — |
+| Q=100 | `0.9985` | `0.9540` | −0.03% |
+| Q=90 | `0.9971` | `0.9693` | −0.17% |
+| Q=70 | `0.9852` | `0.9626` | −1.36% |
+| Q=50 | `0.9685` | `0.9279` | −3.03% |
+| Q=30 | `0.9335` | `0.8528` | −6.53% |
+
+**Gaussian Blur**
+
+| Sigma (σ) | AUC | F1 | ΔAUC |
+| :---: | :---: | :---: | :---: |
+| Clean (baseline) | `0.9988` | `0.9677` | — |
+| σ=0.5 | `0.9981` | `0.9554` | −0.07% |
+| σ=1.5 | `0.9748` | `0.8675` | −2.40% |
+| σ=3.0 | `0.7375` | `0.8411` | **−26.13%** |
+
+**Gaussian Noise**
+
+| Sigma (σ) | AUC | F1 | ΔAUC |
+| :---: | :---: | :---: | :---: |
+| Clean (baseline) | `0.9988` | `0.9677` | — |
+| σ=5 | `0.9777` | `0.9291` | −2.11% |
+| σ=15 | `0.8844` | `0.8732` | −11.44% |
+| σ=30 | `0.7544` | `0.8479` | **−24.44%** |
+
+**Resolution Downscaling**
+
+| Scale | AUC | F1 | ΔAUC |
+| :---: | :---: | :---: | :---: |
+| Clean (baseline) | `0.9988` | `0.9677` | — |
+| 0.75× | `0.9952` | `0.9300` | −0.36% |
+| 0.50× | `0.9910` | `0.9059` | −0.78% |
+| 0.25× | `0.9518` | `0.8631` | −4.70% |
+
+**Note**: AUC collapse under heavy Gaussian blur (σ=3.0, −26%) and noise (σ=30, −24%) is an inherent consequence of the SRM+Bayar+2D FFT frequency branch's dependence on high-frequency manipulation artifacts. Low-pass filtering (blur) and wideband noise physically destroy the spectral signal the frequency stream relies on. The model remains robust to compression and resolution degradation, which are the dominant artifacts in real-world social media video uploads.
 
 ---
 
