@@ -206,6 +206,12 @@ deepfake-detection/
 ├── app.py                         # Streamlit web interface
 ├── config/
 │   └── default.yaml               # Configuration parameters (img_size: 512, scale_factor: 1.50)
+├── figures/                       # Publication-ready 300 DPI benchmark plots
+│   ├── roc_curve.png              # Test set ROC curve (AUC = 0.9988)
+│   ├── ece_reliability.png        # ECE reliability diagram (0.0122 -> 0.0093)
+│   ├── robustness_degradation.png # 2x2 grid tracking JPEG, Blur, Noise, Downscaling
+│   ├── loto_generalization.png    # Leave-One-Type-Out zero-shot AUC bar chart
+│   └── per_generator_auc.png      # Horizontal bar chart of per-generator AUC
 ├── notebooks/
 │   └── master_pipeline.ipynb      # End-to-end master research pipeline notebook
 ├── src/
@@ -213,13 +219,19 @@ deepfake-detection/
 │   ├── dataset/
 │   │   ├── loader.py              # Identity-safe graph splitter & loader
 │   │   └── preprocess.py          # DynamicFaceCropper & 5-point similarity alignment
-│   └── models/
-│       └── hybrid_detector.py     # ConvNeXt-Small + SRM/Bayar 2D FFT architecture
-├── scripts/                       # Production training, face cropping, and ONNX export
+│   ├── models/
+│   │   └── hybrid_detector.py     # ConvNeXt-Small + SRM/Bayar 2D FFT architecture
+│   └── utils/
+│       └── temporal_aggregation.py# Frame score pooling (soft-max, EMA, top-K, mean)
+├── scripts/                       # Training, evaluation, export & plotting scripts
 │   ├── extract_face_crops.py      # Thread-pool multi-threaded face cropper
 │   ├── train_dual_stream_ddp.py   # Multi-GPU DDP training pipeline
+│   ├── train_loto_experiment.py   # LOTO cross-generator evaluation script
+│   ├── evaluate_robustness.py     # Degradation stress-testing script
+│   ├── export_test_predictions.py # Raw/calibrated probability exporter
+│   ├── generate_benchmark_plots.py# 300 DPI visualization rendering script
 │   └── export_onnx.py             # ONNX FP16/UINT8 exporter
-├── tests/                         # 20/20 passing unit tests
+├── tests/                         # 45/45 passing unit tests
 └── README.md
 ```
 
