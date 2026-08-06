@@ -1,0 +1,4 @@
+figures/
+*.pth
+*.onnx
+*.json
