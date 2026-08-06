@@ -110,9 +110,13 @@ $$
 
 **Note on Fold 2**: Holding out Celeb-DF v2 removes 88% of all fake training crops (66,382 samples), leaving only compressed FaceForensics++ fakes for training. The AUC collapse (0.9783 → 0.3234) is consistent with the cross-dataset domain gap between low-resolution H.264-compressed FF++ synthesis and pristine high-resolution Celeb-DF v2 celebrity synthesis, as documented in Li et al. (CVPR 2020) and Rossler et al. (ICCV 2019). High Precision (0.9542) with near-zero Recall (0.0641) confirms the model's decision boundary is inverted on the unseen domain rather than random.
 
+![LOTO Zero-Shot Generalization](figures/loto_generalization.png)
+
 ### 4. Robustness Under Image Degradation
 
 Evaluated on full held-out test split (10,528 crops) at 256×256 resolution using calibrated checkpoint (T\*=1.4788, threshold=0.01).
+
+![Robustness Degradation Sweeps](figures/robustness_degradation.png)
 
 **JPEG Compression**
 
@@ -154,7 +158,16 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 **Note**: AUC collapse under heavy Gaussian blur (σ=3.0, −26%) and noise (σ=30, −24%) is an inherent consequence of the SRM+Bayar+2D FFT frequency branch's dependence on high-frequency manipulation artifacts. Low-pass filtering (blur) and wideband noise physically destroy the spectral signal the frequency stream relies on. The model remains robust to compression and resolution degradation, which are the dominant artifacts in real-world social media video uploads.
 
+### 5. Benchmark Performance Visualizations
+
+![ROC Curve](figures/roc_curve.png)
+
+![ECE Reliability Diagram](figures/ece_reliability.png)
+
+![Per-Generator Sub-Domain AUC](figures/per_generator_auc.png)
+
 ---
+
 
 ## Quickstart
 
