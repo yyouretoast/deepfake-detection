@@ -1,13 +1,9 @@
 """
-True Leave-One-Type-Out (LOTO) Cross-Generator Training & Evaluation Experiment.
+Leave-One-Target-Out (LOTO) Cross-Generator Training & Evaluation Experiment.
 
-Filters out 100% of FAKE samples (y=1) belonging to a target generator domain
-(e.g., 'celeb' or 'neuraltextures') from training/validation splits via strict folder token matching,
-while retaining ALL REAL samples (y=0).
-
-Includes valid_flags masking across all evaluation loops, drop_last=True for DDP batch safety,
-train_loader sampler set_epoch(epoch) for shuffle entropy, Log-Temperature scaling (T*)
-calculated strictly on main process, and environment-agnostic JSON results persistence.
+Filters out FAKE samples (y=1) belonging to a target generator domain
+(e.g., 'celeb' or 'neuraltextures') from training/validation splits,
+while retaining ALL REAL samples (y=0) to preserve baseline real distributions.
 
 Usage:
     accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_loto_experiment.py --holdout celeb --epochs 3
@@ -128,13 +124,11 @@ def main():
     eval_target_samples = all_heldout_fakes + test_reals
 
     if accelerator.is_main_process:
-        logging.info("="*65)
-        logging.info("🚀 STARTING TRUE LOTO EXPERIMENT (HOLDOUT: %s)", args.holdout.upper())
-        logging.info("  ├─ Retained Train Samples: %d (Filtered out %d FAKE '%s' samples)", len(train_samples), len(train_heldout_fakes), args.holdout)
-        logging.info("  ├─ Retained Val Samples:   %d", len(val_samples))
-        logging.info("  └─ Zero-Shot Test Evaluation Set: %d samples (%d Zero-Shot Fakes vs %d Reals)", 
+        logging.info("Starting LOTO experiment (Holdout domain: %s)", args.holdout.upper())
+        logging.info("  Retained train samples: %d (Filtered out %d FAKE '%s' samples)", len(train_samples), len(train_heldout_fakes), args.holdout)
+        logging.info("  Retained val samples:   %d", len(val_samples))
+        logging.info("  Zero-shot test set:     %d samples (%d zero-shot fakes vs %d reals)", 
                      len(eval_target_samples), len(all_heldout_fakes), len(test_reals))
-        logging.info("="*65)
 
     if len(all_heldout_fakes) < 5:
         raise ValueError(f"Held-out fake sample count for keyword '{args.holdout}' is too small ({len(all_heldout_fakes)} < 5)!")
@@ -257,16 +251,9 @@ def main():
         zero_shot_prec = precision_score(target_targets, binary_preds, zero_division=0)
         zero_shot_rec = recall_score(target_targets, binary_preds, zero_division=0)
 
-        logging.info("\n" + "="*65)
-        logging.info("🏆 ZERO-SHOT LOTO EVALUATION ON HELD-OUT '%s':", args.holdout.upper())
-        logging.info("   (Zero-Shot on Fake Generator, In-Distribution on Real Faces)")
-        logging.info("  ├─ Retained Val Optimal Threshold: %.2f", best_thresh)
-        logging.info("  ├─ Fitted Log-Temperature (T*):    %.4f", optimal_temp)
-        logging.info("  ├─ Generalization AUC:            %.4f", zero_shot_auc)
-        logging.info("  ├─ Generalization F1:             %.4f", zero_shot_f1)
-        logging.info("  ├─ Precision:                    %.4f", zero_shot_prec)
-        logging.info("  └─ Recall:                       %.4f", zero_shot_rec)
-        logging.info("="*65)
+        logging.info("Zero-Shot LOTO evaluation on held-out '%s':", args.holdout.upper())
+        logging.info("  Threshold: %.2f | Temperature (T*): %.4f", best_thresh, optimal_temp)
+        logging.info("  AUC: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f", zero_shot_auc, zero_shot_f1, zero_shot_prec, zero_shot_rec)
 
         res_dir = "/kaggle/working" if os.path.exists("/kaggle/working") else REPO_ROOT
         res_file = os.path.join(res_dir, "loto_results.json")
@@ -275,7 +262,7 @@ def main():
             try:
                 with open(res_file, 'r') as f:
                     results = json.load(f)
-            except Exception:
+            except (json.JSONDecodeError, IOError):
                 results = []
 
         results.append({
@@ -292,7 +279,7 @@ def main():
 
         with open(res_file, 'w') as f:
             json.dump(results, f, indent=2)
-        logging.info("💾 Saved LOTO result entry to %s", res_file)
+        logging.info("Saved LOTO result entry to %s", res_file)
 
 if __name__ == '__main__':
     main()

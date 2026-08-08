@@ -1,5 +1,5 @@
 """
-Production-grade video temporal aggregation utilities for deepfake detection.
+Video temporal aggregation utilities for deepfake detection.
 
 Provides frame-level probability score pooling algorithms for aggregating
 per-frame deepfake predictions into a single video-level score.

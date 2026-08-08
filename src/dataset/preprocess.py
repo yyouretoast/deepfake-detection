@@ -48,10 +48,9 @@ def get_cached_yunet_path() -> Optional[str]:
 
 class DynamicFaceCropper:
     """
-    High-performance OpenCV YuNet primary dynamic face extractor with MTCNN & Haar Cascade fallbacks.
-    Extracts face bounding boxes with 1.50x bounding box scaling factor and 5-point landmark similarity alignment.
-    Uses thread-local storage (threading.local()) for zero lock contention and 100% thread safety.
-    Supports native 512x512 full-resolution face crop extraction.
+    OpenCV YuNet face extractor with MTCNN and Haar Cascade fallback detectors.
+    Extracts scaled face crops with 5-point landmark similarity alignment.
+    Uses thread-local storage (threading.local()) for thread safety across worker threads.
     """
     def __init__(
         self,

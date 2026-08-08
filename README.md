@@ -71,7 +71,7 @@ $$
 
 ## Core Engineering Features
 
-- **Zero Identity Data Leakage**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs across train, val, and test splits.
+- **Identity-Disjoint Data Partitioning**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs across train, val, and test splits.
 - **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals before FFT extraction.
 - **Multi-GPU DDP Engine**: Hugging Face `Accelerate` DistributedDataParallel with `SyncBatchNorm` and OpenCV C++ binary loader.
 - **Per-Sample Loss Masking**: Excludes corrupt or invalid image frames from backpropagation gradient updates.

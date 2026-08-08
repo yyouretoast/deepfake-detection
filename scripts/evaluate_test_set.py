@@ -75,11 +75,11 @@ def evaluate():
     val_ece_before = compute_ece(val_preds_uncalibrated, val_targets)
     val_ece_after = compute_ece(val_preds_calibrated, val_targets)
 
-    print(f"✅ Optimal Val Decision Threshold: {best_thresh:.2f} (Val F1: {best_val_f1:.4f})")
-    print(f"🌡️  Optimal Temperature (T*): {optimal_temp:.4f}")
-    print(f"📊 Validation ECE: {val_ece_before:.4f} (Raw) → {val_ece_after:.4f} (Calibrated)")
+    print(f"Optimal Validation Decision Threshold: {best_thresh:.2f} (Val F1: {best_val_f1:.4f})")
+    print(f"Optimal Temperature (T*): {optimal_temp:.4f}")
+    print(f"Validation ECE: {val_ece_before:.4f} (Raw) -> {val_ece_after:.4f} (Calibrated)")
 
-    print("\n📊 Running Final Test Set Evaluation...")
+    print("\nRunning Final Test Set Evaluation...")
     test_logits, test_targets = [], []
     with torch.no_grad():
         for images, labels, valid_flags in test_loader:
@@ -108,16 +108,14 @@ def evaluate():
     test_ece_before = compute_ece(test_preds_raw, test_targets)
     test_ece_after = compute_ece(test_preds_cal, test_targets)
 
-    print("\n" + "="*50)
-    print("🏆 FINAL HELD-OUT TEST SET RESULTS:")
-    print(f"  ├─ Test AUC:             {test_auc:.4f}")
-    print(f"  ├─ Test F1-Score:        {test_f1:.4f}")
-    print(f"  ├─ Precision:            {test_prec:.4f}")
-    print(f"  ├─ Recall:               {test_rec:.4f}")
-    print(f"  ├─ Optimal Threshold:    {best_thresh:.2f}")
-    print(f"  ├─ Temperature (T*):     {optimal_temp:.4f}")
-    print(f"  └─ Test ECE:             {test_ece_before:.4f} (Raw) → {test_ece_after:.4f} (Calibrated)")
-    print("="*50)
+    print("\nFINAL HELD-OUT TEST SET RESULTS:")
+    print(f"  Test AUC:          {test_auc:.4f}")
+    print(f"  Test F1-Score:     {test_f1:.4f}")
+    print(f"  Precision:         {test_prec:.4f}")
+    print(f"  Recall:            {test_rec:.4f}")
+    print(f"  Optimal Threshold: {best_thresh:.2f}")
+    print(f"  Temperature (T*):  {optimal_temp:.4f}")
+    print(f"  Test ECE:          {test_ece_before:.4f} (Raw) -> {test_ece_after:.4f} (Calibrated)")
     print("\nClassification Report:\n", classification_report(test_targets, test_binary, target_names=['Real', 'Fake']))
 
     calibrated_ckpt_path = '/kaggle/working/dual_stream_calibrated.pth'
@@ -126,7 +124,7 @@ def evaluate():
         'optimal_threshold': float(best_thresh),
         'temperature': float(optimal_temp),
     }, calibrated_ckpt_path)
-    print(f"\n💾 Saved Calibrated Model Checkpoint contract to {calibrated_ckpt_path}")
+    print(f"\nSaved Calibrated Model Checkpoint contract to {calibrated_ckpt_path}")
 
 if __name__ == '__main__':
     evaluate()

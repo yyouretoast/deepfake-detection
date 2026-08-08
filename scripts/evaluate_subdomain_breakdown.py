@@ -80,15 +80,13 @@ def run_subdomain_evaluation():
         model.load_state_dict(ckpt['model_state_dict'])
         threshold = float(ckpt['optimal_threshold'])
         temp = float(ckpt['temperature'])
-        print(f"✅ Loaded Calibrated Checkpoint from {calibrated_ckpt_path} (Threshold={threshold:.2f}, Temp={temp:.4f})")
+        print(f"Loaded Calibrated Checkpoint from {calibrated_ckpt_path} (Threshold={threshold:.2f}, Temp={temp:.4f})")
     else:
         raise FileNotFoundError(f"Calibrated checkpoint file not found at {calibrated_ckpt_path}! Please run scripts/evaluate_test_set.py first.")
 
     model.eval()
 
-    print("\n" + "="*85)
-    print("🔬 PER-GENERATOR SUB-DOMAIN EVALUATION (2-Class AUC vs Real Faces)")
-    print("="*85)
+    print("\nPER-GENERATOR SUB-DOMAIN EVALUATION (2-Class AUC vs Real Faces)")
 
     real_samples = grouped_samples.get("Original Real Faces", [])
     real_logits, real_targets = [], []
@@ -144,9 +142,9 @@ def run_subdomain_evaluation():
         f1 = f1_score(group_targets, preds, zero_division=0)
         prec = precision_score(group_targets, preds, zero_division=0)
         rec = recall_score(group_targets, preds, zero_division=0)
-        print(f"  📌 {group_name:<36} | Fakes: {len(fake_samples):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
+        print(f"  {group_name:<36} | Fakes: {len(fake_samples):<5} | AUC: {auc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
 
-    print("="*85 + "\n✅ PER-GENERATOR SUB-DOMAIN EVALUATION COMPLETE!")
+    print("\nPer-generator sub-domain evaluation complete.")
 
 if __name__ == '__main__':
     run_subdomain_evaluation()
