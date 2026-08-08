@@ -9,9 +9,9 @@ pinned: false
 license: mit
 ---
 
-# Deepfake Detection Engine
+# 🎭 Dual-Stream Deepfake Detection Engine
 
-A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small spatial representations with Steganographic Rich Model (SRM) + Bayar-Stamm 2D Real FFT frequency spectrum embeddings and thread-safe OpenCV YuNet face detection.
+A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small spatial representations with Steganographic Rich Model (SRM) + Bayar-Stamm 2D Real FFT frequency spectrum embeddings, SciPy L-BFGS-B temperature calibration, and thread-safe OpenCV YuNet face detection.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
@@ -20,22 +20,23 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
 [![Notebook](https://img.shields.io/badge/Notebook-Master%20Pipeline-blue?logo=jupyter)](notebooks/master_pipeline.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Live Demo Space**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
+**Live Interactive Space**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)  
+**GitHub Repository**: [https://github.com/yyouretoast/deepfake-detection](https://github.com/yyouretoast/deepfake-detection)
 
 ---
 
 ## System Architecture
 
 ```
-[ Input Video ] ──► [ Thread-Local YuNet ] ──► [ 512x512 Face Crops (1.50x Scale Margin) ]
-                                                       │
-                       ┌──────────────────────────────┴──────────────────────────────┐
-                       ▼                                                             ▼
-         [ Spatial Stream (ConvNeXt-Small) ]                     [ Frequency Stream (SRM + Bayar + 2D FFT) ]
-         • 256x256 RGB Image Input                                • 3 SRM Filters + 1 Bayar-Stamm Conv
-         • 512-d Feature Embeddings                               • 20-Channel 2D FFT (10 Mag + 10 Phase)
-                       │                                          • 512-d Frequency Embeddings
-                       │                                                             │
+[ Input Video Stream ] ──► [ Thread-Local YuNet ] ──► [ 512x512 Face Crops (1.50x Scale Expansion) ]
+                                                              │
+                       ┌──────────────────────────────────────┴──────────────────────────────────────┐
+                       ▼                                                                             ▼
+         [ Spatial Stream (ConvNeXt-Small) ]                             [ Frequency Stream (SRM + Bayar + 2D FFT) ]
+         • 256x256 RGB Image Input                                        • 3 SRM Filters + 1 Bayar-Stamm Conv
+         • 512-d Feature Embeddings                                       • 20-Channel 2D FFT (10 Mag + 10 Phase)
+                       │                                                  • 512-d Frequency Embeddings
+                       │                                                                             │
                        └──────────────────────────────┬──────────────────────────────┘
                                                       ▼
                                        [ Equalized Residual Gated Fusion ]
@@ -46,7 +47,15 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
                                                       ▼
                                            [ Binary Classifier Head ]
                                            • Linear(1024, 256) + Dropout(0.3)
-                                           • Binary Logit Output
+                                           • Raw Logit Output z
+                                                      │
+                       ┌──────────────────────────────┴──────────────────────────────┐
+                       ▼                                                             ▼
+     [ SciPy L-BFGS-B Temperature Calibration ]                 [ 4-Panel Interpretability Engine ]
+     • Log-Temperature Scaling: z / T*                          • (a) RGB Input Face Crop
+     • Calibrated Probability: p = Sigmoid(z / T*)              • (b) SRM Noise Residual Map
+     • ECE Minimization: 0.0122 ──► 0.0093                      • (c) 2D FFT Magnitude Spectrum
+                                                                • (d) Grad-CAM ConvNeXt Attention
 ```
 
 ### Formulations
@@ -71,8 +80,10 @@ $$
 
 ## Core Engineering Features
 
-- **Identity-Disjoint Data Partitioning**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs across train, val, and test splits.
-- **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals before FFT extraction.
+- **Identity-Disjoint Data Partitioning**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs (`id0_id16`) across train, val, and test splits to guarantee 0% identity leakage.
+- **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals before 2D FFT extraction.
+- **Probability Calibration via SciPy L-BFGS-B**: Minimizes NLL loss over log-temperatures ($\text{logit} / \exp(\log T)$) to reduce Expected Calibration Error (ECE) from `0.0122` down to `0.0093`.
+- **4-Panel Interpretability Diagnostics**: Generates Grad-CAM spatial heatmaps, SRM noise residual maps, and 2D Real FFT magnitude spectrums on demand.
 - **Multi-GPU DDP Engine**: Hugging Face `Accelerate` DistributedDataParallel with `SyncBatchNorm` and OpenCV C++ binary loader.
 - **Per-Sample Loss Masking**: Excludes corrupt or invalid image frames from backpropagation gradient updates.
 
@@ -157,7 +168,7 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 | 0.50× | `0.9910` | `0.9059` | −0.78% |
 | 0.25× | `0.9518` | `0.8631` | −4.70% |
 
-**Note**: AUC collapse under heavy Gaussian blur (σ=3.0, −26%) and noise (σ=30, −24%) is an inherent consequence of the SRM+Bayar+2D FFT frequency branch's dependence on high-frequency manipulation artifacts. Low-pass filtering (blur) and wideband noise physically destroy the spectral signal the frequency stream relies on. The model remains robust to compression and resolution degradation, which are the dominant artifacts in real-world social media video uploads.
+**Note**: AUC collapse under heavy Gaussian blur (σ=3.0, −26%) and noise (σ=30, −24%) is an inherent consequence of the SRM+Bayar+2D FFT frequency branch's dependence on high-frequency manipulation artifacts. Low-pass filtering (blur) and wideband noise physically destroy the spectral signal the frequency stream relies on.
 
 ### 5. Benchmark Performance & Visual Interpretability
 
@@ -173,7 +184,6 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 ---
 
-
 ## Quickstart
 
 ### 1. Installation
@@ -181,6 +191,11 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 ```bash
 git clone https://github.com/yyouretoast/deepfake-detection.git
 cd deepfake-detection
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On Linux/macOS:
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -195,6 +210,7 @@ pytest tests/ -v
 ```bash
 streamlit run app.py
 ```
+*The app will automatically launch in your browser at `http://localhost:8501`.*
 
 ### 4. Visual Interpretability & Attention Maps *(Requires dataset crops in data/cropped)*
 
@@ -214,7 +230,7 @@ accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/t
 
 ```
 deepfake-detection/
-├── app.py                         # Streamlit web interface
+├── app.py                         # Streamlit web interface (Video player + 4-panel diagnostics)
 ├── config/
 │   └── default.yaml               # Configuration parameters (img_size: 512, scale_factor: 1.50)
 ├── figures/                       # Publication-ready 300 DPI benchmark & interpretability plots
@@ -234,7 +250,7 @@ deepfake-detection/
 │   ├── models/
 │   │   └── hybrid_detector.py     # ConvNeXt-Small + SRM/Bayar 2D FFT architecture
 │   └── utils/
-│       ├── checkpoint.py          # Central state-dict cleaning & confidence normalization
+│       ├── checkpoint.py          # Central state-dict cleaning, L-BFGS-B temp fitting & ECE calculation
 │       └── temporal_aggregation.py# Frame score pooling (soft-max, EMA, top-K, mean)
 ├── scripts/                       # Training, evaluation, export & plotting scripts
 │   ├── extract_face_crops.py      # Thread-pool multi-threaded face cropper
@@ -252,9 +268,11 @@ deepfake-detection/
 
 ## References
 
-1. **SRM (Steganographic Rich Model)**: Fridrich, J., & Kodovsky, J. (2012). Rich models for steganalysis of digital images. *IEEE Transactions on Information Forensics and Security*.
-2. **Bayar-Stamm Constrained Conv**: Bayar, B., & Stamm, M. C. (2016). A deep learning approach to universal image manipulation detection. *IEEE IH&MMSec*.
-3. **ConvNeXt Architecture**: Liu, Z., et al. (2022). A ConvNet for the 2020s. *IEEE/CVF CVPR*.
+1. **Celeb-DF Dataset**: Li, Y., Yang, X., Sun, P., Qi, H., & Lyu, S. (2020). Celeb-DF: A Large-Scale Challenging Dataset for DeepFake Forensics. *IEEE/CVF CVPR*.
+2. **FaceForensics++ Dataset**: Rössler, A., Cozzolino, D., Verdoliva, L., Riess, C., Thies, J., & Nießner, M. (2019). FaceForensics++: Learning to Detect Manipulated Facial Images. *IEEE/CVF ICCV*.
+3. **SRM (Steganographic Rich Model)**: Fridrich, J., & Kodovsky, J. (2012). Rich models for steganalysis of digital images. *IEEE Transactions on Information Forensics and Security*.
+4. **Bayar-Stamm Constrained Conv**: Bayar, B., & Stamm, M. C. (2016). A deep learning approach to universal image manipulation detection. *IEEE IH&MMSec*.
+5. **ConvNeXt Architecture**: Liu, Z., Mao, H., Wu, C. Y., Feichtenhofer, C., Darrell, T., & Xie, S. (2022). A ConvNet for the 2020s. *IEEE/CVF CVPR*.
 
 ---
 
