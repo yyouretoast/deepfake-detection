@@ -328,7 +328,7 @@ def process_video_frames(
         method=aggregation_method,
         threshold=classification_threshold,
     )
-    video_prob = (video_prob + _agg["video_score"]) / 2.0
+    raw_video_prob = (video_prob + _agg["video_score"]) / 2.0
 
     zipped_data = list(zip(all_faces, all_probs))
     zipped_data.sort(key=lambda x: x[1], reverse=True)
@@ -337,35 +337,16 @@ def process_video_frames(
     sample_faces = [item[0] for item in top_4]
     sample_probs = [item[1] for item in top_4]
 
-    sample_outputs = []
-    for face, prob in zip(sample_faces, sample_probs):
-        label = "Fake" if prob > classification_threshold else "Real"
-        conf = normalize_confidence(prob, classification_threshold)
-        sample_outputs.append((face, label, conf, prob))
-
-    final_label = "Fake" if video_prob > classification_threshold else "Real"
-    final_conf = normalize_confidence(video_prob, classification_threshold)
-
-    fake_faces_count = sum(1 for p in all_probs if p > classification_threshold)
-    real_faces_count = len(all_probs) - fake_faces_count
-
-    # Generate 4-panel diagnostics for highest confidence face crop
-    primary_face = top_4[0][0]
-    diagnostics = generate_face_diagnostics(unwrapped, primary_face, temperature=temperature)
-
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     return {
-        "final_label": final_label,
-        "final_conf": final_conf,
-        "video_prob": video_prob,
-        "real_frames": real_faces_count,
-        "fake_frames": fake_faces_count,
-        "sample_outputs": sample_outputs,
-        "frame_preds": all_probs,
-        "diagnostics": diagnostics,
+        "raw_video_prob": raw_video_prob,
+        "sample_faces": sample_faces,
+        "sample_probs": sample_probs,
+        "all_probs": all_probs,
+        "all_faces": all_faces,
     }
 
 
@@ -595,6 +576,18 @@ def render_ui() -> None:
         if res is None:
             st.error("No clear face detections were found in the uploaded video.")
         else:
+            # Dynamic threshold recalculation without re-running model forward passes
+            raw_video_prob = res["raw_video_prob"]
+            all_probs = res["all_probs"]
+            sample_faces = res["sample_faces"]
+            sample_probs = res["sample_probs"]
+
+            final_label = "Fake" if raw_video_prob > threshold_slider else "Real"
+            final_conf = normalize_confidence(raw_video_prob, threshold_slider)
+
+            fake_faces_count = sum(1 for p in all_probs if p > threshold_slider)
+            real_faces_count = len(all_probs) - fake_faces_count
+
             st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
             
             # Side-by-side layout: Input Video Player + Detection Result Container
@@ -607,17 +600,17 @@ def render_ui() -> None:
 
             with col_results:
                 st.markdown("#### Detection Result")
-                is_fake = res["final_label"] == "Fake"
+                is_fake = final_label == "Fake"
                 card_class = "result-card-fake" if is_fake else "result-card-real"
                 color = "#ef4444" if is_fake else "#22c55e"
 
                 st.markdown(
                     f"""
                     <div class="{card_class}">
-                        <h2 style="color: {color}; margin: 0;">DETECTED: {res['final_label'].upper()}</h2>
-                        <h4 style="color: {color}; margin-top: 4px;">Confidence: {res['final_conf']:.1f}%</h4>
+                        <h2 style="color: {color}; margin: 0;">DETECTED: {final_label.upper()}</h2>
+                        <h4 style="color: {color}; margin-top: 4px;">Confidence: {final_conf:.1f}%</h4>
                         <p style="color: #94a3b8; font-size: 12px; margin: 4px 0 0 0;">
-                            Probability Score: {res['video_prob']:.4f} (Threshold: {threshold_slider:.2f})
+                            Probability Score: {raw_video_prob:.4f} (Threshold: {threshold_slider:.2f})
                         </p>
                     </div>
                 """,
@@ -626,16 +619,18 @@ def render_ui() -> None:
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 col_m1, col_m2, col_m3 = st.columns(3)
-                col_m1.metric("Analyzed Faces", res["real_frames"] + res["fake_frames"])
-                col_m2.metric("Real Faces", res["real_frames"])
-                col_m3.metric("Fake Faces", res["fake_frames"])
+                col_m1.metric("Analyzed Faces", len(all_probs))
+                col_m2.metric("Real Faces", real_faces_count)
+                col_m3.metric("Fake Faces", fake_faces_count)
 
             # Face Crop Inspection Grid
-            if res["sample_outputs"]:
+            if sample_faces:
                 st.markdown("<hr>", unsafe_allow_html=True)
                 st.markdown("### Extracted Face Crop Predictions")
-                cols = st.columns(len(res["sample_outputs"]))
-                for col, (face_img, label, conf, prob) in zip(cols, res["sample_outputs"]):
+                cols = st.columns(len(sample_faces))
+                for col, face_img, prob in zip(cols, sample_faces, sample_probs):
+                    label = "Fake" if prob > threshold_slider else "Real"
+                    conf = normalize_confidence(prob, threshold_slider)
                     with col:
                         st.image(face_img, use_container_width=True)
                         c_color = "#22c55e" if label == "Real" else "#ef4444"
@@ -644,25 +639,29 @@ def render_ui() -> None:
                             unsafe_allow_html=True,
                         )
 
-            # Expandable 4-Panel Interpretability Diagnostics
-            if "diagnostics" in res and res["diagnostics"]:
-                st.markdown("<hr>", unsafe_allow_html=True)
-                with st.expander("🔬 View 4-Panel Interpretability Diagnostics (SRM + FFT + Grad-CAM)", expanded=True):
-                    st.markdown(
-                        "<p style='color:#94a3b8; font-size:13px;'>Diagnostic representations extracted from primary face crop:</p>",
-                        unsafe_allow_html=True,
-                    )
-                    diag = res["diagnostics"]
-                    d_col1, d_col2, d_col3, d_col4 = st.columns(4)
+            # On-Demand Selectable Face Diagnostics (Fast Baseline + Selectable Target Crop)
+            st.markdown("<hr>", unsafe_allow_html=True)
+            with st.expander("🔬 View 4-Panel Interpretability Diagnostics (On-Demand SRM + FFT + Grad-CAM)", expanded=False):
+                if sample_faces:
+                    face_options = [f"Face Crop #{i+1} (Prob: {prob:.4f})" for i, prob in enumerate(sample_probs)]
+                    selected_idx = st.selectbox("Select Face Crop to Inspect", options=list(range(len(face_options))), format_func=lambda i: face_options[i])
+                    
+                    if st.button("Generate Interpretability Maps"):
+                        unwrapped = pytorch_model.module if isinstance(pytorch_model, torch.nn.DataParallel) else pytorch_model
+                        selected_face = sample_faces[selected_idx]
 
-                    with d_col1:
-                        st.image(diag["original"], caption="(a) RGB Face Crop", use_container_width=True)
-                    with d_col2:
-                        st.image(diag["srm_residual"], caption="(b) SRM Noise Residual", use_container_width=True)
-                    with d_col3:
-                        st.image(diag["fft_spectrum"], caption="(c) 2D FFT Magnitude", use_container_width=True)
-                    with d_col4:
-                        st.image(diag["gradcam_overlay"], caption="(d) Grad-CAM Attention", use_container_width=True)
+                        with st.spinner("Computing Grad-CAM attention & spectral noise maps..."):
+                            diag = generate_face_diagnostics(unwrapped, selected_face, temperature=default_temperature)
+
+                        d_col1, d_col2, d_col3, d_col4 = st.columns(4)
+                        with d_col1:
+                            st.image(diag["original"], caption="(a) RGB Face Crop", use_container_width=True)
+                        with d_col2:
+                            st.image(diag["srm_residual"], caption="(b) SRM Noise Residual", use_container_width=True)
+                        with d_col3:
+                            st.image(diag["fft_spectrum"], caption="(c) 2D FFT Magnitude", use_container_width=True)
+                        with d_col4:
+                            st.image(diag["gradcam_overlay"], caption="(d) Grad-CAM Attention", use_container_width=True)
 
     # Clickable Footer
     st.markdown("<hr style='margin: 30px 0 15px 0;'>", unsafe_allow_html=True)
