@@ -158,7 +158,11 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 **Note**: AUC collapse under heavy Gaussian blur (σ=3.0, −26%) and noise (σ=30, −24%) is an inherent consequence of the SRM+Bayar+2D FFT frequency branch's dependence on high-frequency manipulation artifacts. Low-pass filtering (blur) and wideband noise physically destroy the spectral signal the frequency stream relies on. The model remains robust to compression and resolution degradation, which are the dominant artifacts in real-world social media video uploads.
 
-### 5. Benchmark Performance Visualizations
+### 5. Benchmark Performance & Visual Interpretability
+
+![4-Panel Interpretability Diagnostics](figures/attention_maps/attention_map_02_fake.png)
+
+*Figure: 4-Panel diagnostic interpretability showing (a) Input RGB face crop, (b) SRM 9-filter noise residual map, (c) 2D FFT magnitude spectrum, and (d) ConvNeXt-Small Grad-CAM spatial heatmap overlay focusing on facial manipulation boundaries.*
 
 ![ROC Curve](figures/roc_curve.png)
 
@@ -230,7 +234,7 @@ deepfake-detection/
 │   ├── evaluate_robustness.py     # Degradation stress-testing script
 │   ├── export_test_predictions.py # Raw/calibrated probability exporter
 │   ├── generate_benchmark_plots.py# 300 DPI visualization rendering script
-│   └── export_onnx.py             # ONNX FP16/UINT8 exporter
+│   └── visualize_attention_maps.py# 4-panel SRM + Grad-CAM interpretability engine
 ├── tests/                         # 45/45 passing unit tests
 └── README.md
 ```
