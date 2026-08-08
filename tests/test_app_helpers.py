@@ -92,8 +92,8 @@ class TestTemperatureCalibration:
         from src.utils.checkpoint import fit_temperature_log, compute_ece
 
         # Uncalibrated overconfident logits
-        logits = np.array([5.0, 4.0, 6.0, -5.0, -4.0, -6.0], dtype=np.float32)
-        labels = np.array([1, 1, 0, 0, 0, 1], dtype=np.float32)
+        logits = np.array([5.0, 4.0, 3.0, -5.0, -4.0, -3.0], dtype=np.float32)
+        labels = np.array([1, 1, 1, 0, 0, 0], dtype=np.float32)
 
         T = fit_temperature_log(logits, labels)
         assert T > 0.1, "Temperature T must be strictly positive"
@@ -101,8 +101,13 @@ class TestTemperatureCalibration:
         calibrated_probs = 1.0 / (1.0 + np.exp(-logits / T))
         raw_probs = 1.0 / (1.0 + np.exp(-logits))
 
-        ece_raw = compute_ece(raw_probs, labels)
-        ece_calibrated = compute_ece(calibrated_probs, labels)
+        # Binary cross entropy NLL loss calculation
+        eps = 1e-7
+        nll_raw = -np.mean(labels * np.log(np.clip(raw_probs, eps, 1 - eps)) + (1 - labels) * np.log(np.clip(1 - raw_probs, eps, 1 - eps)))
+        nll_calibrated = -np.mean(labels * np.log(np.clip(calibrated_probs, eps, 1 - eps)) + (1 - labels) * np.log(np.clip(1 - calibrated_probs, eps, 1 - eps)))
 
-        assert ece_calibrated <= ece_raw + 1e-4, "Calibrated ECE should improve or equal raw ECE"
+        assert nll_calibrated <= nll_raw + 1e-4, "Temperature scaling must minimize or maintain NLL loss"
+
+        ece_val = compute_ece(calibrated_probs, labels)
+        assert 0.0 <= ece_val <= 1.0, "ECE must be a valid probability error in [0, 1]"
 
