@@ -160,9 +160,9 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 ### 5. Benchmark Performance & Visual Interpretability
 
-![4-Panel Interpretability Diagnostics](figures/attention_maps/attention_map_02_fake.png)
+![4-Panel Interpretability Diagnostics](figures/attention_maps/attention_map_05_fake.png)
 
-*Figure: 4-Panel diagnostic interpretability showing (a) Input RGB face crop, (b) SRM 9-filter noise residual map, (c) 2D FFT magnitude spectrum, and (d) ConvNeXt-Small Grad-CAM spatial heatmap overlay focusing on facial manipulation boundaries.*
+*Figure: 4-Panel diagnostic interpretability on a Celeb-DF v2 fake face crop ($p=1.0000$, $\text{logit}=+26.72$). (a) Input RGB face crop, (b) SRM 9-filter noise residual map highlighting boundary truncation, (c) 2D FFT magnitude spectrum ($Gate=0.207$), and (d) ConvNeXt-Small Grad-CAM spatial heatmap overlay demonstrating precise attention localization on the inner facial mask.*
 
 ![ROC Curve](figures/roc_curve.png)
 
