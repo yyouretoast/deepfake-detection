@@ -423,6 +423,24 @@ def render_ui() -> None:
             font-size: 11px;
             font-weight: 600;
         }
+        /* Mobile Responsive Media Queries */
+        @media (max-width: 640px) {
+            [data-testid="column"] {
+                width: 100% !important;
+                flex: 1 1 100% !important;
+                min-width: 100% !important;
+                margin-bottom: 12px !important;
+            }
+            .header-box {
+                padding: 16px !important;
+            }
+            .header-box h1 {
+                font-size: 22px !important;
+            }
+            .result-card-fake, .result-card-real {
+                padding: 16px !important;
+            }
+        }
         </style>
     """,
         unsafe_allow_html=True,
