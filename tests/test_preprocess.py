@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from unittest.mock import MagicMock
 from src.dataset.preprocess import DynamicFaceCropper
 
@@ -35,3 +34,23 @@ def test_dynamic_face_cropper_bounding_box_expansion_math():
 
     assert cropped is not None
     assert cropped.shape == (512, 512, 3), f"Expected cropped shape (512, 512, 3), got {cropped.shape}"
+
+
+def test_dynamic_face_cropper_similarity_transform_math():
+    """Verifies 5-point landmark similarity transformation warpAffine alignment."""
+    cropper = DynamicFaceCropper(target_size=256, scale_factor=1.50)
+    synthetic_image = np.ones((400, 400, 3), dtype=np.uint8) * 128
+    
+    # 5 2D landmarks (left eye, right eye, nose, left mouth corner, right mouth corner)
+    landmarks = np.array([
+        [150.0, 150.0],
+        [250.0, 150.0],
+        [200.0, 200.0],
+        [160.0, 260.0],
+        [240.0, 260.0]
+    ], dtype=np.float32)
+
+    aligned_face = cropper.align_face_5point(synthetic_image, landmarks, target_size=256)
+    assert aligned_face is not None
+    assert aligned_face.shape == (256, 256, 3)
+

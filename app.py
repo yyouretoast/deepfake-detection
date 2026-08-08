@@ -111,7 +111,8 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     pytorch_model.to(DEVICE)
     pytorch_model.eval()
 
-    cropper = DynamicFaceCropper(scale_factor=1.50, target_size=IMG_SIZE, device=DEVICE)
+    scale_factor: float = CONFIG.get("preprocessing", {}).get("scale_factor", 1.50)
+    cropper = DynamicFaceCropper(scale_factor=scale_factor, target_size=IMG_SIZE, device=DEVICE)
 
     return pytorch_model, cropper, has_weights, opt_threshold, temperature
 
@@ -128,6 +129,13 @@ def process_video_frames(
     Video inference engine with OpenCV frame keyframe seeking and AMP autocast.
     Constructs 5D sequence tensor [1, T, 3, H, W] and invokes model.forward_sequence(sequence_tensor).
     """
+    if not video_path or not os.path.exists(video_path) or not os.path.isfile(video_path):
+        return None
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return None
+
     if pytorch_model is None or cropper is None or classification_threshold is None or temperature is None:
         p_model, c_crop, h_weights, threshold, temp = load_prediction_engine()
         pytorch_model = pytorch_model or p_model
@@ -138,10 +146,6 @@ def process_video_frames(
             has_pytorch_weights = h_weights
     elif has_pytorch_weights is None:
         has_pytorch_weights = True
-
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        return None
 
     try:
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

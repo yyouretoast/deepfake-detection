@@ -1,5 +1,4 @@
 import os
-import pytest
 from src.config import load_config
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
@@ -14,7 +13,7 @@ def test_load_config_default():
 def test_config_key_values():
     cfg = load_config("config/default.yaml")
     assert cfg["preprocessing"]["img_size"] == 512
-    assert cfg["preprocessing"]["padding_scale"] == 1.50
+    assert cfg["preprocessing"]["scale_factor"] == 1.50
     assert cfg["model"]["backbone"] == "convnext_small"
     assert cfg["model"]["use_fft_branch"] is True
 

@@ -1,4 +1,3 @@
-import pytest
 from scripts.train_loto_experiment import matches_holdout_domain, filter_loto_split_strict
 
 def test_matches_holdout_domain_pair_ranges():
@@ -47,3 +46,11 @@ def test_filter_loto_split_strict_retains_reals():
     assert len(retained) == 3
     retained_reals = [s for s in retained if s[1] == 0.0]
     assert len(retained_reals) == 2
+
+
+def test_matches_holdout_domain_generic_fallback():
+    """Verifies generic keyword fallback matching for arbitrary dataset domain keywords."""
+    assert matches_holdout_domain("fake/sora_clip_001/frame_001.webp", "sora") is True
+    assert matches_holdout_domain("fake/midjourney_002/frame_001.webp", "midjourney") is True
+    assert matches_holdout_domain("fake/diff_001/frame_001.webp", "flux") is False
+

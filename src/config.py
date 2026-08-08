@@ -12,7 +12,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "preprocessing": {
         "img_size": 512,
-        "face_scale_factor": 1.50,
+        "scale_factor": 1.50,
         "frames_per_video": 30,
     },
     "model": {

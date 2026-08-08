@@ -1,6 +1,4 @@
 import torch
-import pytest
-from src.models.hybrid_detector import HybridDeepfakeDetector
 
 
 def test_hybrid_detector_dual_stream_forward(eval_model_factory, dummy_4d_batch):
