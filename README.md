@@ -15,7 +15,7 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
-[![pytest](https://img.shields.io/badge/pytest-20%2F20%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![pytest](https://img.shields.io/badge/pytest-53%2F53%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Notebook](https://img.shields.io/badge/Notebook-Master%20Pipeline-blue?logo=jupyter)](notebooks/master_pipeline.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -195,7 +195,13 @@ pytest tests/ -v
 streamlit run app.py
 ```
 
-### 4. Multi-GPU Training
+### 4. Visual Interpretability & Attention Maps
+
+```bash
+python scripts/visualize_attention_maps.py --n_samples 6 --output_dir figures/attention_maps
+```
+
+### 5. Multi-GPU Training
 
 ```bash
 accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_dual_stream_ddp.py
@@ -210,7 +216,8 @@ deepfake-detection/
 ├── app.py                         # Streamlit web interface
 ├── config/
 │   └── default.yaml               # Configuration parameters (img_size: 512, scale_factor: 1.50)
-├── figures/                       # Publication-ready 300 DPI benchmark plots
+├── figures/                       # Publication-ready 300 DPI benchmark & interpretability plots
+│   ├── attention_maps/            # 4-panel diagnostic visual interpretability figures (RGB, SRM, FFT, Grad-CAM)
 │   ├── roc_curve.png              # Test set ROC curve (AUC = 0.9988)
 │   ├── ece_reliability.png        # ECE reliability diagram (0.0122 -> 0.0093)
 │   ├── robustness_degradation.png # 2x2 grid tracking JPEG, Blur, Noise, Downscaling
@@ -226,6 +233,7 @@ deepfake-detection/
 │   ├── models/
 │   │   └── hybrid_detector.py     # ConvNeXt-Small + SRM/Bayar 2D FFT architecture
 │   └── utils/
+│       ├── checkpoint.py          # Central state-dict cleaning & confidence normalization
 │       └── temporal_aggregation.py# Frame score pooling (soft-max, EMA, top-K, mean)
 ├── scripts/                       # Training, evaluation, export & plotting scripts
 │   ├── extract_face_crops.py      # Thread-pool multi-threaded face cropper
@@ -235,7 +243,7 @@ deepfake-detection/
 │   ├── export_test_predictions.py # Raw/calibrated probability exporter
 │   ├── generate_benchmark_plots.py# 300 DPI visualization rendering script
 │   └── visualize_attention_maps.py# 4-panel SRM + Grad-CAM interpretability engine
-├── tests/                         # 45/45 passing unit tests
+├── tests/                         # 53/53 passing unit tests
 └── README.md
 ```
 
