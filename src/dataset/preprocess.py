@@ -4,10 +4,8 @@ import os
 import cv2
 import numpy as np
 import torch
-import torch.nn as nn
 import urllib.request
 import threading
-from tqdm import tqdm
 from PIL import Image
 
 try:

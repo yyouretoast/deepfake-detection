@@ -37,6 +37,7 @@ from sklearn.metrics import roc_auc_score, f1_score
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.config import load_config
 from src.utils.checkpoint import clean_state_dict
+from src.dataset.loader import dedupe_split
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -92,16 +93,6 @@ class RobustnessDataset(Dataset):
             torch.tensor(valid_flag, dtype=torch.float32),
         )
 
-
-def dedupe_split(split_list):
-    """Remove duplicate paths from a split list."""
-    seen, deduped = set(), []
-    for entry in split_list:
-        path = entry[0] if isinstance(entry, (list, tuple)) else entry
-        if path not in seen:
-            seen.add(path)
-            deduped.append(entry)
-    return deduped
 
 
 # ---------------------------------------------------------------------------

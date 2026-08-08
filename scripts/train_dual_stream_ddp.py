@@ -24,11 +24,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms, models
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from accelerate import Accelerator
 from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.dataset.loader import dedupe_split
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 IMG_SIZE = 256
@@ -90,16 +90,6 @@ class KaggleFastDataset(Dataset):
 
         tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
         return tensor, torch.tensor(label, dtype=torch.float32), torch.tensor(valid_flag, dtype=torch.float32)
-
-
-def dedupe_split(split_list):
-    seen, deduped = set(), []
-    for entry in split_list:
-        path = entry[0] if isinstance(entry, (list, tuple)) else entry
-        if path not in seen:
-            seen.add(path)
-            deduped.append(entry)
-    return deduped
 
 
 def find_dataset_root():

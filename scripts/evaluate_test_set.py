@@ -20,42 +20,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score, classification_report
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from scripts.train_dual_stream_ddp import KaggleFastDataset, find_dataset_root, dedupe_split
-
-def compute_ece(probs, targets, n_bins=10):
-    bin_boundaries = np.linspace(0, 1, n_bins + 1)
-    ece = 0.0
-    for i in range(n_bins):
-        bin_lower, bin_upper = bin_boundaries[i], bin_boundaries[i+1]
-        in_bin = (probs > bin_lower) & (probs <= bin_upper)
-        prop_in_bin = np.mean(in_bin)
-        if prop_in_bin > 0:
-            accuracy = np.mean(targets[in_bin])
-            avg_confidence = np.mean(probs[in_bin])
-            ece += np.abs(accuracy - avg_confidence) * prop_in_bin
-    return ece
-
-def fit_temperature_log(val_logits, val_targets):
-    """
-    Fits log_temperature to guarantee strictly positive T = exp(log_T) > 0
-    at every L-BFGS optimization step without transient sign flips.
-    """
-    logits_t = torch.tensor(val_logits, dtype=torch.float32)
-    targets_t = torch.tensor(val_targets, dtype=torch.float32)
-    
-    log_temperature = nn.Parameter(torch.zeros(1))  # T = exp(0) = 1.0 initial
-    criterion = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.LBFGS([log_temperature], lr=0.01, max_iter=50)
-
-    def eval_loss():
-        optimizer.zero_grad()
-        T = torch.exp(log_temperature)
-        loss = criterion(logits_t / T, targets_t)
-        loss.backward()
-        return loss
-
-    optimizer.step(eval_loss)
-    optimal_T = torch.exp(log_temperature).item()
-    return max(0.1, optimal_T)
+from src.utils.checkpoint import fit_temperature_log, compute_ece
 
 def evaluate():
     data_root = find_dataset_root()

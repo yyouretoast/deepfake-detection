@@ -5,8 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
-from src.config import load_config
-
 
 class SRMConv2d(nn.Module):
     def __init__(self) -> None:

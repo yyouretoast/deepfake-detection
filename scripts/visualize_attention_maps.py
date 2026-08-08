@@ -33,7 +33,6 @@ import random
 import cv2
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib
 matplotlib.use("Agg")
@@ -42,6 +41,7 @@ import matplotlib.pyplot as plt
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.config import load_config
 from src.utils.checkpoint import clean_state_dict
+from src.dataset.loader import dedupe_split
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -114,18 +114,10 @@ class ConvNeXtGradCAM:
         self.backward_handle.remove()
 
 
-# ---------------------------------------------------------------------------
-# Deduplicate split helper
-# ---------------------------------------------------------------------------
 
-def dedupe_split(split_list):
-    seen, deduped = set(), []
-    for entry in split_list:
-        path = entry[0] if isinstance(entry, (list, tuple)) else entry
-        if path not in seen:
-            seen.add(path)
-            deduped.append(entry)
-    return deduped
+# ---------------------------------------------------------------------------
+# Visual Interpretability Engine
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------

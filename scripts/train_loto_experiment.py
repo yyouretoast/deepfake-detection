@@ -24,23 +24,17 @@ if REPO_ROOT not in sys.path:
 import argparse
 import json
 import time
-import random
 import logging
 import numpy as np
-import cv2
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
-from scipy.optimize import minimize
 from accelerate import Accelerator
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.config import load_config
+from src.utils.checkpoint import fit_temperature_log
+from src.dataset.loader import dedupe_split
 from scripts.train_dual_stream_ddp import (
-    LEARNING_RATE_BACKBONE,
-    LEARNING_RATE_HEAD,
-    dedupe_split,
     find_dataset_root,
     get_differential_param_groups,
     seed_everything,
@@ -55,18 +49,6 @@ IMG_SIZE = CONFIG.get("preprocessing", {}).get("img_size", 256)
 BATCH_SIZE = CONFIG.get("training", {}).get("batch_size", 16)
 
 seed_everything(42)
-
-def fit_temperature_log(logits: np.ndarray, labels: np.ndarray) -> float:
-    """Fits temperature T = exp(log_T) via NLL optimization using L-BFGS-B."""
-    def nll_func(log_t):
-        t = np.exp(log_t[0])
-        scaled_logits = logits / t
-        p = 1.0 / (1.0 + np.exp(-scaled_logits))
-        p = np.clip(p, 1e-7, 1.0 - 1e-7)
-        return -np.mean(labels * np.log(p) + (1.0 - labels) * np.log(1.0 - p))
-
-    res = minimize(nll_func, [0.0], method='L-BFGS-B', bounds=[(-5.0, 5.0)])
-    return float(np.exp(res.x[0]))
 
 def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     """

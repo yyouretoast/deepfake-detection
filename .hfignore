@@ -1,4 +1,6 @@
 figures/
 *.pth
 *.onnx
-*.json
+loto_results.json
+robustness_results.json
+test_predictions.json

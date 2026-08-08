@@ -27,8 +27,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from matplotlib.gridspec import GridSpec
 from sklearn.metrics import roc_curve, auc
+from src.utils.checkpoint import compute_ece
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 

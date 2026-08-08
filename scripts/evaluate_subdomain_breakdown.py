@@ -60,7 +60,7 @@ def run_subdomain_evaluation():
 
     grouped_samples = {}
     for sample in test_samples:
-        path, label = sample[0], sample[1]
+        path = sample[0]
         group = categorize_sample_path(path)
         if group not in grouped_samples:
             grouped_samples[group] = []

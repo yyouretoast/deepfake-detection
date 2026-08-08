@@ -55,6 +55,16 @@ def extract_identities(filename: str, metadata_map: Optional[Dict[str, Tuple[str
 def extract_video_id(filename: str) -> str:
     return extract_identities(filename)[0]
 
+def dedupe_split(split_list: List[Any]) -> List[Any]:
+    """Remove duplicate sample path entries from dataset split lists."""
+    seen, deduped = set(), []
+    for entry in split_list:
+        path = entry[0] if isinstance(entry, (list, tuple)) else entry
+        if path not in seen:
+            seen.add(path)
+            deduped.append(entry)
+    return deduped
+
 def group_samples_by_video(samples: List[Tuple[str, int]]) -> List[Tuple[List[str], int]]:
     if not samples:
         return []
