@@ -85,3 +85,24 @@ class TestProcessVideoFramesEmpty:
     def test_nonexistent_video_path_returns_none(self):
         res = process_video_frames("non_existent_file_path_12345.mp4")
         assert res is None
+
+
+class TestTemperatureCalibration:
+    def test_temperature_calibration_and_ece(self):
+        from src.utils.checkpoint import fit_temperature_log, compute_ece
+
+        # Uncalibrated overconfident logits
+        logits = np.array([5.0, 4.0, 6.0, -5.0, -4.0, -6.0], dtype=np.float32)
+        labels = np.array([1, 1, 0, 0, 0, 1], dtype=np.float32)
+
+        T = fit_temperature_log(logits, labels)
+        assert T > 0.1, "Temperature T must be strictly positive"
+
+        calibrated_probs = 1.0 / (1.0 + np.exp(-logits / T))
+        raw_probs = 1.0 / (1.0 + np.exp(-logits))
+
+        ece_raw = compute_ece(raw_probs, labels)
+        ece_calibrated = compute_ece(calibrated_probs, labels)
+
+        assert ece_calibrated <= ece_raw + 1e-4, "Calibrated ECE should improve or equal raw ECE"
+
