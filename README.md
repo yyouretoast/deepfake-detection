@@ -15,11 +15,12 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
 [![pytest](https://img.shields.io/badge/pytest-53%2F53%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Notebook](https://img.shields.io/badge/Notebook-Master%20Pipeline-blue?logo=jupyter)](notebooks/master_pipeline.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Live Demo**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
+**Live Demo Space**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
 
 ---
 
@@ -162,7 +163,7 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 ![4-Panel Interpretability Diagnostics](figures/attention_maps/attention_map_05_fake.png)
 
-*Figure: 4-Panel diagnostic interpretability on a Celeb-DF v2 fake face crop ($p=1.0000$, $\text{logit}=+26.72$). (a) Input RGB face crop, (b) SRM 9-filter noise residual map highlighting boundary truncation, (c) 2D FFT magnitude spectrum ($Gate=0.207$), and (d) ConvNeXt-Small Grad-CAM spatial heatmap overlay demonstrating precise attention localization on the inner facial mask.*
+*Figure: 4-Panel diagnostic interpretability on a Celeb-DF v2 fake face crop (p = 1.0000, logit = +26.72). (a) Input RGB face crop, (b) SRM 9-filter noise residual map highlighting boundary truncation, (c) 2D FFT magnitude spectrum (Gate = 0.207), and (d) ConvNeXt-Small Grad-CAM spatial heatmap overlay demonstrating precise attention localization on the inner facial mask.*
 
 ![ROC Curve](figures/roc_curve.png)
 
@@ -195,7 +196,7 @@ pytest tests/ -v
 streamlit run app.py
 ```
 
-### 4. Visual Interpretability & Attention Maps
+### 4. Visual Interpretability & Attention Maps *(Requires dataset crops in data/cropped)*
 
 ```bash
 python scripts/visualize_attention_maps.py --n_samples 6 --output_dir figures/attention_maps
