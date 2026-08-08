@@ -50,7 +50,9 @@ def test_dynamic_face_cropper_similarity_transform_math():
         [240.0, 260.0]
     ], dtype=np.float32)
 
-    aligned_face = cropper.align_face_5point(synthetic_image, landmarks, target_size=256)
+    box = np.array([100, 100, 300, 300])
+    aligned_face, raw_crop = cropper._crop_single_box(synthetic_image, box, landmarks=landmarks, target_size=256)
     assert aligned_face is not None
     assert aligned_face.shape == (256, 256, 3)
+    assert raw_crop.shape == (256, 256, 3)
 
