@@ -11,33 +11,19 @@ import numpy as np
 import torch
 import streamlit as st
 
-from src.dataset.preprocess import DynamicFaceCropper
+from src.dataset.preprocess import DynamicFaceCropper, preprocess_tensors_batch
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.config import load_config
+from src.utils.checkpoint import clean_state_dict, normalize_confidence, DEFAULT_THRESHOLD, DEFAULT_TEMPERATURE
 import shutil
 
 CONFIG = load_config()
 APP_CFG = CONFIG.get("app", {})
 IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
-DEFAULT_THRESHOLD: float = APP_CFG.get("classification_threshold", 0.5)
 
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def clean_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
-    cleaned = {}
-    for k, v in state_dict.items():
-        if "lora_" in k:
-            continue
-        new_k = k
-        if new_k.startswith("module."):
-            new_k = new_k[7:]
-        if new_k.startswith("_orig_mod."):
-            new_k = new_k[10:]
-        if new_k == "freq_extractor.conv_net.0.weight" and isinstance(v, torch.Tensor) and v.ndim == 4 and v.shape[1] != 8:
-            v = v.repeat(1, max(1, 8 // v.shape[1]), 1, 1)[:, :8, :, :] / float(max(1, 8 // v.shape[1]))
-        cleaned[new_k] = v
-    return cleaned
 
 @st.cache_resource
 def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
@@ -118,29 +104,6 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     cropper = DynamicFaceCropper(scale_factor=1.50, target_size=IMG_SIZE, device=DEVICE)
 
     return pytorch_model, cropper, has_weights, opt_threshold, temperature
-
-
-def preprocess_tensors_batch(
-    faces_rgb_list: List[np.ndarray], device: torch.device = DEVICE
-) -> Tuple[np.ndarray, torch.Tensor]:
-    """Returns normalized numpy batch [B, 3, 256, 256] and PyTorch tensor batch."""
-    batch_arr = np.stack(faces_rgb_list)
-    batch_nchw = batch_arr.transpose(0, 3, 1, 2)
-
-    tensor = torch.from_numpy(batch_nchw).float().to(device) / 255.0
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
-    tensor = (tensor - mean) / std
-
-    norm_nchw = tensor.cpu().numpy()
-    return norm_nchw, tensor
-
-
-def normalize_confidence(prob: float, threshold: float) -> float:
-    if prob > threshold:
-        return 50.0 + 50.0 * ((prob - threshold) / (1.0 - threshold)) if threshold < 1.0 else 100.0
-    else:
-        return 50.0 + 50.0 * ((threshold - prob) / threshold) if threshold > 0.0 else 100.0
 
 
 def process_video_frames(

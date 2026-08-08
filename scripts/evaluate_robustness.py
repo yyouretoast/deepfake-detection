@@ -36,6 +36,7 @@ from sklearn.metrics import roc_auc_score, f1_score
 
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.config import load_config
+from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -101,25 +102,6 @@ def dedupe_split(split_list):
             seen.add(path)
             deduped.append(entry)
     return deduped
-
-
-# ---------------------------------------------------------------------------
-# State dict cleaning (copied from app.py to handle DDP / _orig_mod prefixes).
-# ---------------------------------------------------------------------------
-
-def clean_state_dict(state_dict):
-    """Strip DDP module., _orig_mod., and lora_ keys from a checkpoint state dict."""
-    cleaned = {}
-    for k, v in state_dict.items():
-        if "lora_" in k:
-            continue
-        new_k = k
-        if new_k.startswith("module."):
-            new_k = new_k[7:]
-        if new_k.startswith("_orig_mod."):
-            new_k = new_k[10:]
-        cleaned[new_k] = v
-    return cleaned
 
 
 # ---------------------------------------------------------------------------
