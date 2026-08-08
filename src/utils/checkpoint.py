@@ -24,8 +24,6 @@ def clean_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
             new_k = new_k[7:]
         if new_k.startswith("_orig_mod."):
             new_k = new_k[10:]
-        if new_k == "freq_extractor.conv_net.0.weight" and isinstance(v, torch.Tensor) and v.ndim == 4 and v.shape[1] != 8:
-            v = v.repeat(1, max(1, 8 // v.shape[1]), 1, 1)[:, :8, :, :] / float(max(1, 8 // v.shape[1]))
         cleaned[new_k] = v
     return cleaned
 

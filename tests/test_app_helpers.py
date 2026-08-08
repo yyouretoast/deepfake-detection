@@ -63,7 +63,25 @@ class TestPreprocessTensorsBatch:
         assert norm_torch.dtype == torch.float32
 
 
+class TestCheckpointRoundtrip:
+    def test_checkpoint_roundtrip_cleaning_and_loading(self):
+        from src.models.hybrid_detector import HybridDeepfakeDetector
+
+        model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
+        raw_sd = model.state_dict()
+
+        # Simulate DDP / torch.compile prefix wrapping
+        wrapped_sd = {f"module._orig_mod.{k}": v for k, v in raw_sd.items()}
+        cleaned_sd = clean_state_dict(wrapped_sd)
+
+        new_model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
+        incompatible_keys = new_model.load_state_dict(cleaned_sd, strict=False)
+
+        assert len(incompatible_keys.missing_keys) == 0
+        assert len(incompatible_keys.unexpected_keys) == 0
+
+
 class TestProcessVideoFramesEmpty:
     def test_nonexistent_video_path_returns_none(self):
-        res = process_video_frames("non_existent_video_file_xyz.mp4")
+        res = process_video_frames("non_existent_file_path_12345.mp4")
         assert res is None

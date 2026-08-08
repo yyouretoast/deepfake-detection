@@ -96,7 +96,17 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     )
 
     if state_dict is not None:
-        pytorch_model.load_state_dict(state_dict, strict=False)
+        incompatible_keys = pytorch_model.load_state_dict(state_dict, strict=False)
+        missing_critical = [
+            k for k in incompatible_keys.missing_keys
+            if any(prefix in k for prefix in ["spatial_backbone", "freq_conv", "gate_fc", "classifier"])
+        ]
+        if missing_critical:
+            raise RuntimeError(
+                f"Critical model weights missing from loaded checkpoint: {missing_critical[:5]}"
+            )
+        if incompatible_keys.missing_keys:
+            logging.warning(f"Non-critical missing keys during model load: {incompatible_keys.missing_keys}")
 
     pytorch_model.to(DEVICE)
     pytorch_model.eval()
