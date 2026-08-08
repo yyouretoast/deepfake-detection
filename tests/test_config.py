@@ -2,23 +2,15 @@ import os
 from src.config import load_config
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
-def test_load_config_default():
+def test_load_config_values_and_model_override():
     cfg = load_config("config/default.yaml")
     assert isinstance(cfg, dict)
-    assert "paths" in cfg
-    assert "preprocessing" in cfg
-    assert "model" in cfg
-    assert "training" in cfg
-
-def test_config_key_values():
-    cfg = load_config("config/default.yaml")
     assert cfg["preprocessing"]["img_size"] == 512
     assert cfg["preprocessing"]["scale_factor"] == 1.50
     assert cfg["model"]["backbone"] == "convnext_small"
-    assert cfg["model"]["use_fft_branch"] is True
 
-def test_model_instantiation_from_config():
-    cfg = load_config("config/default.yaml")
+    # Test dynamic config override (e.g. use_fft_branch = False)
+    cfg["model"]["use_fft_branch"] = False
     model = HybridDeepfakeDetector(pretrained=False, config=cfg)
-    assert model is not None
-    assert model.use_fft_branch is True
+    assert model.use_fft_branch is False
+

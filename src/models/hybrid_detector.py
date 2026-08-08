@@ -79,6 +79,13 @@ class HybridDeepfakeDetector(nn.Module):
         config: Optional[Dict[str, Any]] = None
     ) -> None:
         super().__init__()
+        if config is not None and isinstance(config, dict) and "model" in config:
+            model_cfg = config["model"]
+            backbone_name = model_cfg.get("backbone", backbone_name)
+            pretrained = model_cfg.get("pretrained", pretrained)
+            use_fft_branch = model_cfg.get("use_fft_branch", use_fft_branch)
+            dropout = model_cfg.get("dropout", dropout)
+
         self.use_fft_branch = use_fft_branch
 
         weights = models.ConvNeXt_Small_Weights.DEFAULT if pretrained else None

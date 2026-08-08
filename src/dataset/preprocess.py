@@ -37,8 +37,14 @@ def get_yunet_model_path() -> Optional[str]:
         logging.warning("Failed to download YuNet model file: %s", e)
     return None
 
-# Global path caching for instant thread-local YuNet instantiation
-YUNET_CACHED_MODEL_PATH = get_yunet_model_path()
+_YUNET_CACHED_MODEL_PATH: Optional[str] = None
+
+def get_cached_yunet_path() -> Optional[str]:
+    """Lazily resolves or downloads YuNet model path on first request."""
+    global _YUNET_CACHED_MODEL_PATH
+    if _YUNET_CACHED_MODEL_PATH is None:
+        _YUNET_CACHED_MODEL_PATH = get_yunet_model_path()
+    return _YUNET_CACHED_MODEL_PATH
 
 class DynamicFaceCropper:
     """
@@ -84,10 +90,11 @@ class DynamicFaceCropper:
     def _get_thread_yunet(self):
         """Thread-isolated YuNet detector instantiation to prevent C++ state race conditions."""
         if not hasattr(self._local, "yunet"):
-            if YUNET_CACHED_MODEL_PATH is not None and hasattr(cv2, "FaceDetectorYN"):
+            cached_path = get_cached_yunet_path()
+            if cached_path is not None and hasattr(cv2, "FaceDetectorYN"):
                 try:
                     self._local.yunet = cv2.FaceDetectorYN.create(
-                        model=YUNET_CACHED_MODEL_PATH,
+                        model=cached_path,
                         config="",
                         input_size=(300, 300),
                         score_threshold=0.6,
