@@ -100,7 +100,7 @@ def filter_loto_split_strict(samples, holdout_keyword):
 
 def main():
     parser = argparse.ArgumentParser(description="LOTO Dual-Stream Deepfake Training")
-    parser.add_argument("--holdout", type=str, required=True, help="Generator domain to hold out (e.g. celeb, neuraltextures)")
+    parser.add_argument("--holdout", "--holdout_domain", dest="holdout", type=str, required=True, help="Generator domain to hold out (e.g. celeb, neuraltextures, deepfakes, face2face, faceswap)")
     parser.add_argument("--epochs", type=int, default=3, help="Number of LOTO training epochs")
     args = parser.parse_args()
 
