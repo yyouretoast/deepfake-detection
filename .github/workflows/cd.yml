@@ -3,17 +3,11 @@ name: Sync to Hugging Face Space
 on:
   push:
     branches: [ main ]
-  workflow_run:
-    workflows: ["CI Test Suite"]
-    branches: [main]
-    types:
-      - completed
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,5 +17,8 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git push --force https://yyouretoast:$HF_TOKEN@huggingface.co/spaces/yyouretoast/deepfake-detector main
+          git config --global user.email "yyasso2005@gmail.com"
+          git config --global user.name "Yassin Yasser"
+          git remote add space https://yyouretoast:$HF_TOKEN@huggingface.co/spaces/yyouretoast/deepfake-detector
+          git push --force space main
 
