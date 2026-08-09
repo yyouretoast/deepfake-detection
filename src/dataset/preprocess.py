@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+import urllib.error
 import urllib.request
 from typing import Any, List, Optional, Tuple, Union
 
@@ -8,6 +9,8 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 try:
     from facenet_pytorch import MTCNN
@@ -49,8 +52,8 @@ def get_yunet_model_path() -> Optional[str]:
             f.write(resp.read())
         if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
             return local_path
-    except Exception as e:
-        logging.warning("Failed to download YuNet model file: %s", e)
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        logger.warning("Failed to download YuNet model file: %s", e)
     return None
 
 
@@ -89,7 +92,8 @@ class DynamicFaceCropper:
                     device=self.device,
                     post_process=False,
                 )
-            except Exception:
+            except (ImportError, OSError, ValueError, RuntimeError) as e:
+                logger.debug("MTCNN initialization exception: %s", e)
                 self.detector = None
         else:
             self.detector = None
@@ -114,8 +118,8 @@ class DynamicFaceCropper:
                         nms_threshold=0.3,
                         top_k=5000,
                     )
-                except Exception as e:
-                    logging.warning("Failed to initialize thread-local YuNet detector: %s", e)
+                except (cv2.error, OSError, ValueError, RuntimeError) as e:
+                    logger.warning("Failed to initialize thread-local YuNet detector: %s", e)
                     self._local.yunet = None
             else:
                 self._local.yunet = None
@@ -150,8 +154,8 @@ class DynamicFaceCropper:
                 landmarks_list.append(lms)
 
             return np.array(boxes), np.array(landmarks_list)
-        except Exception as e:
-            logging.warning("YuNet detection exception: %s", e)
+        except (cv2.error, AttributeError, ValueError, RuntimeError) as e:
+            logger.warning("YuNet detection exception: %s", e)
             return None, None
 
     def _detect_cpu_cascade(self, image_rgb: np.ndarray) -> Optional[np.ndarray]:
@@ -167,7 +171,8 @@ class DynamicFaceCropper:
                 return None
             boxes = [[x, y, x + w, y + h] for (x, y, w, h) in faces]
             return np.array(boxes)
-        except Exception:
+        except (cv2.error, AttributeError, ValueError, RuntimeError) as e:
+            logger.debug("Cascade detection exception: %s", e)
             return None
 
     def _apply_cosine_edge_taper(
@@ -236,13 +241,13 @@ class DynamicFaceCropper:
         src_x2 = crop_x2 + pad_left
 
         if src_y2 <= src_y1 or src_x2 <= src_x1:
-            logging.warning("Fallback center crop used due to invalid crop dimensions.")
+            logger.warning("Fallback center crop used due to invalid crop dimensions.")
             fallback = self._center_crop(image_rgb, target_size=out_size)
             return fallback, fallback
 
         raw_crop = padded_img[src_y1:src_y2, src_x1:src_x2]
         if raw_crop.size == 0:
-            logging.warning("Fallback center crop used due to empty crop.")
+            logger.warning("Fallback center crop used due to empty crop.")
             fallback = self._center_crop(image_rgb, target_size=out_size)
             return fallback, fallback
 
@@ -281,8 +286,8 @@ class DynamicFaceCropper:
                             flags=cv2.INTER_AREA,
                             borderMode=cv2.BORDER_REPLICATE,
                         )
-            except Exception:
-                pass
+            except (cv2.error, ValueError, np.linalg.LinAlgError, RuntimeError) as e:
+                logger.debug("Affine warp alignment exception: %s", e)
 
         return aligned_warped_crop, raw_unwarped_crop
 
@@ -356,8 +361,8 @@ class DynamicFaceCropper:
                 landmarks = res[2] if len(res) >= 3 else None
                 if boxes is not None and len(boxes) > 0:
                     return self._crop_from_box(image_rgb, boxes, landmarks, target_size=out_size)
-            except Exception as e:
-                logging.debug("MTCNN fallback detection exception: %s", e)
+            except (RuntimeError, ValueError, TypeError, AttributeError, OSError) as e:
+                logger.debug("MTCNN fallback detection exception: %s", e)
 
         cascade_boxes = self._detect_cpu_cascade(image_rgb)
         if cascade_boxes is not None and len(cascade_boxes) > 0:
@@ -401,7 +406,7 @@ class DynamicFaceCropper:
         os.makedirs(output_dir, exist_ok=True)
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            logging.warning("Could not open video: %s", video_path)
+            logger.warning("Could not open video: %s", video_path)
             return []
 
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

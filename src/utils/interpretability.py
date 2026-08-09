@@ -1,5 +1,6 @@
 """Model interpretability utilities including ConvNeXtGradCAM and 4-panel face diagnostic generator."""
 
+import logging
 from typing import Any, Dict, Optional
 
 import cv2
@@ -9,6 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from src.models.hybrid_detector import HybridDeepfakeDetector
+
+logger = logging.getLogger(__name__)
 
 
 class ConvNeXtGradCAM:
@@ -57,8 +60,8 @@ class ConvNeXtGradCAM:
         try:
             self.forward_handle.remove()
             self.backward_handle.remove()
-        except Exception:
-            pass
+        except (AttributeError, KeyError, RuntimeError) as e:
+            logger.debug("Failed to remove hooks: %s", e)
 
 
 def generate_face_diagnostics(

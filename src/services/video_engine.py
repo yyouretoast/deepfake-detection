@@ -17,6 +17,8 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import DEFAULT_THRESHOLD, clean_state_dict
 from src.utils.temporal_aggregation import aggregate_video_predictions
 
+logger = logging.getLogger(__name__)
+
 CONFIG: Dict[str, Any] = load_config()
 APP_CFG: Dict[str, Any] = CONFIG.get("app", {})
 IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
@@ -50,12 +52,12 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
         try:
             from huggingface_hub import hf_hub_download
 
-            logging.info("No local checkpoint found. Attempting download from HuggingFace Hub...")
+            logger.info("No local checkpoint found. Attempting download from HuggingFace Hub...")
             weights_path = hf_hub_download(
                 repo_id="yyouretoast/deepfake-detector",
                 filename="dual_stream_calibrated.pth",
             )
-            logging.info("Downloaded weights from HuggingFace Hub to %s", weights_path)
+            logger.info("Downloaded weights from HuggingFace Hub to %s", weights_path)
             if weights_path and EXPECTED_WEIGHTS_SHA256:
                 sha256 = hashlib.sha256()
                 with open(weights_path, "rb") as f:
@@ -66,8 +68,8 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
                     raise ValueError(
                         f"Checksum mismatch for downloaded weights: expected {EXPECTED_WEIGHTS_SHA256}, got {computed_hash}"
                     )
-        except Exception as e:
-            logging.warning("Could not download weights from HuggingFace Hub: %s", e)
+        except (ImportError, OSError, ValueError, RuntimeError) as e:
+            logger.warning("Could not download weights from HuggingFace Hub: %s", e)
 
     opt_threshold = DEFAULT_THRESHOLD
     temperature = 1.0
@@ -81,8 +83,8 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
                     opt_threshold = float(meta.get("optimal_threshold", DEFAULT_THRESHOLD))
                     temperature = float(meta.get("temperature", 1.0))
                     break
-            except Exception as e:
-                logging.warning("Could not load sidecar metadata: %s", e)
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                logger.warning("Could not load sidecar metadata: %s", e)
 
     has_weights = weights_path is not None and os.path.exists(weights_path)
     state_dict: Optional[Dict[str, Any]] = None
