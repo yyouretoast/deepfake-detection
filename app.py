@@ -149,6 +149,15 @@ def render_ui() -> None:
         help="Adjust classification decision threshold for sensitivity tuning."
     )
 
+    n_frames_slider = st.sidebar.slider(
+        "Sampled Keyframes (N)",
+        min_value=4,
+        max_value=20,
+        value=10,
+        step=2,
+        help="Number of video keyframes to sample across temporal sequence."
+    )
+
     aggregation_select = st.sidebar.selectbox(
         "Temporal Aggregation",
         options=["soft_max", "top_k", "ema", "mean"],
@@ -171,6 +180,16 @@ def render_ui() -> None:
     """,
         unsafe_allow_html=True,
     )
+
+    with st.sidebar.expander("ℹ️ Robustness & Failure Modes", expanded=False):
+        st.markdown(
+            """
+            <div style="font-size:12px; color:#94a3b8;">
+                <b>Spectral Sensitivity</b>: Heavy spatial low-pass blurring (σ ≥ 3.0, −26% AUC) or high-frequency noise (σ ≥ 30, −24% AUC) destroys spectral noise residuals extracted by the SRM + 2D FFT frequency branch.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     if "analysis_results" not in st.session_state:
         st.session_state.analysis_results = None
@@ -241,18 +260,26 @@ def render_ui() -> None:
                     shutil.copyfileobj(uploaded_file, tmp)
                     tmp_path = tmp.name
 
-                with st.spinner("Running Dual-Stream inference & spectral analysis..."):
-                    res = process_video_frames(
-                        video_path=tmp_path,
-                        pytorch_model=pytorch_model,
-                        cropper=cropper,
-                        classification_threshold=threshold_slider,
-                        temperature=default_temperature,
-                        has_pytorch_weights=has_pytorch_weights,
-                        aggregation_method=aggregation_select,
-                    )
-                    st.session_state.analysis_results = res
-                    st.session_state.last_file_id = file_id
+                prog_bar = st.progress(10)
+                prog_status = st.empty()
+                prog_status.markdown("*Seeking keyframes & running YuNet face cropper...*")
+
+                res = process_video_frames(
+                    video_path=tmp_path,
+                    pytorch_model=pytorch_model,
+                    cropper=cropper,
+                    classification_threshold=threshold_slider,
+                    temperature=default_temperature,
+                    has_pytorch_weights=has_pytorch_weights,
+                    aggregation_method=aggregation_select,
+                    num_frames=n_frames_slider,
+                )
+                prog_bar.progress(100)
+                prog_status.empty()
+                prog_bar.empty()
+
+                st.session_state.analysis_results = res
+                st.session_state.last_file_id = file_id
             finally:
                 if tmp_path and os.path.exists(tmp_path):
                     try:
@@ -310,6 +337,33 @@ def render_ui() -> None:
                 col_m1.metric("Analyzed Faces", len(all_probs))
                 col_m2.metric("Real Faces", real_faces_count)
                 col_m3.metric("Fake Faces", fake_faces_count)
+
+                import json
+                report_data = {
+                    "video_filename": uploaded_file.name,
+                    "file_size_bytes": uploaded_file.size,
+                    "file_md5_hash": file_id,
+                    "verdict": final_label.upper(),
+                    "calibrated_confidence_pct": round(float(final_conf), 2),
+                    "aggregated_anomaly_score": round(float(raw_video_prob), 6),
+                    "operating_decision_threshold": float(threshold_slider),
+                    "optimal_temperature_T_star": float(default_temperature),
+                    "analyzed_frame_count": len(all_probs),
+                    "real_frame_count": real_faces_count,
+                    "fake_frame_count": fake_faces_count,
+                    "temporal_aggregation_policy": aggregation_select,
+                    "timestamps_sec": [round(float(t), 3) for t in res.get("timestamps", [])],
+                    "frame_probabilities": [round(float(p), 6) for p in all_probs],
+                }
+                report_json = json.dumps(report_data, indent=2)
+                st.download_button(
+                    label="📥 Download Forensic Inspection Report (.json)",
+                    data=report_json,
+                    file_name=f"forensic_report_{file_id[:8]}.json",
+                    mime="application/json",
+                    use_container_width=True,
+                    help="Download structured JSON report with frame probabilities & calibration metadata."
+                )
 
             # Temporal Video Anomaly Timeline & Interactive Frame Scrubbing
             timestamps = res.get("timestamps", [])

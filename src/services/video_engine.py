@@ -115,6 +115,7 @@ def process_video_frames(
     temperature: Optional[float] = None,
     has_pytorch_weights: Optional[bool] = None,
     aggregation_method: str = "soft_max",
+    num_frames: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Video inference engine with OpenCV keyframe seeking, AMP autocast, and temporal aggregation.
@@ -141,9 +142,10 @@ def process_video_frames(
         if total <= 0:
             return None
 
-        if total >= FRAMES_TO_SAMPLE:
-            start_frame = max(0, (total - FRAMES_TO_SAMPLE) // 2)
-            frame_indices = list(range(start_frame, start_frame + FRAMES_TO_SAMPLE))
+        target_frames = num_frames if (num_frames is not None and num_frames > 0) else FRAMES_TO_SAMPLE
+        if total >= target_frames:
+            step = total / float(target_frames)
+            frame_indices = [int(i * step) for i in range(target_frames)]
         else:
             frame_indices = list(range(total))
 
