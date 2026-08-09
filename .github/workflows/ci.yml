@@ -18,17 +18,14 @@ jobs:
           python-version: "3.10"
           cache: "pip"
 
-      - name: Install dependencies & linter
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
-          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install ruff pytest
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
-      - name: Run Ruff Static Analysis Linter
-        run: |
-          ruff check src/ scripts/ tests/ app.py --select E,F,W --ignore E501,E402,E731,E741
+      - name: Run Ruff Linter
+        run: ruff check src/ scripts/ tests/ app.py --select E,F,W --ignore E501,E402,E731,E741
 
-      - name: Run Unit Test Suite
-        run: |
-          pytest tests/ -v
+      - name: Run Pytest Suite
+        run: pytest tests/ -v
