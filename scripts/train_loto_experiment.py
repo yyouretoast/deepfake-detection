@@ -69,14 +69,23 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     folder = sub_path.split("/")[1] if len(sub_path.split("/")) > 1 else ""
     if re.match(r"^\d{3}_\d{3}$", folder):
         pair_num = int(folder.split("_")[0])
-        if kw in ("neuraltextures", "nt") and (600 <= pair_num <= 799):
+        if kw in ("neuraltextures", "nt", "neural_textures") and (600 <= pair_num <= 799):
             return True
-        elif kw in ("deepfakes", "df") and (0 <= pair_num <= 199):
+        elif kw in ("deepfakes", "df", "deep_fakes") and (0 <= pair_num <= 199):
             return True
-        elif kw in ("face2face", "f2f") and (200 <= pair_num <= 399):
+        elif kw in ("face2face", "f2f", "face_2_face") and (200 <= pair_num <= 399):
             return True
-        elif kw in ("faceswap", "fs") and (400 <= pair_num <= 599):
+        elif kw in ("faceswap", "fs", "face_swap") and (400 <= pair_num <= 599):
             return True
+
+    if kw in ("faceswap", "fs", "face_swap"):
+        return any(k in sub_path for k in ("faceswap", "face_swap", "fs"))
+    if kw in ("face2face", "f2f", "face_2_face"):
+        return any(k in sub_path for k in ("face2face", "face_2_face", "f2f"))
+    if kw in ("deepfakes", "df", "deep_fakes"):
+        return any(k in sub_path for k in ("deepfakes", "deep_fakes", "df"))
+    if kw in ("neuraltextures", "nt", "neural_textures"):
+        return any(k in sub_path for k in ("neuraltextures", "neural_textures", "nt"))
 
     return kw in sub_path
 
