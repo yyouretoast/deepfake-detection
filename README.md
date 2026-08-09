@@ -271,6 +271,8 @@ deepfake-detection/
 │   │   └── preprocess.py          # DynamicFaceCropper & 5-point similarity alignment
 │   ├── models/
 │   │   └── hybrid_detector.py     # ConvNeXt-Small + SRM/Bayar 2D FFT architecture
+│   ├── services/
+│   │   └── video_engine.py        # Video prediction engine & checkpoint loader
 │   └── utils/
 │       ├── checkpoint.py          # Central state-dict cleaning, L-BFGS-B temp fitting & ECE calculation
 │       └── temporal_aggregation.py# Frame score pooling (soft-max, EMA, top-K, mean)
