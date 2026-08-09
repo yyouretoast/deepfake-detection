@@ -1,39 +1,45 @@
-"""
-Streamlit Web Interface for Dual-Stream Deepfake Detector Engine.
-Decoupled frontend orchestrator rendering dark glassmorphism UI, video player,
-temporal anomaly timeline, interactive frame scrubbing, and 4-panel diagnostics.
-"""
+"""Streamlit Web Interface for Dual-Stream Deepfake Detector Engine."""
 
+import hashlib
+import json
 import os
+import shutil
 import sys
+import tempfile
+from typing import Any, Dict, List, Optional, Tuple
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import streamlit as st
+import torch
 
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-import hashlib
-import tempfile
-import shutil
-from typing import Optional
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import torch
-import streamlit as st
-
-from src.services.video_engine import load_prediction_engine, process_video_frames, DEVICE
+from src.dataset.preprocess import preprocess_tensors_batch  # noqa: F401
+from src.services.video_engine import DEVICE, load_prediction_engine, process_video_frames
+from src.utils.checkpoint import clean_state_dict, normalize_confidence  # noqa: F401
 from src.utils.interpretability import generate_face_diagnostics
 from src.utils.visualization import render_temporal_anomaly_timeline
-from src.utils.checkpoint import clean_state_dict, normalize_confidence  # noqa: F401
-from src.dataset.preprocess import preprocess_tensors_batch  # noqa: F401
+
+__all__ = [
+    "render_ui",
+    "clean_state_dict",
+    "normalize_confidence",
+    "preprocess_tensors_batch",
+]
 
 
-# ---------------------------------------------------------------------------
-# Streamlit UI Rendering
-# ---------------------------------------------------------------------------
+@st.cache_resource
+def _cached_model_loader() -> Tuple[Any, Any, bool, float, float]:
+    return load_prediction_engine()
+
 
 def render_ui() -> None:
-    """Renders the Streamlit frontend layout and handles user interactions."""
+    """Render the Streamlit frontend layout and handle user interactions."""
     st.set_page_config(
         page_title="Dual-Stream Deepfake Detector",
         page_icon="🎭",
@@ -126,18 +132,13 @@ def render_ui() -> None:
     )
 
     try:
-        @st.cache_resource
-        def cached_model_loader():
-            return load_prediction_engine()
-
         pytorch_model, cropper, has_pytorch_weights, default_threshold, default_temperature = (
-            cached_model_loader()
+            _cached_model_loader()
         )
     except Exception as e:
         st.error(f"Model initialization error: {e}")
         st.stop()
 
-    # Sidebar Controls & System Panel
     st.sidebar.markdown("### Control Panel & Settings")
 
     threshold_slider = st.sidebar.slider(
@@ -146,7 +147,7 @@ def render_ui() -> None:
         max_value=0.99,
         value=float(default_threshold),
         step=0.01,
-        help="Adjust classification decision threshold for sensitivity tuning."
+        help="Adjust classification decision threshold for sensitivity tuning.",
     )
 
     n_frames_slider = st.sidebar.slider(
@@ -155,14 +156,14 @@ def render_ui() -> None:
         max_value=20,
         value=10,
         step=2,
-        help="Number of video keyframes to sample across temporal sequence."
+        help="Number of video keyframes to sample across temporal sequence.",
     )
 
     aggregation_select = st.sidebar.selectbox(
         "Temporal Aggregation",
         options=["soft_max", "top_k", "ema", "mean"],
         index=0,
-        help="Frame-level score pooling method across video sequences."
+        help="Frame-level score pooling method across video sequences.",
     )
 
     st.sidebar.markdown("<hr style='margin: 16px 0;'>", unsafe_allow_html=True)
@@ -188,7 +189,7 @@ def render_ui() -> None:
                 <b>Spectral Sensitivity</b>: Heavy spatial low-pass blurring (σ ≥ 3.0, −26% AUC) or high-frequency noise (σ ≥ 30, −24% AUC) destroys spectral noise residuals extracted by the SRM + 2D FFT frequency branch.
             </div>
             """,
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
     if "analysis_results" not in st.session_state:
@@ -196,7 +197,6 @@ def render_ui() -> None:
     if "last_file_id" not in st.session_state:
         st.session_state.last_file_id = None
 
-    # Landing Workflow Cards
     if st.session_state.analysis_results is None:
         col_w1, col_w2, col_w3 = st.columns(3)
         with col_w1:
@@ -238,7 +238,9 @@ def render_ui() -> None:
         st.markdown("<br>", unsafe_allow_html=True)
 
     st.markdown("### Upload Video for Analysis")
-    uploaded_file = st.file_uploader("Select MP4, AVI, or MOV video file (Max 50MB)", type=["mp4", "avi", "mov"])
+    uploaded_file = st.file_uploader(
+        "Select MP4, AVI, or MOV video file (Max 50MB)", type=["mp4", "avi", "mov"]
+    )
 
     if uploaded_file:
         if uploaded_file.size > 50 * 1024 * 1024:
@@ -253,7 +255,10 @@ def render_ui() -> None:
         uploaded_file.seek(0)
         file_id = _hasher.hexdigest()
 
-        if st.session_state.last_file_id != file_id or st.session_state.analysis_results is None:
+        if (
+            st.session_state.last_file_id != file_id
+            or st.session_state.analysis_results is None
+        ):
             tmp_path: Optional[str] = None
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
@@ -293,9 +298,15 @@ def render_ui() -> None:
             st.error("No clear face detections were found in the uploaded video.")
         else:
             raw_video_prob = float(res["raw_video_prob"])
-            all_probs = [float(p[0]) if isinstance(p, (list, tuple)) else float(p) for p in res["all_probs"]]
+            all_probs: List[float] = [
+                float(p[0]) if isinstance(p, (list, tuple)) else float(p)
+                for p in res["all_probs"]
+            ]
             sample_faces = res["sample_faces"]
-            sample_probs = [float(p[0]) if isinstance(p, (list, tuple)) else float(p) for p in res["sample_probs"]]
+            sample_probs: List[float] = [
+                float(p[0]) if isinstance(p, (list, tuple)) else float(p)
+                for p in res["sample_probs"]
+            ]
 
             final_label = "Fake" if raw_video_prob > threshold_slider else "Real"
             final_conf = normalize_confidence(raw_video_prob, threshold_slider)
@@ -305,7 +316,6 @@ def render_ui() -> None:
 
             st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
 
-            # Side-by-side Video Player + Detection Metrics
             col_video, col_results = st.columns([1, 1])
 
             with col_video:
@@ -338,8 +348,7 @@ def render_ui() -> None:
                 col_m2.metric("Real Faces", real_faces_count)
                 col_m3.metric("Fake Faces", fake_faces_count)
 
-                import json
-                report_data = {
+                report_data: Dict[str, Any] = {
                     "video_filename": uploaded_file.name,
                     "file_size_bytes": uploaded_file.size,
                     "file_md5_hash": file_id,
@@ -362,10 +371,9 @@ def render_ui() -> None:
                     file_name=f"forensic_report_{file_id[:8]}.json",
                     mime="application/json",
                     use_container_width=True,
-                    help="Download structured JSON report with frame probabilities & calibration metadata."
+                    help="Download structured JSON report with frame probabilities & calibration metadata.",
                 )
 
-            # Temporal Video Anomaly Timeline & Interactive Frame Scrubbing
             timestamps = res.get("timestamps", [])
             frame_indices = res.get("frame_indices", [])
             all_faces = res.get("all_faces", [])
@@ -387,7 +395,7 @@ def render_ui() -> None:
                     "Select Timestamp to Inspect & Analyze",
                     options=list(range(len(scrub_options))),
                     format_func=lambda idx: scrub_options[idx],
-                    key="timeline_scrub_select"
+                    key="timeline_scrub_select",
                 )
 
                 if scrub_idx < len(all_faces):
@@ -398,7 +406,11 @@ def render_ui() -> None:
 
                     scrub_col1, scrub_col2 = st.columns([1, 2])
                     with scrub_col1:
-                        st.image(s_face, caption=f"Scrubbed Face Crop at {s_time:.2f}s (Frame #{s_frame})", use_container_width=True)
+                        st.image(
+                            s_face,
+                            caption=f"Scrubbed Face Crop at {s_time:.2f}s (Frame #{s_frame})",
+                            use_container_width=True,
+                        )
 
                     with scrub_col2:
                         s_label = "Fake" if s_prob > threshold_slider else "Real"
@@ -416,22 +428,51 @@ def render_ui() -> None:
                             unsafe_allow_html=True,
                         )
                         st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("🔬 Generate 4-Panel Diagnostics for Selected Timestamp", key="btn_scrub_diag"):
-                            unwrapped = pytorch_model.module if isinstance(pytorch_model, torch.nn.DataParallel) else pytorch_model
-                            with st.spinner(f"Computing Grad-CAM attention & spectral noise maps for timestamp {s_time:.2f}s..."):
-                                diag = generate_face_diagnostics(unwrapped, s_face, device=DEVICE, temperature=default_temperature)
+                        if st.button(
+                            "🔬 Generate 4-Panel Diagnostics for Selected Timestamp",
+                            key="btn_scrub_diag",
+                        ):
+                            unwrapped = (
+                                pytorch_model.module
+                                if isinstance(pytorch_model, torch.nn.DataParallel)
+                                else pytorch_model
+                            )
+                            with st.spinner(
+                                f"Computing Grad-CAM attention & spectral noise maps for timestamp {s_time:.2f}s..."
+                            ):
+                                diag = generate_face_diagnostics(
+                                    unwrapped,
+                                    s_face,
+                                    device=DEVICE,
+                                    temperature=default_temperature,
+                                )
 
                             d_col1, d_col2, d_col3, d_col4 = st.columns(4)
                             with d_col1:
-                                st.image(diag["original"], caption="(a) RGB Face Crop", use_container_width=True)
+                                st.image(
+                                    diag["original"],
+                                    caption="(a) RGB Face Crop",
+                                    use_container_width=True,
+                                )
                             with d_col2:
-                                st.image(diag["srm_residual"], caption="(b) SRM Noise Residual", use_container_width=True)
+                                st.image(
+                                    diag["srm_residual"],
+                                    caption="(b) SRM Noise Residual",
+                                    use_container_width=True,
+                                )
                             with d_col3:
-                                st.image(diag["fft_spectrum"], caption="(c) 2D FFT Magnitude", use_container_width=True)
+                                st.image(
+                                    diag["fft_spectrum"],
+                                    caption="(c) 2D FFT Magnitude",
+                                    use_container_width=True,
+                                )
                             with d_col4:
-                                st.image(diag["gradcam_overlay"], caption="(d) Grad-CAM Attention", use_container_width=True)
+                                st.image(
+                                    diag["gradcam_overlay"],
+                                    caption="(d) Grad-CAM Attention",
+                                    use_container_width=True,
+                                )
 
-            # Top Anomaly Face Crop Grid
             if sample_faces:
                 st.markdown("<hr>", unsafe_allow_html=True)
                 st.markdown("### Top Anomaly Face Crops")
@@ -447,31 +488,64 @@ def render_ui() -> None:
                             unsafe_allow_html=True,
                         )
 
-            # On-Demand Selectable Diagnostics
             st.markdown("<hr>", unsafe_allow_html=True)
-            with st.expander("🔬 View 4-Panel Interpretability Diagnostics (Selectable Target Crop)", expanded=False):
+            with st.expander(
+                "🔬 View 4-Panel Interpretability Diagnostics (Selectable Target Crop)",
+                expanded=False,
+            ):
                 if sample_faces:
-                    face_options = [f"Face Crop #{i+1} (Prob: {prob:.4f})" for i, prob in enumerate(sample_probs)]
-                    selected_idx = st.selectbox("Select Face Crop to Inspect", options=list(range(len(face_options))), format_func=lambda i: face_options[i])
+                    face_options = [
+                        f"Face Crop #{i+1} (Prob: {prob:.4f})"
+                        for i, prob in enumerate(sample_probs)
+                    ]
+                    selected_idx = st.selectbox(
+                        "Select Face Crop to Inspect",
+                        options=list(range(len(face_options))),
+                        format_func=lambda i: face_options[i],
+                    )
 
                     if st.button("Generate Interpretability Maps", key="btn_crop_diag"):
-                        unwrapped = pytorch_model.module if isinstance(pytorch_model, torch.nn.DataParallel) else pytorch_model
+                        unwrapped = (
+                            pytorch_model.module
+                            if isinstance(pytorch_model, torch.nn.DataParallel)
+                            else pytorch_model
+                        )
                         selected_face = sample_faces[selected_idx]
 
                         with st.spinner("Computing Grad-CAM attention & spectral noise maps..."):
-                            diag = generate_face_diagnostics(unwrapped, selected_face, device=DEVICE, temperature=default_temperature)
+                            diag = generate_face_diagnostics(
+                                unwrapped,
+                                selected_face,
+                                device=DEVICE,
+                                temperature=default_temperature,
+                            )
 
                         d_col1, d_col2, d_col3, d_col4 = st.columns(4)
                         with d_col1:
-                            st.image(diag["original"], caption="(a) RGB Face Crop", use_container_width=True)
+                            st.image(
+                                diag["original"],
+                                caption="(a) RGB Face Crop",
+                                use_container_width=True,
+                            )
                         with d_col2:
-                            st.image(diag["srm_residual"], caption="(b) SRM Noise Residual", use_container_width=True)
+                            st.image(
+                                diag["srm_residual"],
+                                caption="(b) SRM Noise Residual",
+                                use_container_width=True,
+                            )
                         with d_col3:
-                            st.image(diag["fft_spectrum"], caption="(c) 2D FFT Magnitude", use_container_width=True)
+                            st.image(
+                                diag["fft_spectrum"],
+                                caption="(c) 2D FFT Magnitude",
+                                use_container_width=True,
+                            )
                         with d_col4:
-                            st.image(diag["gradcam_overlay"], caption="(d) Grad-CAM Attention", use_container_width=True)
+                            st.image(
+                                diag["gradcam_overlay"],
+                                caption="(d) Grad-CAM Attention",
+                                use_container_width=True,
+                            )
 
-    # Footer
     st.markdown("<hr style='margin: 30px 0 15px 0;'>", unsafe_allow_html=True)
     st.markdown(
         """
@@ -491,3 +565,4 @@ def render_ui() -> None:
 
 if __name__ == "__main__":
     render_ui()
+
