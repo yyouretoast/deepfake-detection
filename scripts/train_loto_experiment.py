@@ -150,9 +150,9 @@ def main():
     g = torch.Generator()
     g.manual_seed(42)
 
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
-    target_loader = DataLoader(target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
+    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True, worker_init_fn=seed_worker, generator=g)
+    target_loader = DataLoader(target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True, worker_init_fn=seed_worker, generator=g)
 
     num_fake = sum(1 for s in train_samples if s[1] == 1)
     num_real = len(train_samples) - num_fake

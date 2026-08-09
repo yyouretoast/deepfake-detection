@@ -51,7 +51,11 @@ def seed_everything(seed=42):
     torch.backends.cudnn.benchmark = False
 
 
+cv2.setNumThreads(0)
+
+
 def seed_worker(worker_id):
+    cv2.setNumThreads(0)
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
