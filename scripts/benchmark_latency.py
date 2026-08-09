@@ -47,7 +47,10 @@ def benchmark_inference():
     # -----------------------------------------------------------------------
     # Benchmark Batch Size 1 (Real-time Single-Frame Latency)
     # -----------------------------------------------------------------------
-    bs1_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE, device=device)
+    if device.type == 'cuda':
+        bs1_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE).pin_memory().to(device, non_blocking=True)
+    else:
+        bs1_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE, device=device)
 
     # Warmup Phase (20 passes on GPU, 5 on CPU)
     warmup_runs = 20 if device.type == 'cuda' else 5
@@ -88,7 +91,10 @@ def benchmark_inference():
     # -----------------------------------------------------------------------
     # Benchmark Batch Size 32 (High-Throughput Batch Processing)
     # -----------------------------------------------------------------------
-    bs32_input = torch.randn(32, 3, IMG_SIZE, IMG_SIZE, device=device)
+    if device.type == 'cuda':
+        bs32_input = torch.randn(32, 3, IMG_SIZE, IMG_SIZE).pin_memory().to(device, non_blocking=True)
+    else:
+        bs32_input = torch.randn(32, 3, IMG_SIZE, IMG_SIZE, device=device)
     for _ in range(3):
         with torch.inference_mode():
             with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
