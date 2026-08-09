@@ -250,7 +250,7 @@ accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/t
 
 ## Repository Structure
 
-```
+```text
 deepfake-detection/
 ├── app.py                         # Streamlit web interface (Video player + 4-panel diagnostics)
 ├── config/
@@ -285,6 +285,8 @@ deepfake-detection/
 │   └── visualize_attention_maps.py# 4-panel SRM + Grad-CAM interpretability engine
 ├── tests/                         # 61/61 passing unit tests
 └── README.md
+```
+
 ---
 
 ## Dataset Licensing & Compliance Note
