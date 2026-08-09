@@ -11,12 +11,12 @@ license: mit
 
 # 🎭 Dual-Stream Deepfake Detection Engine
 
-A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small spatial representations with Steganographic Rich Model (SRM) + Bayar-Stamm 2D Real FFT frequency spectrum embeddings, SciPy L-BFGS-B temperature calibration, and thread-safe OpenCV YuNet face detection.
+A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small spatial representations with Steganographic Rich Model (SRM) + Bayar-Stamm 2D Real FFT frequency spectrum embeddings, SciPy L-BFGS-B temperature calibration, and thread-local OpenCV YuNet face cropping.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
-[![pytest](https://img.shields.io/badge/pytest-54%2F54%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![pytest](https://img.shields.io/badge/pytest-61%2F61%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Notebook](https://img.shields.io/badge/Notebook-Master%20Pipeline-blue?logo=jupyter)](notebooks/master_pipeline.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -93,13 +93,14 @@ $$
 
 *Evaluated on 2x NVIDIA T4 GPUs at 512x512 crop resolution using PyTorch 2.1 FP16 mixed precision.*
 
-### 1. Held-Out Test Set Metrics (10,528 Crops)
-- **Test AUC**: `0.9987`
-- **Test F1-Score**: `0.9830`
-- **Precision (Fake)**: `0.9686`
-- **Recall (Fake)**: `0.9979`
+### 1. Held-Out Test Set Metrics (10,528 Per-Frame Face Crops)
+- **Test AUC**: `0.9988` **[95% Non-Parametric Bootstrap CI: 0.9985 – 0.9991]**
+- **Test F1-Score**: `0.9830` **[95% Non-Parametric Bootstrap CI: 0.9809 – 0.9850]**
+- **Precision (Fake)**: `0.9686` **[95% Non-Parametric Bootstrap CI: 0.9647 – 0.9725]**
+- **Recall (Fake)**: `0.9979` **[95% Non-Parametric Bootstrap CI: 0.9966 – 0.9987]**
 - **Optimal Temperature ($T^*$)**: `1.4788`
 - **Expected Calibration Error (ECE)**: `0.0122` (Raw) $\rightarrow$ `0.0093` (Calibrated)
+- **Inference Aggregation Policy**: Per-frame predictions are evaluated on 512×512 facial crops. For full video inference, video-level scores are aggregated via Mean Logit Pooling ($\text{Score}_{\text{video}} = \frac{1}{K}\sum_{k=1}^K \text{logit}(x_k)$).
 
 ### 2. Per-Generator Sub-Domain Evaluation (2-Class AUC vs Real Faces)
 
@@ -113,22 +114,32 @@ $$
 
 *\*Note: FF++ sub-domain F1 scores reflect heavy class imbalance (200 Fakes paired against 2,889 Real test faces) at the operating threshold = 0.01 optimized for 99.8% Fake Recall.*
 
-### 3. True LOTO (Leave-One-Type-Out) Cross-Generator Generalization
+### 3. Leave-One-Target-Out (LOTO) Cross-Generator Generalization
 
-| Experiment Fold | Held-Out Target Domain | Category Type | Test Samples | Zero-Shot AUC | Zero-Shot F1 | Precision | Recall |
-| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Fold 1** | `FF++ NeuralTextures` | Within-Dataset Cross-Generator | 5,289 | `0.9783` | `0.9230` | `0.9244` | `0.9217` |
-| **Fold 2** | `Celeb-DF v2` | Cross-Dataset Zero-Shot Transfer | 82,549 | `0.3234` | `0.1202` | `0.9542` | `0.0641` |
+| Experiment Fold | Held-Out Target Domain | Category Type | Test Samples | Zero-Shot AUC | Inverted AUC (1 - p) | Zero-Shot F1 |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: |
+| **Fold 1** | `FF++ Deepfakes` | Within-Dataset LOTO | 5,200 | *Pending GPU Run* | *Pending* | *Pending* |
+| **Fold 2** | `FF++ Face2Face` | Within-Dataset LOTO | 5,200 | *Pending GPU Run* | *Pending* | *Pending* |
+| **Fold 3** | `FF++ FaceSwap` | Within-Dataset LOTO | 5,200 | *Pending GPU Run* | *Pending* | *Pending* |
+| **Fold 4** | `FF++ NeuralTextures` | Within-Dataset LOTO | 5,289 | `0.9783` | `0.0217` | `0.9230` |
+| **Fold 5** | `Celeb-DF v2` | Cross-Dataset Zero-Shot | 82,549 | `0.3234` | **`0.6766`** | `0.1202` |
 
-**Note on Fold 2**: Holding out Celeb-DF v2 removes 88% of all fake training crops (66,382 samples), leaving only compressed FaceForensics++ fakes for training. The AUC collapse (0.9783 → 0.3234) is consistent with the cross-dataset domain gap between low-resolution H.264-compressed FF++ synthesis and pristine high-resolution Celeb-DF v2 celebrity synthesis, as documented in Li et al. (CVPR 2020) and Rossler et al. (ICCV 2019). High Precision (0.9542) with near-zero Recall (0.0641) confirms the model's decision boundary is inverted on the unseen domain rather than random.
+> [!NOTE]
+> **Methodological Note on Fold 5 (Celeb-DF v2)**: Holding out Celeb-DF v2 removes 88% of all fake training crops, leaving only compressed FaceForensics++ fakes for training. Raw test predictions yield a zero-shot AUC of `0.3234`. Inverting the decision probabilities ($1 - p$) yields an AUC of **`0.6766`**, demonstrating anti-correlated decision ranking beyond random chance (`0.50`), but well below a pure sign-flip inversion ($\approx 1.00$). Overfitting to low-level H.264 compression signatures and resolution differences on FF++ is a primary hypothesis for this domain drop, pending a 2×2 factorial ablation (resolution × compression) to measure the precise percentage of the domain gap closed.
 
 ![LOTO Zero-Shot Generalization](figures/loto_generalization.png)
 
-### 4. Robustness Under Image Degradation
+### 4. Robustness Under Image Degradation & Failure Mode Analysis
 
 Evaluated on full held-out test split (10,528 crops) at 256×256 resolution using calibrated checkpoint (T\*=1.4788, threshold=0.01).
 
 ![Robustness Degradation Sweeps](figures/robustness_degradation.png)
+
+> [!WARNING]
+> **Architectural Failure Mode**: The model exhibits high sensitivity to low-pass spatial filtering and high-frequency additive noise:
+> - **Gaussian Blur ($\sigma=3.0$)**: Causes a **−26.13% AUC drop** (`0.7375`), as spatial blurring erases the high-frequency residual spectrum extracted by SRM and 2D Real FFT.
+> - **Gaussian Noise ($\sigma=30$)**: Causes a **−24.44% AUC drop** (`0.7544`), as wideband random noise swamps the subtle steganographic artifacts isolated by the Bayar-Stamm constrained convolution.
+> - **JPEG Compression ($Q=50$)**: Remains relatively robust with a minor **−3.03% AUC drop** (`0.9685`).
 
 **JPEG Compression**
 
@@ -170,7 +181,16 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 **Note**: AUC collapse under heavy Gaussian blur (σ=3.0, −26%) and noise (σ=30, −24%) is an inherent consequence of the SRM+Bayar+2D FFT frequency branch's dependence on high-frequency manipulation artifacts. Low-pass filtering (blur) and wideband noise physically destroy the spectral signal the frequency stream relies on.
 
-### 5. Benchmark Performance & Visual Interpretability
+### 5. Hardware Inference & Serving Latency Benchmarks
+
+*Evaluated at 512×512 facial crop resolution using PyTorch 2.1 FP32 on local multi-thread CPU (`scripts/export_onnx.py`).*
+
+| Hardware Execution Provider | Precision | Batch Size | Single-Crop Latency | Throughput (FPS) | Provenance |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Intel CPU (Multi-thread)** | FP32 Standard | BS=1 (Single-Frame) | `188.25 ms/crop` | `5.3 FPS` | **Empirically Measured** |
+| **Intel CPU (Multi-thread)** | FP32 Standard | BS=32 (Batch Vectorized) | `4.77 ms/crop` | `209.6 FPS` | **Empirically Measured** |
+
+### 6. Benchmark Performance & Visual Interpretability
 
 ![4-Panel Interpretability Diagnostics](figures/attention_maps/attention_map_05_fake.png)
 
@@ -260,9 +280,17 @@ deepfake-detection/
 │   ├── export_test_predictions.py # Raw/calibrated probability exporter
 │   ├── generate_benchmark_plots.py# 300 DPI visualization rendering script
 │   └── visualize_attention_maps.py# 4-panel SRM + Grad-CAM interpretability engine
-├── tests/                         # 54/54 passing unit tests
+├── tests/                         # 61/61 passing unit tests
 └── README.md
-```
+---
+
+## Dataset Licensing & Compliance Note
+
+This repository and model weights were trained using the **FaceForensics++** and **Celeb-DF v2** datasets:
+- **FaceForensics++**: Rössler et al., *IEEE/CVF ICCV 2019*. Access granted strictly for non-commercial academic research under the FaceForensics Terms of Use.
+- **Celeb-DF v2**: Li et al., *IEEE/CVF CVPR 2020*. Access granted strictly for non-commercial academic research under the Celeb-DF Release Agreement.
+
+Model checkpoints and live application demonstrations are provided strictly for academic verification, peer review, and non-commercial research demonstration.
 
 ---
 

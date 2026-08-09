@@ -211,7 +211,7 @@ def main():
             except Exception:
                 val_auc = 0.5
 
-            print(f"📊 LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}", flush=True)
+            print(f"LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}", flush=True)
 
     if accelerator.is_main_process:
         optimal_temp = fit_temperature_log(val_logits, val_targets)

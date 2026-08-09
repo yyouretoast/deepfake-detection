@@ -1,0 +1,25 @@
+name: Sync to Hugging Face Space
+
+on:
+  workflow_run:
+    workflows: ["CI Test Suite"]
+    branches: [main]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Hugging Face Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git push --force https://yyouretoast:$HF_TOKEN@huggingface.co/spaces/yyouretoast/deepfake-detector main
+

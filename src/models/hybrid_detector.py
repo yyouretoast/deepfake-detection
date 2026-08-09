@@ -65,10 +65,10 @@ class RealFFT2DModule(nn.Module):
 
 
 class HybridDeepfakeDetector(nn.Module):
-    """
+    r"""
     Canonical Dual-Stream Hybrid Deepfake Detector.
     Fuses Spatial Backbone (ConvNeXt-Small, 512-d) and Frequency Stream (SRM + Bayar 2D FFT, 512-d)
-    via Sigmoid Gated Residual Fusion ($f_{\\text{fused}} = [f_s \\,\\|\\, (f_f \\odot g)] \\in \\mathbb{R}^{1024}$).
+    via Sigmoid Gated Residual Fusion ($f_{\text{fused}} = [f_s \;\|\; (f_f \odot g)] \in \mathbb{R}^{1024}$).
     """
     def __init__(
         self,
