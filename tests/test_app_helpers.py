@@ -1,6 +1,4 @@
-"""
-Unit tests for app.py helper and inference functions.
-"""
+"""Unit tests for app.py helper and inference functions."""
 
 import numpy as np
 import torch
@@ -11,21 +9,23 @@ from app import (
     preprocess_tensors_batch,
     process_video_frames,
 )
+from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.utils.checkpoint import compute_ece, fit_temperature_log
 
 
 class TestCleanStateDict:
-    def test_strips_module_prefix(self):
+    def test_strips_module_prefix(self) -> None:
         sd = {"module.spatial_fc.weight": torch.tensor([1.0])}
         cleaned = clean_state_dict(sd)
         assert "spatial_fc.weight" in cleaned
         assert "module.spatial_fc.weight" not in cleaned
 
-    def test_strips_orig_mod_prefix(self):
+    def test_strips_orig_mod_prefix(self) -> None:
         sd = {"_orig_mod.classifier.0.weight": torch.tensor([2.0])}
         cleaned = clean_state_dict(sd)
         assert "classifier.0.weight" in cleaned
 
-    def test_ignores_lora_keys(self):
+    def test_ignores_lora_keys(self) -> None:
         sd = {"lora_adapter.weight": torch.tensor([3.0]), "classifier.0.weight": torch.tensor([1.0])}
         cleaned = clean_state_dict(sd)
         assert "lora_adapter.weight" not in cleaned
@@ -33,27 +33,25 @@ class TestCleanStateDict:
 
 
 class TestNormalizeConfidence:
-    def test_prob_above_threshold(self):
-        # prob=0.75 with threshold=0.5 -> 50 + 50 * (0.25 / 0.5) = 75.0%
+    def test_prob_above_threshold(self) -> None:
         conf = normalize_confidence(0.75, 0.5)
         assert abs(conf - 75.0) < 1e-4
 
-    def test_prob_below_threshold(self):
-        # prob=0.25 with threshold=0.5 -> 50 + 50 * (0.25 / 0.5) = 75.0%
+    def test_prob_below_threshold(self) -> None:
         conf = normalize_confidence(0.25, 0.5)
         assert abs(conf - 75.0) < 1e-4
 
-    def test_prob_equals_threshold(self):
+    def test_prob_equals_threshold(self) -> None:
         conf = normalize_confidence(0.5, 0.5)
         assert abs(conf - 50.0) < 1e-4
 
-    def test_boundary_extreme(self):
+    def test_boundary_extreme(self) -> None:
         assert abs(normalize_confidence(1.0, 0.01) - 100.0) < 1e-2
         assert abs(normalize_confidence(0.0, 0.01) - 100.0) < 1e-2
 
 
 class TestPreprocessTensorsBatch:
-    def test_tensor_shapes_and_types(self):
+    def test_tensor_shapes_and_types(self) -> None:
         fake_faces = [np.ones((256, 256, 3), dtype=np.uint8) * 128 for _ in range(3)]
         norm_np, norm_torch = preprocess_tensors_batch(fake_faces, device=torch.device("cpu"))
 
@@ -63,13 +61,10 @@ class TestPreprocessTensorsBatch:
 
 
 class TestCheckpointRoundtrip:
-    def test_checkpoint_roundtrip_cleaning_and_loading(self):
-        from src.models.hybrid_detector import HybridDeepfakeDetector
-
+    def test_checkpoint_roundtrip_cleaning_and_loading(self) -> None:
         model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
         raw_sd = model.state_dict()
 
-        # Simulate DDP / torch.compile prefix wrapping
         wrapped_sd = {f"module._orig_mod.{k}": v for k, v in raw_sd.items()}
         cleaned_sd = clean_state_dict(wrapped_sd)
 
@@ -81,26 +76,22 @@ class TestCheckpointRoundtrip:
 
 
 class TestProcessVideoFramesEmpty:
-    def test_nonexistent_video_path_returns_none(self):
+    def test_nonexistent_video_path_returns_none(self) -> None:
         res = process_video_frames("non_existent_file_path_12345.mp4")
         assert res is None
 
 
 class TestTemperatureCalibration:
-    def test_temperature_calibration_and_ece(self):
-        from src.utils.checkpoint import fit_temperature_log, compute_ece
-
-        # Uncalibrated overconfident logits
+    def test_temperature_calibration_and_ece(self) -> None:
         logits = np.array([5.0, 4.0, 3.0, -5.0, -4.0, -3.0], dtype=np.float32)
         labels = np.array([1, 1, 1, 0, 0, 0], dtype=np.float32)
 
-        T = fit_temperature_log(logits, labels)
-        assert T > 0.1, "Temperature T must be strictly positive"
+        temp = fit_temperature_log(logits, labels)
+        assert temp > 0.1, "Temperature T must be strictly positive"
 
-        calibrated_probs = 1.0 / (1.0 + np.exp(-logits / T))
+        calibrated_probs = 1.0 / (1.0 + np.exp(-logits / temp))
         raw_probs = 1.0 / (1.0 + np.exp(-logits))
 
-        # Binary cross entropy NLL loss calculation
         eps = 1e-7
         nll_raw = -np.mean(labels * np.log(np.clip(raw_probs, eps, 1 - eps)) + (1 - labels) * np.log(np.clip(1 - raw_probs, eps, 1 - eps)))
         nll_calibrated = -np.mean(labels * np.log(np.clip(calibrated_probs, eps, 1 - eps)) + (1 - labels) * np.log(np.clip(1 - calibrated_probs, eps, 1 - eps)))
@@ -109,4 +100,3 @@ class TestTemperatureCalibration:
 
         ece_val = compute_ece(calibrated_probs, labels)
         assert 0.0 <= ece_val <= 1.0, "ECE must be a valid probability error in [0, 1]"
-

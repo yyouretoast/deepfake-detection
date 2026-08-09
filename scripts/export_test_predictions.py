@@ -1,18 +1,8 @@
-"""
-Exports per-sample test set predictions for downstream plot generation.
+"""Exports per-sample test set predictions for downstream plot generation."""
 
-Runs one clean inference pass over the held-out test split and saves raw
-probabilities, calibrated probabilities, and ground truth labels to JSON.
-The output file is consumed by scripts/generate_benchmark_plots.py to
-produce ROC curves and ECE reliability diagrams.
-
-Usage:
-    python scripts/export_test_predictions.py \\
-        --checkpoint /path/to/dual_stream_calibrated.pth \\
-        --data_root /path/to/dataset \\
-        --output_json test_predictions.json
-"""
-
+import argparse
+import json
+import logging
 import os
 import sys
 
@@ -20,38 +10,30 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-import argparse
-import json
-import logging
-
 import cv2
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
-from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.config import load_config
-from src.utils.checkpoint import clean_state_dict
 from src.dataset.loader import dedupe_split
+from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 IMG_SIZE = 256
 
 
-# ---------------------------------------------------------------------------
-# Self-contained dataset (same as evaluate_robustness.py).
-# ---------------------------------------------------------------------------
-
 class TestDataset(Dataset):
-    def __init__(self, samples, root_dir):
+    def __init__(self, samples: list, root_dir: str) -> None:
         self.samples = samples
         self.root_dir = root_dir
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         path_rel, label = self.samples[idx]
         full_path = os.path.join(self.root_dir, path_rel)
         valid_flag = 1.0
@@ -74,28 +56,19 @@ class TestDataset(Dataset):
         )
 
 
-
-# ---------------------------------------------------------------------------
-# Prediction Exporter
-# ---------------------------------------------------------------------------
-
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Export per-sample test predictions for ROC/ECE plot generation."
     )
-    parser.add_argument("--checkpoint", required=True,
-                        help="Path to dual_stream_calibrated.pth")
-    parser.add_argument("--data_root", required=True,
-                        help="Dataset root containing splits.json")
-    parser.add_argument("--output_json", default="test_predictions.json",
-                        help="Output path for predictions JSON")
+    parser.add_argument("--checkpoint", required=True, help="Path to dual_stream_calibrated.pth")
+    parser.add_argument("--data_root", required=True, help="Dataset root containing splits.json")
+    parser.add_argument("--output_json", default="test_predictions.json", help="Output path for predictions JSON")
     parser.add_argument("--batch_size", type=int, default=32)
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info("Device: %s", device)
 
-    # Load splits
     splits_path = os.path.join(args.data_root, "splits.json")
     if not os.path.exists(splits_path):
         raise FileNotFoundError(f"splits.json not found at {splits_path}")
@@ -104,7 +77,6 @@ def main():
     test_samples = dedupe_split(splits["test"])
     logging.info("Test split: %d samples", len(test_samples))
 
-    # Load model
     config = load_config()
     backbone = config.get("model", {}).get("backbone", "convnext_small")
     model = HybridDeepfakeDetector(
@@ -119,11 +91,9 @@ def main():
     temperature = float(checkpoint.get("temperature", 1.0))
     logging.info("Checkpoint loaded. Threshold=%.4f, Temperature=%.4f", threshold, temperature)
 
-    # Inference
     dataset = TestDataset(test_samples, args.data_root)
     loader = DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=2, pin_memory=(device.type == "cuda")
+        dataset, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=(device.type == "cuda")
     )
 
     all_logits, all_labels = [], []

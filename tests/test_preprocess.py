@@ -1,9 +1,13 @@
-import numpy as np
+"""Unit tests for DynamicFaceCropper face detection and alignment math."""
+
 from unittest.mock import MagicMock
+
+import numpy as np
+
 from src.dataset.preprocess import DynamicFaceCropper
 
-def test_dynamic_face_cropper_synthetic_fallback():
-    """Verifies that DynamicFaceCropper processes synthetic and all-zero numpy arrays without network downloads."""
+
+def test_dynamic_face_cropper_synthetic_fallback() -> None:
     cropper = DynamicFaceCropper(target_size=512, scale_factor=1.50)
 
     synthetic_image = np.random.randint(0, 256, (640, 480, 3), dtype=np.uint8)
@@ -16,11 +20,10 @@ def test_dynamic_face_cropper_synthetic_fallback():
     assert cropped_zero is not None
     assert cropped_zero.shape == (512, 512, 3)
 
-def test_dynamic_face_cropper_bounding_box_expansion_math():
-    """Verifies deterministic 20% margin expansion, aspect ratio scaling, and target resolution extraction."""
+
+def test_dynamic_face_cropper_bounding_box_expansion_math() -> None:
     cropper = DynamicFaceCropper(target_size=512, scale_factor=1.50)
 
-    # Mock Haar cascade detector to return a deterministic bounding box [x=100, y=100, w=100, h=100]
     mock_cascade = MagicMock()
     mock_cascade.detectMultiScale.return_value = np.array([[100, 100, 100, 100]])
     cropper.haar_cascade = mock_cascade
@@ -32,18 +35,16 @@ def test_dynamic_face_cropper_bounding_box_expansion_math():
     assert cropped.shape == (512, 512, 3), f"Expected cropped shape (512, 512, 3), got {cropped.shape}"
 
 
-def test_dynamic_face_cropper_similarity_transform_math():
-    """Verifies 5-point landmark similarity transformation warpAffine alignment."""
+def test_dynamic_face_cropper_similarity_transform_math() -> None:
     cropper = DynamicFaceCropper(target_size=256, scale_factor=1.50)
     synthetic_image = np.ones((400, 400, 3), dtype=np.uint8) * 128
 
-    # 5 2D landmarks (left eye, right eye, nose, left mouth corner, right mouth corner)
     landmarks = np.array([
         [150.0, 150.0],
         [250.0, 150.0],
         [200.0, 200.0],
         [160.0, 260.0],
-        [240.0, 260.0]
+        [240.0, 260.0],
     ], dtype=np.float32)
 
     box = np.array([100, 100, 300, 300])
@@ -51,4 +52,3 @@ def test_dynamic_face_cropper_similarity_transform_math():
     assert aligned_face is not None
     assert aligned_face.shape == (256, 256, 3)
     assert raw_crop.shape == (256, 256, 3)
-

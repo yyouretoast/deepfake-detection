@@ -1,76 +1,54 @@
-"""
-Generates publication-ready benchmark plots for the Dual-Stream Deepfake Detector.
+"""Publication-ready benchmark plots generator for Dual-Stream Deepfake Detector."""
 
-Reads locally available JSON files to produce five figures:
-  1. ROC Curve (raw + calibrated)
-  2. ECE Reliability Diagram (raw vs calibrated)
-  3. Robustness Degradation (2x2 grid: JPEG / Blur / Noise / Downscale)
-  4. LOTO Zero-Shot Generalization (bar chart)
-  5. Per-Generator AUC (horizontal bar chart)
-
-Usage:
-    python scripts/generate_benchmark_plots.py \\
-        --predictions test_predictions.json \\
-        --robustness  robustness_results.json \\
-        --loto        loto_results.json \\
-        --output_dir  figures/
-"""
-
-import os
-import json
 import argparse
+import json
 import logging
+import os
 
-import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from sklearn.metrics import roc_curve, auc
+import numpy as np
+from sklearn.metrics import auc, roc_curve
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# ---------------------------------------------------------------------------
-# Design tokens
-# ---------------------------------------------------------------------------
-BLUE   = "#2563EB"
-RED    = "#DC2626"
-GREEN  = "#16A34A"
+BLUE = "#2563EB"
+RED = "#DC2626"
+GREEN = "#16A34A"
 ORANGE = "#D97706"
-GRAY   = "#6B7280"
-LIGHT  = "#F1F5F9"
-
+GRAY = "#6B7280"
 DPI = 300
 
-def apply_base_style():
+
+def apply_base_style() -> None:
     plt.rcParams.update({
-        "font.family":       "DejaVu Sans",
-        "font.size":         10,
-        "axes.titlesize":    11,
-        "axes.titleweight":  "bold",
-        "axes.labelsize":    10,
-        "axes.spines.top":   False,
+        "font.family": "DejaVu Sans",
+        "font.size": 10,
+        "axes.titlesize": 11,
+        "axes.titleweight": "bold",
+        "axes.labelsize": 10,
+        "axes.spines.top": False,
         "axes.spines.right": False,
-        "axes.grid":         True,
-        "grid.color":        "#E2E8F0",
-        "grid.linewidth":    0.8,
-        "xtick.labelsize":   9,
-        "ytick.labelsize":   9,
-        "legend.fontsize":   9,
-        "figure.facecolor":  "white",
-        "axes.facecolor":    "white",
-        "savefig.dpi":       DPI,
-        "savefig.bbox":      "tight",
+        "axes.grid": True,
+        "grid.color": "#E2E8F0",
+        "grid.linewidth": 0.8,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+        "savefig.dpi": DPI,
+        "savefig.bbox": "tight",
         "savefig.facecolor": "white",
     })
 
 
-# ---------------------------------------------------------------------------
-# ECE computation
-# ---------------------------------------------------------------------------
-
-def compute_ece(probs, labels, n_bins=10):
-    """Returns bin_centers, bin_accs, bin_confs, ece."""
+def compute_ece(
+    probs: np.ndarray, labels: np.ndarray, n_bins: int = 10
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
     bin_centers, bin_accs, bin_confs, bin_counts = [], [], [], []
 
@@ -84,21 +62,19 @@ def compute_ece(probs, labels, n_bins=10):
         bin_confs.append(float(np.mean(probs[mask])))
         bin_counts.append(int(mask.sum()))
 
-    bin_centers = np.array(bin_centers)
-    bin_accs    = np.array(bin_accs)
-    bin_confs   = np.array(bin_confs)
-    bin_counts  = np.array(bin_counts)
+    b_centers = np.array(bin_centers)
+    b_accs = np.array(bin_accs)
+    b_confs = np.array(bin_confs)
+    b_counts = np.array(bin_counts)
 
-    total = bin_counts.sum()
-    ece = float(np.sum(bin_counts / total * np.abs(bin_accs - bin_confs)))
-    return bin_centers, bin_accs, bin_confs, ece
+    total = b_counts.sum()
+    ece = float(np.sum(b_counts / total * np.abs(b_accs - b_confs)))
+    return b_centers, b_accs, b_confs, ece
 
 
-# ---------------------------------------------------------------------------
-# Figure 1: ROC Curve
-# ---------------------------------------------------------------------------
-
-def plot_roc(probs_raw, probs_cal, labels, output_path):
+def plot_roc(
+    probs_raw: np.ndarray, probs_cal: np.ndarray, labels: np.ndarray, output_path: str
+) -> None:
     apply_base_style()
     fig, ax = plt.subplots(figsize=(5.5, 5.0))
 
@@ -107,12 +83,9 @@ def plot_roc(probs_raw, probs_cal, labels, output_path):
     auc_r = auc(fpr_r, tpr_r)
     auc_c = auc(fpr_c, tpr_c)
 
-    ax.plot(fpr_r, tpr_r, color=BLUE,   lw=1.8,
-            label=f"Raw       (AUC = {auc_r:.4f})")
-    ax.plot(fpr_c, tpr_c, color=GREEN,  lw=1.8, linestyle="--",
-            label=f"Calibrated (AUC = {auc_c:.4f})")
+    ax.plot(fpr_r, tpr_r, color=BLUE, lw=1.8, label=f"Raw       (AUC = {auc_r:.4f})")
+    ax.plot(fpr_c, tpr_c, color=GREEN, lw=1.8, linestyle="--", label=f"Calibrated (AUC = {auc_c:.4f})")
     ax.plot([0, 1], [0, 1], color=GRAY, lw=1.0, linestyle=":", label="Random")
-
     ax.fill_between(fpr_r, tpr_r, alpha=0.06, color=BLUE)
 
     ax.set_xlabel("False Positive Rate")
@@ -125,14 +98,12 @@ def plot_roc(probs_raw, probs_cal, labels, output_path):
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved ROC curve → %s", output_path)
+    logging.info("Saved ROC curve -> %s", output_path)
 
 
-# ---------------------------------------------------------------------------
-# Figure 2: ECE Reliability Diagram
-# ---------------------------------------------------------------------------
-
-def plot_ece(probs_raw, probs_cal, labels, output_path):
+def plot_ece(
+    probs_raw: np.ndarray, probs_cal: np.ndarray, labels: np.ndarray, output_path: str
+) -> None:
     apply_base_style()
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True)
 
@@ -141,15 +112,12 @@ def plot_ece(probs_raw, probs_cal, labels, output_path):
         (axes[1], probs_cal, "Temperature Scaled", GREEN),
     ]:
         bx, ba, bc, ece = compute_ece(probs, labels)
-
         bar_w = 0.08
         ax.bar(bx, ba, width=bar_w, color=color, alpha=0.75, label="Accuracy", zorder=3)
         ax.plot([0, 1], [0, 1], color=GRAY, lw=1.2, linestyle="--", label="Perfect calibration")
 
-        # Gap bars (over-/under-confidence)
         for x, acc, conf in zip(bx, ba, bc):
-            ax.bar(x, abs(acc - conf), bottom=min(acc, conf),
-                   width=bar_w, color=RED, alpha=0.3, zorder=4)
+            ax.bar(x, abs(acc - conf), bottom=min(acc, conf), width=bar_w, color=RED, alpha=0.3, zorder=4)
 
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1.05)
@@ -162,38 +130,30 @@ def plot_ece(probs_raw, probs_cal, labels, output_path):
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved ECE diagram → %s", output_path)
+    logging.info("Saved ECE diagram -> %s", output_path)
 
 
-# ---------------------------------------------------------------------------
-# Figure 3: Robustness Degradation (2x2)
-# ---------------------------------------------------------------------------
-
-def plot_robustness(robustness, output_path):
+def plot_robustness(robustness: dict, output_path: str) -> None:
     apply_base_style()
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     axes = axes.flatten()
 
     sweep_names = ["JPEG Compression", "Gaussian Blur", "Gaussian Noise", "Downscaling"]
-    colors      = [BLUE, ORANGE, RED, GREEN]
+    colors = [BLUE, ORANGE, RED, GREEN]
 
     for ax, sweep_name, color in zip(axes, sweep_names, colors):
         data = robustness[sweep_name]
         levels = [d["level"] for d in data]
-        aucs   = [d["auc"]   for d in data]
-
+        aucs = [d["auc"] for d in data]
         baseline_auc = aucs[0]
         xs = list(range(len(levels)))
 
-        ax.axhline(baseline_auc, color=GRAY, lw=1.0, linestyle="--",
-                   label=f"Baseline ({baseline_auc:.4f})", zorder=2)
-        ax.fill_between(xs, aucs, baseline_auc, where=[a < baseline_auc for a in aucs],
-                        alpha=0.12, color=RED, zorder=1)
+        ax.axhline(baseline_auc, color=GRAY, lw=1.0, linestyle="--", label=f"Baseline ({baseline_auc:.4f})", zorder=2)
+        ax.fill_between(xs, aucs, baseline_auc, where=[a < baseline_auc for a in aucs], alpha=0.12, color=RED, zorder=1)
         ax.plot(xs, aucs, color=color, lw=2.0, marker="o", markersize=6, zorder=3)
 
         for x, y in zip(xs, aucs):
-            ax.annotate(f"{y:.4f}", (x, y), textcoords="offset points",
-                        xytext=(0, 7), ha="center", fontsize=7.5, color=color)
+            ax.annotate(f"{y:.4f}", (x, y), textcoords="offset points", xytext=(0, 7), ha="center", fontsize=7.5, color=color)
 
         ax.set_xticks(xs)
         ax.set_xticklabels(levels, rotation=15, ha="right", fontsize=8)
@@ -202,42 +162,32 @@ def plot_robustness(robustness, output_path):
         ax.set_title(sweep_name)
         ax.legend(loc="lower left", fontsize=8)
 
-    fig.suptitle("Robustness Under Image Degradation — Full Test Set (10,528 crops)",
-                 fontweight="bold", fontsize=12)
+    fig.suptitle("Robustness Under Image Degradation — Full Test Set (10,528 crops)", fontweight="bold", fontsize=12)
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved robustness plot → %s", output_path)
+    logging.info("Saved robustness plot -> %s", output_path)
 
 
-# ---------------------------------------------------------------------------
-# Figure 4: LOTO Zero-Shot Generalization
-# ---------------------------------------------------------------------------
-
-def plot_loto(loto_results, output_path):
+def plot_loto(loto_results: list[dict], output_path: str) -> None:
     apply_base_style()
-
-    # Use latest entry per holdout domain
-    latest = {}
-    for entry in loto_results:
-        latest[entry["holdout"]] = entry
+    latest = {entry["holdout"]: entry for entry in loto_results}
 
     folds = [
-        ("Fold 1\nNeuralTextures (FF++)\nWithin-Dataset",    latest["neuraltextures"]["zero_shot_auc"], BLUE),
-        ("Fold 2\nCeleb-DF v2\nCross-Dataset",               latest["celeb"]["zero_shot_auc"],          RED),
+        ("Fold 1\nNeuralTextures (FF++)\nWithin-Dataset", latest["neuraltextures"]["zero_shot_auc"], BLUE),
+        ("Fold 2\nCeleb-DF v2\nCross-Dataset", latest["celeb"]["zero_shot_auc"], RED),
     ]
 
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
-    xs     = list(range(len(folds)))
+    xs = list(range(len(folds)))
     labels = [f[0] for f in folds]
-    aucs   = [f[1] for f in folds]
+    aucs = [f[1] for f in folds]
     colors = [f[2] for f in folds]
 
     bars = ax.bar(xs, aucs, color=colors, width=0.45, alpha=0.85, zorder=3)
 
     for bar, v in zip(bars, aucs):
-        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01,
-                f"AUC = {v:.4f}", ha="center", va="bottom", fontsize=10, fontweight="bold")
+        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"AUC = {v:.4f}", ha="center", va="bottom", fontsize=10, fontweight="bold")
 
     ax.axhline(0.5, color=GRAY, lw=1.0, linestyle=":", label="Random baseline (AUC=0.50)")
     ax.set_xticks(xs)
@@ -250,37 +200,31 @@ def plot_loto(loto_results, output_path):
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved LOTO plot → %s", output_path)
+    logging.info("Saved LOTO plot -> %s", output_path)
 
 
-# ---------------------------------------------------------------------------
-# Figure 5: Per-Generator AUC
-# ---------------------------------------------------------------------------
-
-def plot_per_generator(output_path):
+def plot_per_generator(output_path: str) -> None:
     apply_base_style()
-
     generators = [
-        ("Celeb-DF v2 Synthesis",        0.9992),
-        ("FF++ Face2Face",                0.9967),
-        ("FF++ Deepfakes",                0.9963),
-        ("FF++ FaceSwap",                 0.9961),
-        ("FF++ NeuralTextures",           0.9940),
+        ("Celeb-DF v2 Synthesis", 0.9992),
+        ("FF++ Face2Face", 0.9967),
+        ("FF++ Deepfakes", 0.9963),
+        ("FF++ FaceSwap", 0.9961),
+        ("FF++ NeuralTextures", 0.9940),
     ]
     generators.sort(key=lambda x: x[1])
 
     names = [g[0] for g in generators]
-    aucs  = [g[1] for g in generators]
+    aucs = [g[1] for g in generators]
 
     fig, ax = plt.subplots(figsize=(7.5, 4.0))
-    ys      = list(range(len(names)))
+    ys = list(range(len(names)))
     bar_colors = [BLUE if "Celeb" in n else GREEN for n in names]
 
     bars = ax.barh(ys, aucs, color=bar_colors, alpha=0.85, height=0.55, zorder=3)
 
     for bar, v in zip(bars, aucs):
-        ax.text(v + 0.0003, bar.get_y() + bar.get_height() / 2,
-                f"{v:.4f}", va="center", fontsize=9)
+        ax.text(v + 0.0003, bar.get_y() + bar.get_height() / 2, f"{v:.4f}", va="center", fontsize=9)
 
     ax.set_yticks(ys)
     ax.set_yticklabels(names, fontsize=9)
@@ -292,19 +236,15 @@ def plot_per_generator(output_path):
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved per-generator plot → %s", output_path)
+    logging.info("Saved per-generator plot -> %s", output_path)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Generate benchmark plots.")
     parser.add_argument("--predictions", default="test_predictions.json")
-    parser.add_argument("--robustness",  default="robustness_results.json")
-    parser.add_argument("--loto",        default="loto_results.json")
-    parser.add_argument("--output_dir",  default="figures")
+    parser.add_argument("--robustness", default="robustness_results.json")
+    parser.add_argument("--loto", default="loto_results.json")
+    parser.add_argument("--output_dir", default="figures")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -314,7 +254,7 @@ def main():
         preds = json.load(f)
     probs_raw = np.array(preds["probs_raw"])
     probs_cal = np.array(preds["probs_cal"])
-    labels    = np.array(preds["labels"], dtype=np.int32)
+    labels = np.array(preds["labels"], dtype=np.int32)
 
     logging.info("Loading robustness results from %s", args.robustness)
     with open(args.robustness) as f:
@@ -324,20 +264,11 @@ def main():
     with open(args.loto) as f:
         loto = json.load(f)
 
-    plot_roc(probs_raw, probs_cal, labels,
-             os.path.join(args.output_dir, "roc_curve.png"))
-
-    plot_ece(probs_raw, probs_cal, labels,
-             os.path.join(args.output_dir, "ece_reliability.png"))
-
-    plot_robustness(robustness,
-                    os.path.join(args.output_dir, "robustness_degradation.png"))
-
-    plot_loto(loto,
-              os.path.join(args.output_dir, "loto_generalization.png"))
-
-    plot_per_generator(
-              os.path.join(args.output_dir, "per_generator_auc.png"))
+    plot_roc(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "roc_curve.png"))
+    plot_ece(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "ece_reliability.png"))
+    plot_robustness(robustness, os.path.join(args.output_dir, "robustness_degradation.png"))
+    plot_loto(loto, os.path.join(args.output_dir, "loto_generalization.png"))
+    plot_per_generator(os.path.join(args.output_dir, "per_generator_auc.png"))
 
     logging.info("All figures saved to %s/", args.output_dir)
 

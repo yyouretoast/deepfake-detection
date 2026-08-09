@@ -1,7 +1,9 @@
-from src.dataset.loader import perform_graph_split, extract_identities
+"""Unit tests for graph partitioning and identity leakage verification."""
 
-def test_extract_identities_parsing():
-    """Verifies that extract_identities correctly parses video IDs and actor identities."""
+from src.dataset.loader import extract_identities, perform_graph_split
+
+
+def test_extract_identities_parsing() -> None:
     id1, id2 = extract_identities("000_003.mp4")
     assert id1 == "000"
     assert id2 == "003"
@@ -10,8 +12,8 @@ def test_extract_identities_parsing():
     assert id1_real == "000"
     assert id2_real == "000"
 
-def test_perform_graph_split_zero_identity_leakage():
-    """Asserts 0 identity overlap between Train, Validation, and Test sets in LOTO graph partitioning."""
+
+def test_perform_graph_split_zero_identity_leakage() -> None:
     samples = [
         ("000_001.mp4", 1),
         ("000_001_2.mp4", 1),
@@ -29,7 +31,7 @@ def test_perform_graph_split_zero_identity_leakage():
         samples, val_ratio=0.2, test_ratio=0.2, seed=42
     )
 
-    def get_identities(split):
+    def get_identities(split: list) -> set[str]:
         ids = set()
         for item in split:
             path = item[0]
@@ -42,15 +44,15 @@ def test_perform_graph_split_zero_identity_leakage():
     val_ids = get_identities(val_split)
     test_ids = get_identities(test_split)
 
-    assert len(train_ids) > 0, "Train split must not be empty — identity parser may have silently failed"
-    assert len(val_ids) > 0, "Val split must not be empty — identity parser may have silently failed"
-    assert len(test_ids) > 0, "Test split must not be empty — identity parser may have silently failed"
+    assert len(train_ids) > 0, "Train split must not be empty"
+    assert len(val_ids) > 0, "Val split must not be empty"
+    assert len(test_ids) > 0, "Test split must not be empty"
     assert len(train_ids.intersection(val_ids)) == 0, f"Identity leakage between Train and Val: {train_ids.intersection(val_ids)}"
     assert len(train_ids.intersection(test_ids)) == 0, f"Identity leakage between Train and Test: {train_ids.intersection(test_ids)}"
     assert len(val_ids.intersection(test_ids)) == 0, f"Identity leakage between Val and Test: {val_ids.intersection(test_ids)}"
 
-def test_perform_graph_split_nested_kaggle_paths():
-    """Asserts graph partitioning handles complex nested Kaggle subfolder directory structures."""
+
+def test_perform_graph_split_nested_kaggle_paths() -> None:
     nested_samples = [
         ("/kaggle/input/datasets/ff-c23/manipulated_sequences/Deepfakes/c23/videos/000_003/frame_001.webp", 1),
         ("/kaggle/input/datasets/ff-c23/original_sequences/youtube/c23/videos/000/frame_001.webp", 0),
@@ -64,7 +66,7 @@ def test_perform_graph_split_nested_kaggle_paths():
         nested_samples, val_ratio=0.3, test_ratio=0.3, seed=42
     )
 
-    def get_identities(split):
+    def get_identities(split: list) -> set[str]:
         ids = set()
         for item in split:
             path = item[0]
@@ -77,7 +79,7 @@ def test_perform_graph_split_nested_kaggle_paths():
     val_ids = get_identities(val_split)
     test_ids = get_identities(test_split)
 
-    assert len(train_ids) > 0, "Train split must not be empty — identity parser may have silently failed"
+    assert len(train_ids) > 0, "Train split must not be empty"
     assert len(train_ids.intersection(val_ids)) == 0
     assert len(train_ids.intersection(test_ids)) == 0
     assert len(val_ids.intersection(test_ids)) == 0
