@@ -14,6 +14,7 @@ import numpy as np
 from sklearn.metrics import auc, roc_curve
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 BLUE = "#2563EB"
 RED = "#DC2626"
@@ -98,7 +99,7 @@ def plot_roc(
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved ROC curve -> %s", output_path)
+    logger.info("Saved ROC curve -> %s", output_path)
 
 
 def plot_ece(
@@ -130,7 +131,7 @@ def plot_ece(
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved ECE diagram -> %s", output_path)
+    logger.info("Saved ECE diagram -> %s", output_path)
 
 
 def plot_robustness(robustness: dict, output_path: str) -> None:
@@ -166,7 +167,7 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved robustness plot -> %s", output_path)
+    logger.info("Saved robustness plot -> %s", output_path)
 
 
 def plot_loto(loto_data: list, output_path: str) -> None:
@@ -206,7 +207,7 @@ def plot_loto(loto_data: list, output_path: str) -> None:
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved LOTO plot -> %s", output_path)
+    logger.info("Saved LOTO plot -> %s", output_path)
 
 
 def plot_per_generator(output_path: str) -> None:
@@ -242,7 +243,7 @@ def plot_per_generator(output_path: str) -> None:
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
-    logging.info("Saved per-generator plot -> %s", output_path)
+    logger.info("Saved per-generator plot -> %s", output_path)
 
 
 def main() -> None:
@@ -255,18 +256,18 @@ def main() -> None:
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    logging.info("Loading predictions from %s", args.predictions)
+    logger.info("Loading predictions from %s", args.predictions)
     with open(args.predictions) as f:
         preds = json.load(f)
     probs_raw = np.array(preds["probs_raw"])
     probs_cal = np.array(preds["probs_cal"])
     labels = np.array(preds["labels"], dtype=np.int32)
 
-    logging.info("Loading robustness results from %s", args.robustness)
+    logger.info("Loading robustness results from %s", args.robustness)
     with open(args.robustness) as f:
         robustness = json.load(f)
 
-    logging.info("Loading LOTO results from %s", args.loto)
+    logger.info("Loading LOTO results from %s", args.loto)
     with open(args.loto) as f:
         loto = json.load(f)
 
@@ -276,7 +277,7 @@ def main() -> None:
     plot_loto(loto, os.path.join(args.output_dir, "loto_generalization.png"))
     plot_per_generator(os.path.join(args.output_dir, "per_generator_auc.png"))
 
-    logging.info("All figures saved to %s/", args.output_dir)
+    logger.info("All figures saved to %s/", args.output_dir)
 
 
 if __name__ == "__main__":

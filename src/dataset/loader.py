@@ -3,13 +3,15 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import cv2
 import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+
+logger = logging.getLogger(__name__)
 
 try:
     import albumentations as A
@@ -34,8 +36,8 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def extract_identities(
-    filename: str, metadata_map: Optional[Dict[str, Tuple[str, str]]] = None
-) -> Tuple[str, str]:
+    filename: str, metadata_map: Optional[dict[str, tuple[str, str]]] = None
+) -> tuple[str, str]:
     """Extract actor/source identity IDs from video or crop filenames."""
     if metadata_map and filename in metadata_map:
         return metadata_map[filename]
@@ -57,7 +59,7 @@ def extract_identities(
         id_str = match_single.group(1)
         return id_str, id_str
 
-    logging.warning(
+    logger.warning(
         "Failed to isolate actor identity pairs via regex for '%s' (parsed base: '%s'). Fallback identity used; potential dataset split leakage risk.",
         filename,
         clean_base,
@@ -70,7 +72,7 @@ def extract_video_id(filename: str) -> str:
     return extract_identities(filename)[0]
 
 
-def dedupe_split(split_list: List[Any]) -> List[Any]:
+def dedupe_split(split_list: list[Any]) -> list[Any]:
     """Remove duplicate sample path entries from dataset split lists."""
     seen, deduped = set(), []
     for entry in split_list:
@@ -82,12 +84,12 @@ def dedupe_split(split_list: List[Any]) -> List[Any]:
 
 
 def group_samples_by_video(
-    samples: List[Tuple[str, int]]
-) -> List[Tuple[List[str], int]]:
+    samples: list[tuple[str, int]]
+) -> list[tuple[list[str], int]]:
     """Group individual frame samples into video sequence lists by identity/video ID."""
     if not samples:
         return []
-    video_map: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    video_map: dict[tuple[str, int], dict[str, Any]] = {}
     for item in samples:
         path, label = item[0], item[1]
         vid_id = extract_video_id(path) if isinstance(path, str) else extract_video_id(path[0])
@@ -121,7 +123,7 @@ def perform_graph_split(
     test_ratio: float = 0.15,
     seed: int = 42,
     **kwargs: Any,
-) -> Tuple[Any, Any, Any]:
+) -> tuple[Any, Any, Any]:
     """Partition dataset into train/val/test splits using networkx.Graph connected component identity logic."""
     val_ratio = kwargs.get("val_size", val_ratio)
     test_ratio = kwargs.get("test_size", test_ratio)
@@ -136,7 +138,7 @@ def perform_graph_split(
         normalized_samples = list(samples)
 
     parsed_samples = []
-    video_map: Dict[str, List[Tuple[str, int]]] = {}
+    video_map: dict[str, list[tuple[str, int]]] = {}
 
     for item in normalized_samples:
         path, label = item[0], item[1]
@@ -197,7 +199,7 @@ def perform_graph_split(
     return train_samples, val_samples, test_samples
 
 
-def get_transforms(img_size: int = 256) -> Tuple[Optional[Any], Optional[Any]]:
+def get_transforms(img_size: int = 256) -> tuple[Optional[Any], Optional[Any]]:
     """Build albumentations train and validation transform pipelines for target resolution [H, W]."""
     if not HAS_ALBUMENTATIONS:
         return None, None
@@ -238,7 +240,7 @@ class DeepfakeDataset(Dataset):
 
     def __init__(
         self,
-        samples: List[Tuple[str, int]],
+        samples: list[tuple[str, int]],
         transform: Optional[Any] = None,
     ) -> None:
         self.samples = samples
@@ -249,7 +251,7 @@ class DeepfakeDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         path, label = self.samples[idx]
         img_rgb = load_image_rgb(path)
 
@@ -271,7 +273,7 @@ class SequenceVideoDataset(Dataset):
 
     def __init__(
         self,
-        video_samples: List[Tuple[List[str], int]],
+        video_samples: list[tuple[list[str], int]],
         transform: Optional[Any] = None,
         seq_len: int = 8,
     ) -> None:
@@ -287,7 +289,7 @@ class SequenceVideoDataset(Dataset):
     def __len__(self) -> int:
         return len(self.video_samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         frame_paths, label = self.video_samples[idx]
         n_frames = len(frame_paths)
         mean_t = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
@@ -306,8 +308,8 @@ class SequenceVideoDataset(Dataset):
             if n_pad > 0 and len(img_rgb_list) > 0:
                 last_frame = img_rgb_list[-1]
                 img_rgb_list.extend([last_frame] * n_pad)
-        except Exception as e:
-            logging.debug("Video frame sequence loading failed for %s: %s", frame_paths, e)
+        except (OSError, cv2.error, ValueError, TypeError, RuntimeError) as e:
+            logger.debug("Video frame sequence loading failed for %s: %s", frame_paths, e)
             dummy = np.zeros((256, 256, 3), dtype=np.uint8)
             img_rgb_list = [dummy] * self.seq_len
 
@@ -352,8 +354,8 @@ def _worker_init_fn(worker_id: int) -> None:
 
 
 def create_dataloaders(
-    config: Optional[Dict[str, Any]] = None
-) -> Dict[str, DataLoader]:
+    config: Optional[dict[str, Any]] = None
+) -> dict[str, DataLoader]:
     """Construct PyTorch DataLoaders for train, val, and test splits with class balancing."""
     if config is None:
         config = load_config()
@@ -403,8 +405,8 @@ def create_dataloaders(
                         "val": [(os.path.relpath(p, cropped_dir), lbl) for p, lbl in val_samples],
                         "test": [(os.path.relpath(p, cropped_dir), lbl) for p, lbl in test_samples],
                     }, f)
-            except Exception as e:
-                logging.warning("Failed to write splits manifest to %s: %s", manifest_path, e)
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
+                logger.warning("Failed to write splits manifest to %s: %s", manifest_path, e)
 
     if not samples:
         train_samples, val_samples, test_samples = [], [], []
@@ -465,8 +467,8 @@ build_dataloaders = create_dataloaders
 
 
 def create_sequence_dataloaders(
-    config: Optional[Dict[str, Any]] = None
-) -> Dict[str, DataLoader]:
+    config: Optional[dict[str, Any]] = None
+) -> dict[str, DataLoader]:
     """Construct PyTorch DataLoaders for video frame sequence datasets [T, 3, H, W]."""
     if config is None:
         config = load_config()
@@ -547,3 +549,4 @@ def create_sequence_dataloaders(
     )
 
     return {"train": train_loader, "val": val_loader, "test": test_loader}
+

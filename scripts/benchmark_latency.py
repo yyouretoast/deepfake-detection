@@ -4,7 +4,7 @@ import gc
 import os
 import sys
 import time
-from typing import Any, Dict
+from typing import Any
 
 import torch
 
@@ -19,7 +19,7 @@ CONFIG = load_config()
 IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 
 
-def benchmark_inference() -> Dict[str, Any]:
+def benchmark_inference() -> dict[str, Any]:
     """Benchmark model inference latency and throughput for batch sizes 1 and 32."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU Multi-thread"

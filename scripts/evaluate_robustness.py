@@ -5,7 +5,8 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -23,6 +24,7 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
 
@@ -32,7 +34,7 @@ class RobustnessDataset(Dataset):
 
     def __init__(
         self,
-        samples: List[Tuple[str, float]],
+        samples: list[tuple[str, float]],
         root_dir: str,
         degradation_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     ) -> None:
@@ -43,7 +45,7 @@ class RobustnessDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         path_rel, label = self.samples[idx]
         full_path = os.path.join(self.root_dir, path_rel)
         valid_flag = 1.0
@@ -56,7 +58,7 @@ class RobustnessDataset(Dataset):
                 rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
             if self.degradation_fn is not None:
                 rgb = self.degradation_fn(rgb)
-        except Exception:
+        except (OSError, ValueError, cv2.error):
             valid_flag = 0.0
             rgb = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
 
@@ -114,7 +116,7 @@ def downscale_fn(scale: float) -> Callable[[np.ndarray], np.ndarray]:
 
 def run_eval(
     model: torch.nn.Module,
-    samples: List[Tuple[str, float]],
+    samples: list[tuple[str, float]],
     root_dir: str,
     degradation_fn: Optional[Callable[[np.ndarray], np.ndarray]],
     threshold: float,
@@ -122,7 +124,7 @@ def run_eval(
     device: torch.device,
     batch_size: int,
     max_samples: Optional[int],
-) -> Tuple[float, float, int]:
+) -> tuple[float, float, int]:
     """Run an inference pass over evaluation samples under specified degradation."""
     if max_samples:
         reals = [s for s in samples if s[1] == 0]
@@ -141,8 +143,8 @@ def run_eval(
         pin_memory=(device.type == "cuda"),
     )
 
-    all_probs: List[float] = []
-    all_labels: List[float] = []
+    all_probs: list[float] = []
+    all_labels: list[float] = []
     model.eval()
     with torch.no_grad():
         with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
@@ -156,7 +158,7 @@ def run_eval(
                 all_labels.extend(labels[mask].numpy().tolist())
 
     if len(set(all_labels)) < 2:
-        logging.warning("Only one class present in evaluated samples — AUC undefined.")
+        logger.warning("Only one class present in evaluated samples — AUC undefined.")
         return float("nan"), float("nan"), len(all_labels)
 
     auc = float(roc_auc_score(all_labels, all_probs))
@@ -180,7 +182,7 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logging.info(f"Device: {device}")
+    logger.info(f"Device: {device}")
 
     splits_path = os.path.join(args.data_root, "splits.json")
     if not os.path.exists(splits_path):
@@ -188,7 +190,7 @@ def main() -> None:
     with open(splits_path, "r") as f:
         splits = json.load(f)
     test_samples = dedupe_split(splits["test"])
-    logging.info(f"Test split: {len(test_samples)} samples (capped to {args.max_samples or 'all'})")
+    logger.info(f"Test split: {len(test_samples)} samples (capped to {args.max_samples or 'all'})")
 
     config = load_config()
     backbone = config.get("model", {}).get("backbone", "convnext_small")
@@ -205,9 +207,9 @@ def main() -> None:
 
     threshold = float(checkpoint.get("optimal_threshold", 0.5))
     temperature = float(checkpoint.get("temperature", 1.0))
-    logging.info(f"Checkpoint loaded. Threshold={threshold:.4f}, Temperature={temperature:.4f}")
+    logger.info(f"Checkpoint loaded. Threshold={threshold:.4f}, Temperature={temperature:.4f}")
 
-    sweeps: List[Tuple[str, List[Tuple[str, Optional[Callable[[np.ndarray], np.ndarray]]]]]] = [
+    sweeps: list[tuple[str, list[tuple[str, Optional[Callable[[np.ndarray], np.ndarray]]]]]] = [
         (
             "JPEG Compression",
             [
@@ -248,7 +250,7 @@ def main() -> None:
         ),
     ]
 
-    all_results: Dict[str, List[Dict[str, Any]]] = {}
+    all_results: dict[str, list[dict[str, Any]]] = {}
     for sweep_name, levels in sweeps:
         print(f"\n{'='*60}")
         print(f"  {sweep_name}")
@@ -256,7 +258,7 @@ def main() -> None:
         print(f"  {'Level':<28} {'AUC':>8}  {'F1':>8}  {'N':>7}")
         print(f"  {'-'*28} {'-'*8}  {'-'*8}  {'-'*7}")
 
-        sweep_results: List[Dict[str, Any]] = []
+        sweep_results: list[dict[str, Any]] = []
         for label, deg_fn in levels:
             auc, f1, n = run_eval(
                 model=model,
@@ -276,7 +278,7 @@ def main() -> None:
 
     with open(args.output_json, "w") as f:
         json.dump(all_results, f, indent=2)
-    logging.info(f"Results saved to {args.output_json}")
+    logger.info(f"Results saved to {args.output_json}")
 
 
 if __name__ == "__main__":

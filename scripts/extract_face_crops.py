@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -18,6 +18,7 @@ from src.dataset.preprocess import DynamicFaceCropper
 from src.dataset.loader import perform_graph_split
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = "/kaggle/working/deepfake_crops_512"
 FACE_SIZE = 512
@@ -28,7 +29,7 @@ NUM_WORKERS = 8
 
 def process_video_fast(
     video_path: str, cropper: DynamicFaceCropper, num_frames: int = 12
-) -> List[np.ndarray]:
+) -> list[np.ndarray]:
     """Extract face crop frames array [num_frames, H, W, 3] from video."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -54,7 +55,7 @@ def process_video_fast(
 
 def process_single_video_worker(
     vid_path: str, cropper: DynamicFaceCropper
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+) -> tuple[list[dict[str, Any]], Optional[str]]:
     """Worker task processing a single video file."""
     path_lower = vid_path.lower().replace("\\", "/")
     fake_keywords = [
@@ -106,9 +107,9 @@ def main() -> None:
             all_videos_set.add(found_p)
 
     all_videos = sorted(list(all_videos_set))
-    logging.info("Discovered %d video files in %s", len(all_videos), kaggle_input)
+    logger.info("Discovered %d video files in %s", len(all_videos), kaggle_input)
     if not all_videos:
-        logging.error("No video files found in /kaggle/input! Verify mounted datasets.")
+        logger.error("No video files found in /kaggle/input! Verify mounted datasets.")
         return
 
     manifest, corrupted_videos = [], []
@@ -122,9 +123,9 @@ def main() -> None:
                     manifest.extend(records)
                 if corrupted:
                     corrupted_videos.append(corrupted)
-            except Exception as e:
+            except (OSError, cv2.error, ValueError, RuntimeError, TypeError, KeyError) as e:
                 vp = futures[future]
-                logging.warning("Skipping corrupted video %s: %s", vp, e)
+                logger.warning("Skipping corrupted video %s: %s", vp, e)
                 corrupted_videos.append(vp)
 
     with open(os.path.join(OUTPUT_DIR, "manifest.json"), "w", encoding="utf-8") as f:
@@ -133,7 +134,7 @@ def main() -> None:
     with open(os.path.join(OUTPUT_DIR, "corrupted_videos.json"), "w", encoding="utf-8") as f:
         json.dump(corrupted_videos, f, indent=2)
 
-    logging.info(
+    logger.info(
         "Extracted %d face crops across %d valid videos.",
         len(manifest),
         len(all_videos) - len(corrupted_videos),
@@ -144,9 +145,9 @@ def main() -> None:
         train_s, val_s, test_s = perform_graph_split(dataset_samples, val_ratio=0.10, test_ratio=0.10, seed=42)
         with open(os.path.join(OUTPUT_DIR, "splits.json"), "w", encoding="utf-8") as f:
             json.dump({"train": train_s, "val": val_s, "test": test_s}, f, indent=2)
-        logging.info("Successfully generated zero-leakage identity splits.json.")
-    except Exception as e:
-        logging.warning("Graph split generation warning: %s", e)
+        logger.info("Successfully generated zero-leakage identity splits.json.")
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, json.JSONDecodeError) as e:
+        logger.warning("Graph split generation warning: %s", e)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ from src.dataset.loader import dedupe_split  # noqa: E402
 from src.models.hybrid_detector import HybridDeepfakeDetector  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
 BATCH_SIZE = 16
@@ -84,7 +85,7 @@ class KaggleFastDataset(Dataset):
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             if rgb.shape[0] != IMG_SIZE or rgb.shape[1] != IMG_SIZE:
                 rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
-        except Exception:
+        except (OSError, ValueError, cv2.error):
             valid_flag = 0.0
             rgb = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
 
@@ -158,7 +159,7 @@ def main():
     data_root = find_dataset_root(args.data_dir)
 
     if accelerator.is_main_process:
-        logging.info(f"Verified Dataset Root: {data_root}")
+        logger.info(f"Verified Dataset Root: {data_root}")
 
     splits_path = os.path.join(data_root, 'splits.json')
     with open(splits_path, 'r') as f:
@@ -168,7 +169,7 @@ def main():
     val_samples = dedupe_split(splits['val'])
 
     if accelerator.is_main_process:
-        logging.info(f"Deduplicated Splits Loaded — Train: {len(train_samples):,}, Val: {len(val_samples):,}")
+        logger.info(f"Deduplicated Splits Loaded — Train: {len(train_samples):,}, Val: {len(val_samples):,}")
 
     train_ds = KaggleFastDataset(train_samples, data_root, is_train=True)
     val_ds = KaggleFastDataset(val_samples, data_root, is_train=False)
@@ -192,7 +193,7 @@ def main():
     pos_weight_val = num_real / max(1, num_fake)
 
     if accelerator.is_main_process:
-        logging.info(f"Class Distribution — Real: {num_real}, Fake: {num_fake} | Calculated pos_weight: {pos_weight_val:.4f}")
+        logger.info(f"Class Distribution — Real: {num_real}, Fake: {num_fake} | Calculated pos_weight: {pos_weight_val:.4f}")
 
     pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
 
@@ -212,13 +213,13 @@ def main():
             unwrapped_model = accelerator.unwrap_model(model)
             unwrapped_model.load_state_dict(torch.load(BEST_MODEL_WEIGHTS_PATH, map_location='cpu'))
             if accelerator.is_main_process:
-                logging.info(f"Loaded existing model weights from {BEST_MODEL_WEIGHTS_PATH}")
-        except Exception as e:
+                logger.info(f"Loaded existing model weights from {BEST_MODEL_WEIGHTS_PATH}")
+        except (OSError, RuntimeError, ValueError) as e:
             if accelerator.is_main_process:
-                logging.warning(f"Could not load model weights: {e}")
+                logger.warning(f"Could not load model weights: {e}")
 
     if accelerator.is_main_process:
-        logging.info(f"Starting DDP Run: Epochs {start_epoch + 1} to {NUM_EPOCHS}...")
+        logger.info(f"Starting DDP Run: Epochs {start_epoch + 1} to {NUM_EPOCHS}...")
 
     start_time = time.time()
 
@@ -279,27 +280,27 @@ def main():
 
         try:
             val_auc = roc_auc_score(all_targets, all_preds)
-        except Exception:
+        except (ValueError, TypeError, RuntimeError):
             val_auc = 0.5
 
         if accelerator.is_main_process:
             if total_train_failures > 0:
-                logging.warning(f"Epoch {epoch+1} Train Read Failures: {total_train_failures}")
+                logger.warning(f"Epoch {epoch+1} Train Read Failures: {total_train_failures}")
             if total_val_failures > 0:
-                logging.warning(f"Epoch {epoch+1} Val Read Failures: {total_val_failures}")
+                logger.warning(f"Epoch {epoch+1} Val Read Failures: {total_val_failures}")
 
             current_lr_head = optimizer.param_groups[2]['lr']
-            logging.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] - Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val AUC: {val_auc:.4f} | Head LR: {current_lr_head:.6f}")
+            logger.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] - Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val AUC: {val_auc:.4f} | Head LR: {current_lr_head:.6f}")
 
             if val_auc > best_val_auc:
                 best_val_auc = val_auc
                 unwrapped_model = accelerator.unwrap_model(model)
                 torch.save(unwrapped_model.state_dict(), BEST_MODEL_WEIGHTS_PATH)
-                logging.info(f"Saved Checkpoint (Val AUC: {val_auc:.4f}) to {BEST_MODEL_WEIGHTS_PATH}")
+                logger.info(f"Saved Checkpoint (Val AUC: {val_auc:.4f}) to {BEST_MODEL_WEIGHTS_PATH}")
 
     if accelerator.is_main_process:
         total_mins = (time.time() - start_time) / 60
-        logging.info(f"Training Complete in {total_mins:.2f} mins. Peak Val AUC: {best_val_auc:.4f}")
+        logger.info(f"Training Complete in {total_mins:.2f} mins. Peak Val AUC: {best_val_auc:.4f}")
 
 
 if __name__ == '__main__':

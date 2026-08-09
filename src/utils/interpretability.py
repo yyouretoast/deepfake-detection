@@ -1,7 +1,7 @@
 """Model interpretability utilities including ConvNeXtGradCAM and 4-panel face diagnostic generator."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -69,7 +69,7 @@ def generate_face_diagnostics(
     face_rgb: np.ndarray,
     device: torch.device,
     temperature: float = 1.0,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """Generates 4-panel interpretability representations (RGB, SRM, FFT, Grad-CAM)."""
     img_size = face_rgb.shape[0]
     img_tensor = torch.from_numpy(face_rgb).permute(2, 0, 1).float().unsqueeze(0) / 255.0

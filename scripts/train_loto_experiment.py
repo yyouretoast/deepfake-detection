@@ -42,6 +42,7 @@ from src.utils.checkpoint import fit_temperature_log  # noqa: E402
 
 CONFIG = load_config()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 IMG_SIZE = CONFIG.get("preprocessing", {}).get("img_size", 256)
 BATCH_SIZE = CONFIG.get("training", {}).get("batch_size", 16)
@@ -127,10 +128,10 @@ def main():
     eval_target_samples = all_heldout_fakes + test_reals
 
     if accelerator.is_main_process:
-        logging.info("Starting LOTO experiment (Holdout domain: %s)", args.holdout.upper())
-        logging.info("  Retained train samples: %d (Filtered out %d FAKE '%s' samples)", len(train_samples), len(train_heldout_fakes), args.holdout)
-        logging.info("  Retained val samples:   %d", len(val_samples))
-        logging.info("  Zero-shot test set:     %d samples (%d zero-shot fakes vs %d reals)",
+        logger.info("Starting LOTO experiment (Holdout domain: %s)", args.holdout.upper())
+        logger.info("  Retained train samples: %d (Filtered out %d FAKE '%s' samples)", len(train_samples), len(train_heldout_fakes), args.holdout)
+        logger.info("  Retained val samples:   %d", len(val_samples))
+        logger.info("  Zero-shot test set:     %d samples (%d zero-shot fakes vs %d reals)",
                      len(eval_target_samples), len(all_heldout_fakes), len(test_reals))
 
     if len(all_heldout_fakes) < 5:
@@ -211,7 +212,7 @@ def main():
             val_probs_raw = 1.0 / (1.0 + np.exp(-val_logits))
             try:
                 val_auc = roc_auc_score(val_targets, val_probs_raw)
-            except Exception:
+            except (ValueError, TypeError, RuntimeError):
                 val_auc = 0.5
 
             print(f"LOTO Epoch [{epoch+1}/{args.epochs}] - Train Loss: {train_loss:.4f} | Retained Val AUC: {val_auc:.4f}", flush=True)
@@ -254,9 +255,9 @@ def main():
         zero_shot_prec = precision_score(target_targets, binary_preds, zero_division=0)
         zero_shot_rec = recall_score(target_targets, binary_preds, zero_division=0)
 
-        logging.info("Zero-Shot LOTO evaluation on held-out '%s':", args.holdout.upper())
-        logging.info("  Threshold: %.2f | Temperature (T*): %.4f", best_thresh, optimal_temp)
-        logging.info("  AUC: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f", zero_shot_auc, zero_shot_f1, zero_shot_prec, zero_shot_rec)
+        logger.info("Zero-Shot LOTO evaluation on held-out '%s':", args.holdout.upper())
+        logger.info("  Threshold: %.2f | Temperature (T*): %.4f", best_thresh, optimal_temp)
+        logger.info("  AUC: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f", zero_shot_auc, zero_shot_f1, zero_shot_prec, zero_shot_rec)
 
         res_dir = "/kaggle/working" if os.path.exists("/kaggle/working") else REPO_ROOT
         res_file = os.path.join(res_dir, "loto_results.json")
@@ -265,7 +266,7 @@ def main():
             try:
                 with open(res_file, 'r') as f:
                     results = json.load(f)
-            except (json.JSONDecodeError, IOError):
+            except (json.JSONDecodeError, OSError):
                 results = []
 
         results.append({
@@ -282,7 +283,7 @@ def main():
 
         with open(res_file, 'w') as f:
             json.dump(results, f, indent=2)
-        logging.info("Saved LOTO result entry to %s", res_file)
+        logger.info("Saved LOTO result entry to %s", res_file)
 
 if __name__ == '__main__':
     main()

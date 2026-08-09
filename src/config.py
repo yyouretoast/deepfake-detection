@@ -1,12 +1,14 @@
 """Configuration loader and default settings for Deepfake Detector."""
 
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 import copy
 import logging
 import os
 import yaml
 
-DEFAULT_CONFIG: Dict[str, Any] = {
+logger = logging.getLogger(__name__)
+
+DEFAULT_CONFIG: dict[str, Any] = {
     "paths": {
         "raw_dir": "data/raw",
         "cropped_dir": "data/cropped",
@@ -47,7 +49,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
-def _deep_merge_dict(base: Dict[str, Any], custom: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge_dict(base: dict[str, Any], custom: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge nested dictionaries, overriding base with custom values."""
     merged = copy.deepcopy(base)
     for key, value in custom.items():
@@ -58,7 +60,7 @@ def _deep_merge_dict(base: Dict[str, Any], custom: Dict[str, Any]) -> Dict[str, 
     return merged
 
 
-def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
+def load_config(config_path: Optional[str] = None) -> dict[str, Any]:
     """Load YAML configuration file and merge missing key defaults from DEFAULT_CONFIG."""
     if config_path is None or not os.path.exists(config_path):
         config_path = "config/default.yaml"
@@ -74,8 +76,8 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
                 user_cfg = yaml.safe_load(f)
             if isinstance(user_cfg, dict):
                 return _deep_merge_dict(DEFAULT_CONFIG, user_cfg)
-        except Exception as e:
-            logging.warning("Failed to parse config file '%s': %s. Using DEFAULT_CONFIG.", config_path, e)
+        except (yaml.YAMLError, OSError, ValueError) as e:
+            logger.warning("Failed to parse config file '%s': %s. Using DEFAULT_CONFIG.", config_path, e)
 
     return copy.deepcopy(DEFAULT_CONFIG)
 

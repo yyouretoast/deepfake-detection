@@ -6,7 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import matplotlib
 
@@ -48,12 +48,12 @@ def safe_remove_file(file_path: str, max_retries: int = 3, delay: float = 0.5) -
         except PermissionError:
             if attempt < max_retries - 1:
                 time.sleep(delay)
-        except Exception:
+        except OSError:
             return
 
 
 @st.cache_resource
-def _cached_model_loader() -> Tuple[Any, Any, bool, float, float]:
+def _cached_model_loader() -> tuple[Any, Any, bool, float, float]:
     return load_prediction_engine()
 
 
@@ -155,7 +155,7 @@ def render_ui() -> None:
         pytorch_model, cropper, has_pytorch_weights, default_threshold, default_temperature = (
             _cached_model_loader()
         )
-    except Exception as e:
+    except (RuntimeError, ValueError, OSError, TypeError) as e:
         st.error(f"Model initialization error: {e}")
         st.stop()
 
@@ -315,12 +315,12 @@ def render_ui() -> None:
             st.error("No clear face detections were found in the uploaded video.")
         else:
             raw_video_prob = float(res["raw_video_prob"])
-            all_probs: List[float] = [
+            all_probs: list[float] = [
                 float(p[0]) if isinstance(p, (list, tuple)) else float(p)
                 for p in res["all_probs"]
             ]
             sample_faces = res["sample_faces"]
-            sample_probs: List[float] = [
+            sample_probs: list[float] = [
                 float(p[0]) if isinstance(p, (list, tuple)) else float(p)
                 for p in res["sample_probs"]
             ]
@@ -340,7 +340,7 @@ def render_ui() -> None:
                 uploaded_file.seek(0)
                 try:
                     st.video(uploaded_file)
-                except Exception:
+                except (RuntimeError, TypeError, ValueError, OSError):
                     st.info(
                         "ℹ️ Native browser video preview unavailable for this codec (e.g. mp4v/HEVC). "
                         "Backend OpenCV detection engine analyzed all keyframes normally."
@@ -371,7 +371,7 @@ def render_ui() -> None:
                 col_m2.metric("Real Faces", real_faces_count)
                 col_m3.metric("Fake Faces", fake_faces_count)
 
-                report_data: Dict[str, Any] = {
+                report_data: dict[str, Any] = {
                     "video_filename": uploaded_file.name,
                     "file_size_bytes": uploaded_file.size,
                     "file_md5_hash": file_id,

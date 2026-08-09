@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -19,15 +19,15 @@ from src.utils.temporal_aggregation import aggregate_video_predictions
 
 logger = logging.getLogger(__name__)
 
-CONFIG: Dict[str, Any] = load_config()
-APP_CFG: Dict[str, Any] = CONFIG.get("app", {})
+CONFIG: dict[str, Any] = load_config()
+APP_CFG: dict[str, Any] = CONFIG.get("app", {})
 IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 EXPECTED_WEIGHTS_SHA256: Optional[str] = os.getenv("EXPECTED_WEIGHTS_SHA256", None)
 
 
-def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
+def load_prediction_engine() -> tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
     """
     Load prediction engine model weights, sidecar metadata, and face cropper.
 
@@ -87,7 +87,7 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
                 logger.warning("Could not load sidecar metadata: %s", e)
 
     has_weights = weights_path is not None and os.path.exists(weights_path)
-    state_dict: Optional[Dict[str, Any]] = None
+    state_dict: Optional[dict[str, Any]] = None
     if has_weights:
         checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=True)
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
@@ -133,7 +133,7 @@ def process_video_frames(
     has_pytorch_weights: Optional[bool] = None,
     aggregation_method: str = "soft_max",
     num_frames: Optional[int] = None,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[dict[str, Any]]:
     """
     Video inference engine with OpenCV keyframe seeking, AMP autocast, and temporal aggregation.
     """
@@ -168,9 +168,9 @@ def process_video_frames(
         else:
             frame_indices = list(range(total))
 
-        all_faces: List[np.ndarray] = []
-        detected_frame_indices: List[int] = []
-        detected_timestamps: List[float] = []
+        all_faces: list[np.ndarray] = []
+        detected_frame_indices: list[int] = []
+        detected_timestamps: list[float] = []
 
         for idx in frame_indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
@@ -204,7 +204,7 @@ def process_video_frames(
             video_prob = float(torch.sigmoid(seq_logits.float() / temperature).mean().item())
 
     batch_size = CONFIG.get("training", {}).get("batch_size", 16)
-    all_probs: List[float] = []
+    all_probs: list[float] = []
 
     for i in range(0, len(all_faces), batch_size):
         batch_faces = all_faces[i : i + batch_size]

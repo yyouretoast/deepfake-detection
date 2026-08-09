@@ -1,6 +1,6 @@
 """Checkpoint state dictionary cleaning and temperature calibration utilities."""
 
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 from scipy.optimize import minimize
@@ -9,9 +9,9 @@ DEFAULT_THRESHOLD: float = 0.01
 DEFAULT_TEMPERATURE: float = 1.4788
 
 
-def clean_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
+def clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
     """Strips 'module.' and '_orig_mod.' prefixes from checkpoint keys."""
-    cleaned: Dict[str, Any] = {}
+    cleaned: dict[str, Any] = {}
     for k, v in state_dict.items():
         if "lora_" in k:
             continue

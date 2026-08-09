@@ -3,7 +3,7 @@ import os
 import threading
 import urllib.error
 import urllib.request
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import cv2
 import numpy as np
@@ -127,7 +127,7 @@ class DynamicFaceCropper:
 
     def _detect_yunet(
         self, image_rgb: np.ndarray
-    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """Detect faces using OpenCV YuNet on RGB array [H, W, 3]. Returns (bounding_boxes, 5_point_landmarks)."""
         yunet_engine = self._get_thread_yunet()
         if yunet_engine is None:
@@ -200,7 +200,7 @@ class DynamicFaceCropper:
         box: np.ndarray,
         landmarks: Optional[np.ndarray] = None,
         target_size: Optional[int] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Crop face region from RGB image [H, W, 3] with scale factor and 5-point landmark similarity transform alignment."""
         out_size = target_size if target_size is not None else self.target_size
         h_img, w_img, _ = image_rgb.shape
@@ -297,7 +297,7 @@ class DynamicFaceCropper:
         boxes: Any,
         landmarks: Any = None,
         target_size: Optional[int] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Select largest detected bounding box and perform crop extraction."""
         out_size = target_size if target_size is not None else self.target_size
         if boxes is None or len(boxes) == 0:
@@ -332,7 +332,7 @@ class DynamicFaceCropper:
         self,
         image_input: Union[str, np.ndarray, Image.Image],
         target_size: Optional[int] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Extract face crop from image returning (aligned_warped_crop, raw_unwarped_crop)."""
         out_size = target_size if target_size is not None else self.target_size
         if isinstance(image_input, str):
@@ -382,9 +382,9 @@ class DynamicFaceCropper:
 
     def crop_faces_batched(
         self,
-        image_inputs: List[Union[str, np.ndarray, Image.Image]],
+        image_inputs: list[Union[str, np.ndarray, Image.Image]],
         target_size: Optional[int] = None,
-    ) -> List[np.ndarray]:
+    ) -> list[np.ndarray]:
         """Batched face crop extraction returning list of RGB face arrays [H, W, 3]."""
         if not image_inputs:
             return []
@@ -398,7 +398,7 @@ class DynamicFaceCropper:
         frames_per_video: int = 15,
         target_size: Optional[int] = None,
         max_frames: Optional[int] = None,
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract face crops from video frames saving lossless WebP images to output directory."""
         if max_frames is not None:
             frames_per_video = max_frames
@@ -444,8 +444,8 @@ class DynamicFaceCropper:
 
 
 def preprocess_tensors_batch(
-    faces_rgb_list: List[np.ndarray], device: torch.device = torch.device("cpu")
-) -> Tuple[np.ndarray, torch.Tensor]:
+    faces_rgb_list: list[np.ndarray], device: torch.device = torch.device("cpu")
+) -> tuple[np.ndarray, torch.Tensor]:
     """Apply ImageNet normalization to list of uint8 RGB face crop arrays [H, W, 3]. Return (numpy_batch, torch_tensor_batch) [B, 3, 256, 256]."""
     batch_arr = np.stack(faces_rgb_list)
     batch_nchw = batch_arr.transpose(0, 3, 1, 2)

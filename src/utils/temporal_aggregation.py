@@ -1,7 +1,7 @@
 """Video temporal aggregation utilities for deepfake detection frame-level score pooling."""
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def _sanitize_scores(
-    scores: Union[List[float], List[List[float]], np.ndarray],
+    scores: Union[list[float], list[list[float]], np.ndarray],
 ) -> np.ndarray:
     """Sanitizes and flattens frame score input into a clipped 1D float32 array in [0, 1]."""
     if scores is None:
@@ -20,7 +20,7 @@ def _sanitize_scores(
 
 
 def mean_aggregation(
-    scores: Union[List[float], List[List[float]], np.ndarray],
+    scores: Union[list[float], list[list[float]], np.ndarray],
 ) -> float:
     """Computes temporal mean of frame-level fake probabilities."""
     valid = _sanitize_scores(scores)
@@ -30,7 +30,7 @@ def mean_aggregation(
 
 
 def top_k_aggregation(
-    scores: Union[List[float], List[List[float]], np.ndarray],
+    scores: Union[list[float], list[list[float]], np.ndarray],
     k: int = 5,
 ) -> float:
     """Averages the top-K highest confidence fake frame probabilities using partition."""
@@ -43,7 +43,7 @@ def top_k_aggregation(
 
 
 def soft_max_weighted_aggregation(
-    scores: Union[List[float], List[List[float]], np.ndarray],
+    scores: Union[list[float], list[list[float]], np.ndarray],
     tau: float = 1.0,
 ) -> float:
     """Computes soft-max weighted average of frame probabilities with log-sum-exp stabilization."""
@@ -58,8 +58,8 @@ def soft_max_weighted_aggregation(
 
 
 def ema_aggregation(
-    scores: Union[List[float], List[List[float]], np.ndarray],
-    frame_indices: Optional[List[int]] = None,
+    scores: Union[list[float], list[list[float]], np.ndarray],
+    frame_indices: Optional[list[int]] = None,
     alpha: float = 0.3,
 ) -> float:
     """Computes sequential EMA over chronologically ordered video frames (S_t = alpha*p_t + (1-alpha)*S_{t-1})."""
@@ -82,14 +82,14 @@ def ema_aggregation(
 
 
 def aggregate_video_predictions(
-    scores: Union[List[float], List[List[float]], np.ndarray],
+    scores: Union[list[float], list[list[float]], np.ndarray],
     method: str = "soft_max",
     k: int = 5,
     alpha: float = 0.3,
     tau: float = 1.0,
     threshold: float = 0.01,
-    frame_indices: Optional[List[int]] = None,
-) -> Dict[str, Any]:
+    frame_indices: Optional[list[int]] = None,
+) -> dict[str, Any]:
     """Unified production dispatcher for video-level score aggregation."""
     valid = _sanitize_scores(scores)
     valid_count = len(valid)

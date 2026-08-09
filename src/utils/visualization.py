@@ -1,7 +1,5 @@
 """Visualization utilities for Deepfake Detector Engine."""
 
-from typing import List
-
 import matplotlib
 
 matplotlib.use("Agg")
@@ -10,8 +8,8 @@ import numpy as np
 
 
 def render_temporal_anomaly_timeline(
-    timestamps: List[float],
-    probs: List[float],
+    timestamps: list[float],
+    probs: list[float],
     threshold: float,
 ) -> matplotlib.figure.Figure:
     """Renders dark glassmorphism timeline graph of frame-by-frame confidence scores."""

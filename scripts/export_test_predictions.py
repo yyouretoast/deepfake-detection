@@ -21,6 +21,7 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
 
@@ -44,7 +45,7 @@ class TestDataset(Dataset):
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             if rgb.shape[0] != IMG_SIZE or rgb.shape[1] != IMG_SIZE:
                 rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
-        except Exception:
+        except (OSError, ValueError, cv2.error):
             valid_flag = 0.0
             rgb = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
 
@@ -67,7 +68,7 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logging.info("Device: %s", device)
+    logger.info("Device: %s", device)
 
     splits_path = os.path.join(args.data_root, "splits.json")
     if not os.path.exists(splits_path):
@@ -75,7 +76,7 @@ def main() -> None:
     with open(splits_path) as f:
         splits = json.load(f)
     test_samples = dedupe_split(splits["test"])
-    logging.info("Test split: %d samples", len(test_samples))
+    logger.info("Test split: %d samples", len(test_samples))
 
     config = load_config()
     backbone = config.get("model", {}).get("backbone", "convnext_small")
@@ -89,7 +90,7 @@ def main() -> None:
 
     threshold = float(checkpoint.get("optimal_threshold", 0.5))
     temperature = float(checkpoint.get("temperature", 1.0))
-    logging.info("Checkpoint loaded. Threshold=%.4f, Temperature=%.4f", threshold, temperature)
+    logger.info("Checkpoint loaded. Threshold=%.4f, Temperature=%.4f", threshold, temperature)
 
     dataset = TestDataset(test_samples, args.data_root)
     loader = DataLoader(
@@ -125,7 +126,7 @@ def main() -> None:
     with open(args.output_json, "w") as f:
         json.dump(output, f)
 
-    logging.info(
+    logger.info(
         "Saved %d predictions to %s (%.1f MB)",
         len(all_labels),
         args.output_json,

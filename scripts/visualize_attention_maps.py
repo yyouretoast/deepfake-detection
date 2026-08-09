@@ -26,6 +26,7 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
 DEFAULT_THRESHOLD = 0.01
@@ -60,7 +61,7 @@ class ConvNeXtGradCAM:
             scalar_logit.backward()
 
         if self.feature_maps is None or self.gradients is None:
-            logging.warning("Grad-CAM feature maps or gradients not captured.")
+            logger.warning("Grad-CAM feature maps or gradients not captured.")
             return np.zeros((IMG_SIZE, IMG_SIZE), dtype=np.float32)
 
         weights = torch.mean(self.gradients[0], dim=(1, 2))
@@ -172,7 +173,7 @@ def generate_4panel_figure(
     if device.type == "cuda":
         torch.cuda.empty_cache()
 
-    logging.info("Saved attention map figure -> %s", output_path)
+    logger.info("Saved attention map figure -> %s", output_path)
 
 
 def main() -> None:
@@ -188,7 +189,7 @@ def main() -> None:
 
     os.makedirs(args.output_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logging.info("Device: %s", device)
+    logger.info("Device: %s", device)
 
     config = load_config()
     backbone = config.get("model", {}).get("backbone", "convnext_small")
@@ -205,9 +206,9 @@ def main() -> None:
         model.load_state_dict(clean_state_dict(state_dict), strict=False)
         threshold = float(checkpoint.get("optimal_threshold", DEFAULT_THRESHOLD))
         temperature = float(checkpoint.get("temperature", DEFAULT_TEMPERATURE))
-        logging.info("Loaded checkpoint '%s' (Threshold=%.4f, Temp=%.4f)", args.checkpoint, threshold, temperature)
+        logger.info("Loaded checkpoint '%s' (Threshold=%.4f, Temp=%.4f)", args.checkpoint, threshold, temperature)
     else:
-        logging.warning("Checkpoint '%s' not found. Running with initial model weights.", args.checkpoint)
+        logger.warning("Checkpoint '%s' not found. Running with initial model weights.", args.checkpoint)
 
     model.to(device).eval()
     grad_cam = ConvNeXtGradCAM(model)
@@ -243,7 +244,7 @@ def main() -> None:
         samples = [(path, "REAL" if label == 0 else "FAKE") for path, label in sampled_reals + sampled_fakes]
 
     if not samples:
-        logging.warning("No dataset splits found. Generating synthetic diagnostic sample figures.")
+        logger.warning("No dataset splits found. Generating synthetic diagnostic sample figures.")
         for idx in range(args.n_samples):
             label_str = "FAKE" if idx % 2 == 1 else "REAL"
             img = np.random.randint(40, 220, (IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
@@ -273,7 +274,7 @@ def main() -> None:
             )
 
     grad_cam.remove_hooks()
-    logging.info("All diagnostic figures rendered to %s/", args.output_dir)
+    logger.info("All diagnostic figures rendered to %s/", args.output_dir)
 
 
 if __name__ == "__main__":
