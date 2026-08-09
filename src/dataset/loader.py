@@ -1,25 +1,28 @@
-from typing import List, Tuple, Dict, Any, Optional
+import hashlib
+import json
 import logging
 import os
 import re
+from typing import Any, Dict, List, Optional, Tuple
+
 import cv2
-import json
-import hashlib
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+
 try:
     import albumentations as A
     from albumentations.pytorch import ToTensorV2
+
     HAS_ALBUMENTATIONS = True
 except ImportError:
     HAS_ALBUMENTATIONS = False
     A = None
 
-from PIL import Image
-
 try:
     import networkx as nx
+
     HAS_NETWORKX = True
 except ImportError:
     HAS_NETWORKX = False
@@ -29,13 +32,17 @@ from src.config import load_config
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
-def extract_identities(filename: str, metadata_map: Optional[Dict[str, Tuple[str, str]]] = None) -> Tuple[str, str]:
+
+def extract_identities(
+    filename: str, metadata_map: Optional[Dict[str, Tuple[str, str]]] = None
+) -> Tuple[str, str]:
+    """Extract actor/source identity IDs from video or crop filenames."""
     if metadata_map and filename in metadata_map:
         return metadata_map[filename]
 
     parts = os.path.normpath(filename).replace("\\", "/").split("/")
     target = parts[-2] if len(parts) > 1 else parts[-1]
-    clean_base = re.sub(r"_(?:f|frame)\d+", "", target, flags=re.IGNORECASE).split('.')[0]
+    clean_base = re.sub(r"_(?:f|frame)\d+", "", target, flags=re.IGNORECASE).split(".")[0]
 
     match_alpha = re.search(r"(id\d+)_(id\d+)", clean_base)
     if match_alpha:
@@ -52,8 +59,11 @@ def extract_identities(filename: str, metadata_map: Optional[Dict[str, Tuple[str
 
     return clean_base, clean_base
 
+
 def extract_video_id(filename: str) -> str:
+    """Extract primary video/actor identifier from filename."""
     return extract_identities(filename)[0]
+
 
 def dedupe_split(split_list: List[Any]) -> List[Any]:
     """Remove duplicate sample path entries from dataset split lists."""
@@ -65,10 +75,14 @@ def dedupe_split(split_list: List[Any]) -> List[Any]:
             deduped.append(entry)
     return deduped
 
-def group_samples_by_video(samples: List[Tuple[str, int]]) -> List[Tuple[List[str], int]]:
+
+def group_samples_by_video(
+    samples: List[Tuple[str, int]]
+) -> List[Tuple[List[str], int]]:
+    """Group individual frame samples into video sequence lists by identity/video ID."""
     if not samples:
         return []
-    video_map: Dict[Any, Dict[str, Any]] = {}
+    video_map: Dict[Tuple[str, int], Dict[str, Any]] = {}
     for item in samples:
         path, label = item[0], item[1]
         vid_id = extract_video_id(path) if isinstance(path, str) else extract_video_id(path[0])
@@ -86,20 +100,24 @@ def group_samples_by_video(samples: List[Tuple[str, int]]) -> List[Tuple[List[st
         grouped.append((paths, video_map[key]["label"]))
     return grouped
 
+
 def get_dir_hash(dir_path: str) -> str:
+    """Compute SHA256 checksum of file paths within a directory for split manifest validation."""
     hasher = hashlib.sha256()
     for root, _, files in os.walk(dir_path):
         for f in sorted(files):
-            hasher.update(f.encode('utf-8'))
+            hasher.update(f.encode("utf-8"))
     return hasher.hexdigest()
+
 
 def perform_graph_split(
     samples: Any,
     val_ratio: float = 0.15,
     test_ratio: float = 0.15,
     seed: int = 42,
-    **kwargs
+    **kwargs: Any,
 ) -> Tuple[Any, Any, Any]:
+    """Partition dataset into train/val/test splits using networkx.Graph connected component identity logic."""
     val_ratio = kwargs.get("val_size", val_ratio)
     test_ratio = kwargs.get("test_size", test_ratio)
 
@@ -132,7 +150,9 @@ def perform_graph_split(
     comp_stats = []
     for comp in components:
         comp_set = set(comp)
-        n_samples = sum(1 for s in parsed_samples if s[2] in comp_set or s[3] in comp_set)
+        n_samples = sum(
+            1 for s in parsed_samples if s[2] in comp_set or s[3] in comp_set
+        )
         comp_stats.append((comp, n_samples))
 
     comp_stats.sort(key=lambda x: x[1], reverse=True)
@@ -163,12 +183,17 @@ def perform_graph_split(
             test_samples.append((path, label))
 
     if is_string_list:
-        return [s[0] for s in train_samples], [s[0] for s in val_samples], [s[0] for s in test_samples]
+        return (
+            [s[0] for s in train_samples],
+            [s[0] for s in val_samples],
+            [s[0] for s in test_samples],
+        )
 
     return train_samples, val_samples, test_samples
 
 
-def get_transforms(img_size: int = 256) -> Tuple[Any, Any]:
+def get_transforms(img_size: int = 256) -> Tuple[Optional[Any], Optional[Any]]:
+    """Build albumentations train and validation transform pipelines for target resolution [H, W]."""
     if not HAS_ALBUMENTATIONS:
         return None, None
 
@@ -193,18 +218,24 @@ def get_transforms(img_size: int = 256) -> Tuple[Any, Any]:
 
     return train_transform, eval_transform
 
+
 def load_image_rgb(path: str) -> np.ndarray:
-    img_bgr = cv2.imread(path)
-    if img_bgr is not None:
-        return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    try:
-        with Image.open(path) as img_pil:
-            return np.array(img_pil.convert('RGB'), dtype=np.uint8)
-    except Exception:
-        return np.zeros((256, 256, 3), dtype=np.uint8)
+    """Load image from disk and return RGB numpy array of shape [H, W, 3]."""
+    if os.path.exists(path):
+        img_bgr = cv2.imread(path)
+        if img_bgr is not None:
+            return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    return np.zeros((256, 256, 3), dtype=np.uint8)
+
 
 class DeepfakeDataset(Dataset):
-    def __init__(self, samples: List[Tuple[str, int]], transform: Optional[Any] = None):
+    """Dataset for single-frame face crops returning normalized tensor [3, H, W] and integer label."""
+
+    def __init__(
+        self,
+        samples: List[Tuple[str, int]],
+        transform: Optional[Any] = None,
+    ) -> None:
         self.samples = samples
         self.transform = transform
         self.mean_tensor = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
@@ -220,9 +251,8 @@ class DeepfakeDataset(Dataset):
         if self.transform is not None:
             if HAS_ALBUMENTATIONS and isinstance(self.transform, A.Compose):
                 augmented = self.transform(image=img_rgb)
-                return augmented['image'], label
+                return augmented["image"], label
             else:
-                # Generic callable fallback (e.g. torchvision transforms).
                 img_pil = Image.fromarray(img_rgb)
                 return self.transform(img_pil), label
 
@@ -230,12 +260,22 @@ class DeepfakeDataset(Dataset):
         norm_img = (tensor_img - self.mean_tensor) / self.std_tensor
         return norm_img, label
 
+
 class SequenceVideoDataset(Dataset):
-    def __init__(self, video_samples: List[Tuple[List[str], int]], transform: Optional[Any] = None, seq_len: int = 8):
+    """Dataset for temporal video sequences returning frame batch [T, 3, H, W], label, and padding mask [T]."""
+
+    def __init__(
+        self,
+        video_samples: List[Tuple[List[str], int]],
+        transform: Optional[Any] = None,
+        seq_len: int = 8,
+    ) -> None:
         self.video_samples = video_samples
         self.transform = transform
         if HAS_ALBUMENTATIONS and self.transform is not None:
-            if isinstance(self.transform, A.Compose) and not isinstance(self.transform, A.ReplayCompose):
+            if isinstance(self.transform, A.Compose) and not isinstance(
+                self.transform, A.ReplayCompose
+            ):
                 self.transform = A.ReplayCompose(self.transform.transforms)
         self.seq_len = seq_len
 
@@ -244,17 +284,17 @@ class SequenceVideoDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         frame_paths, label = self.video_samples[idx]
-        N = len(frame_paths)
+        n_frames = len(frame_paths)
         mean_t = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
         std_t = torch.tensor(IMAGENET_STD).view(3, 1, 1)
 
-        if N >= self.seq_len:
-            start_idx = max(0, (N - self.seq_len) // 2)
+        if n_frames >= self.seq_len:
+            start_idx = max(0, (n_frames - self.seq_len) // 2)
             selected_paths = frame_paths[start_idx : start_idx + self.seq_len]
             n_pad = 0
         else:
-            selected_paths = frame_paths[:N]
-            n_pad = self.seq_len - N
+            selected_paths = frame_paths[:n_frames]
+            n_pad = self.seq_len - n_frames
 
         try:
             img_rgb_list = [load_image_rgb(p) for p in selected_paths]
@@ -262,9 +302,10 @@ class SequenceVideoDataset(Dataset):
                 last_frame = img_rgb_list[-1]
                 img_rgb_list.extend([last_frame] * n_pad)
         except Exception as e:
-            logging.debug(f"Video frame sequence loading failed for {frame_paths}: {e}")
+            logging.debug("Video frame sequence loading failed for %s: %s", frame_paths, e)
             dummy = np.zeros((256, 256, 3), dtype=np.uint8)
             img_rgb_list = [dummy] * self.seq_len
+
         frames = []
         if self.transform is not None and len(img_rgb_list) > 0:
             if HAS_ALBUMENTATIONS and isinstance(self.transform, A.ReplayCompose):
@@ -277,7 +318,7 @@ class SequenceVideoDataset(Dataset):
                         frames.append(aug_img)
             else:
                 for img_rgb in img_rgb_list:
-                    if hasattr(self.transform, '__call__'):
+                    if hasattr(self.transform, "__call__"):
                         frames.append(self.transform(Image.fromarray(img_rgb)))
         else:
             for img_rgb in img_rgb_list:
@@ -295,12 +336,20 @@ class SequenceVideoDataset(Dataset):
 
         padding_mask = torch.zeros(self.seq_len, dtype=torch.bool)
         if n_pad > 0:
-            padding_mask[self.seq_len - n_pad:] = True
+            padding_mask[self.seq_len - n_pad :] = True
 
         return seq_tensor, torch.tensor(label, dtype=torch.long), padding_mask
 
 
-def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, DataLoader]:
+def _worker_init_fn(worker_id: int) -> None:
+    """Worker initialization hook disabling OpenCV multithreading per worker process."""
+    cv2.setNumThreads(0)
+
+
+def create_dataloaders(
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, DataLoader]:
+    """Construct PyTorch DataLoaders for train, val, and test splits with class balancing."""
     if config is None:
         config = load_config()
 
@@ -314,11 +363,7 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
     num_workers = train_cfg.get("num_workers", 4)
     seed = train_cfg.get("seed", 42)
 
-    worker_init = lambda w: cv2.setNumThreads(0) if num_workers > 0 else None
-
     samples = []
-
-    # Manifest caching logic
     manifest_path = os.path.join(cropped_dir, "splits.json")
     dir_hash = ""
     if os.path.exists(cropped_dir):
@@ -330,9 +375,9 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
                 train_s = manifest["train"]
                 val_s = manifest["val"]
                 test_s = manifest["test"]
-                train_samples = [(os.path.join(cropped_dir, p), l) for p, l in train_s]
-                val_samples = [(os.path.join(cropped_dir, p), l) for p, l in val_s]
-                test_samples = [(os.path.join(cropped_dir, p), l) for p, l in test_s]
+                train_samples = [(os.path.join(cropped_dir, p), lbl) for p, lbl in train_s]
+                val_samples = [(os.path.join(cropped_dir, p), lbl) for p, lbl in val_s]
+                test_samples = [(os.path.join(cropped_dir, p), lbl) for p, lbl in test_s]
                 samples = train_samples + val_samples + test_samples
 
     if not samples and os.path.exists(cropped_dir):
@@ -349,9 +394,9 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
                 with open(manifest_path, "w") as f:
                     json.dump({
                         "hash": dir_hash,
-                        "train": [(os.path.relpath(p, cropped_dir), l) for p, l in train_samples],
-                        "val": [(os.path.relpath(p, cropped_dir), l) for p, l in val_samples],
-                        "test": [(os.path.relpath(p, cropped_dir), l) for p, l in test_samples]
+                        "train": [(os.path.relpath(p, cropped_dir), lbl) for p, lbl in train_samples],
+                        "val": [(os.path.relpath(p, cropped_dir), lbl) for p, lbl in val_samples],
+                        "test": [(os.path.relpath(p, cropped_dir), lbl) for p, lbl in test_samples],
                     }, f)
             except Exception as e:
                 logging.warning("Failed to write splits manifest to %s: %s", manifest_path, e)
@@ -369,25 +414,55 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
         train_labels = [s[1] for s in train_samples]
         class_counts = np.maximum(np.bincount(train_labels), 1)
         class_weights = 1.0 / class_counts
-        sample_weights = [class_weights[l] for l in train_labels]
+        sample_weights = [class_weights[lbl] for lbl in train_labels]
         generator = torch.Generator().manual_seed(seed)
-        sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True, generator=generator)
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True,
+            generator=generator,
+        )
     else:
         sampler = None
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True, drop_last=True, worker_init_fn=worker_init if num_workers > 0 else None)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True, worker_init_fn=worker_init if num_workers > 0 else None)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True, worker_init_fn=worker_init if num_workers > 0 else None)
+    worker_init = _worker_init_fn if num_workers > 0 else None
 
-    return {
-        "train": train_loader,
-        "val": val_loader,
-        "test": test_loader
-    }
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        sampler=sampler,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+        worker_init_fn=worker_init,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        worker_init_fn=worker_init,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        worker_init_fn=worker_init,
+    )
+
+    return {"train": train_loader, "val": val_loader, "test": test_loader}
+
 
 build_dataloaders = create_dataloaders
 
-def create_sequence_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, DataLoader]:
+
+def create_sequence_dataloaders(
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, DataLoader]:
+    """Construct PyTorch DataLoaders for video frame sequence datasets [T, 3, H, W]."""
     if config is None:
         config = load_config()
 
@@ -402,8 +477,6 @@ def create_sequence_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict
     seed = train_cfg.get("seed", 42)
     seq_len = train_cfg.get("seq_len", 8)
 
-    worker_init = lambda w: cv2.setNumThreads(0) if num_workers > 0 else None
-
     samples = []
     if os.path.exists(cropped_dir):
         for root, _, files in os.walk(cropped_dir):
@@ -414,7 +487,6 @@ def create_sequence_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict
                     samples.append((full_path, label))
 
     if not samples:
-        video_samples = []
         train_vids, val_vids, test_vids = [], [], []
     else:
         video_samples = group_samples_by_video(samples)
@@ -423,21 +495,50 @@ def create_sequence_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict
     train_transform, eval_transform = get_transforms(img_size=img_size)
 
     train_dataset = SequenceVideoDataset(train_vids, transform=train_transform, seq_len=seq_len)
-    val_dataset   = SequenceVideoDataset(val_vids,   transform=eval_transform,  seq_len=seq_len)
-    test_dataset  = SequenceVideoDataset(test_vids,  transform=eval_transform,  seq_len=seq_len)
+    val_dataset = SequenceVideoDataset(val_vids, transform=eval_transform, seq_len=seq_len)
+    test_dataset = SequenceVideoDataset(test_vids, transform=eval_transform, seq_len=seq_len)
 
     if train_vids:
         train_labels = [v[1] for v in train_vids]
         class_counts = np.maximum(np.bincount(train_labels), 1)
         class_weights = 1.0 / class_counts
-        sample_weights = [class_weights[l] for l in train_labels]
+        sample_weights = [class_weights[lbl] for lbl in train_labels]
         generator = torch.Generator().manual_seed(seed)
-        sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True, generator=generator)
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True,
+            generator=generator,
+        )
     else:
         sampler = None
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True, drop_last=True, worker_init_fn=worker_init if num_workers > 0 else None)
-    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True, worker_init_fn=worker_init if num_workers > 0 else None)
-    test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True, worker_init_fn=worker_init if num_workers > 0 else None)
+    worker_init = _worker_init_fn if num_workers > 0 else None
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        sampler=sampler,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+        worker_init_fn=worker_init,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        worker_init_fn=worker_init,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        worker_init_fn=worker_init,
+    )
 
     return {"train": train_loader, "val": val_loader, "test": test_loader}

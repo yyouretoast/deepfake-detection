@@ -1,15 +1,17 @@
 import logging
-from typing import List, Tuple, Optional, Union
 import os
+import threading
+import urllib.request
+from typing import Any, List, Optional, Tuple, Union
+
 import cv2
 import numpy as np
 import torch
-import urllib.request
-import threading
 from PIL import Image
 
 try:
     from facenet_pytorch import MTCNN
+
     HAS_MTCNN = True
 except ImportError:
     HAS_MTCNN = False
@@ -17,9 +19,19 @@ except ImportError:
 YUNET_MODEL_FILENAME = "face_detection_yunet_2023mar.onnx"
 YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 
+
 def get_yunet_model_path() -> Optional[str]:
-    """Resolves or downloads YuNet ONNX model path with automatic local caching."""
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    """Resolve or download local YuNet ONNX model path."""
+    curr = os.path.abspath(__file__)
+    repo_root = None
+    for _ in range(5):
+        curr = os.path.dirname(curr)
+        if os.path.exists(os.path.join(curr, "models")) or os.path.exists(os.path.join(curr, "config")):
+            repo_root = curr
+            break
+    if repo_root is None:
+        repo_root = os.getcwd()
+
     local_path = os.path.join(repo_root, "models", YUNET_MODEL_FILENAME)
     if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
         return local_path
@@ -37,27 +49,27 @@ def get_yunet_model_path() -> Optional[str]:
         logging.warning("Failed to download YuNet model file: %s", e)
     return None
 
+
 _YUNET_CACHED_MODEL_PATH: Optional[str] = None
 
+
 def get_cached_yunet_path() -> Optional[str]:
-    """Lazily resolves or downloads YuNet model path on first request."""
+    """Lazily resolve and cache YuNet model path."""
     global _YUNET_CACHED_MODEL_PATH
     if _YUNET_CACHED_MODEL_PATH is None:
         _YUNET_CACHED_MODEL_PATH = get_yunet_model_path()
     return _YUNET_CACHED_MODEL_PATH
 
+
 class DynamicFaceCropper:
-    """
-    OpenCV YuNet face extractor with MTCNN and Haar Cascade fallback detectors.
-    Extracts scaled face crops with 5-point landmark similarity alignment.
-    Uses thread-local storage (threading.local()) for thread safety across worker threads.
-    """
+    """Multi-engine face extractor with 5-point landmark similarity transform alignment and fallback detectors."""
+
     def __init__(
         self,
         target_size: int = 512,
         scale_factor: float = 1.50,
         device: Optional[torch.device] = None,
-        margin: int = 20
+        margin: int = 20,
     ) -> None:
         self.target_size = target_size
         self.scale_factor = scale_factor
@@ -65,29 +77,27 @@ class DynamicFaceCropper:
         self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._local = threading.local()
 
-        # Fallback Engine 1: MTCNN
         if HAS_MTCNN:
             try:
                 self.detector = MTCNN(
                     keep_all=True,
                     select_largest=True,
                     device=self.device,
-                    post_process=False
+                    post_process=False,
                 )
             except Exception:
                 self.detector = None
         else:
             self.detector = None
 
-        # Fallback Engine 2: Haar Cascade
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         if os.path.exists(cascade_path):
             self.haar_cascade = cv2.CascadeClassifier(cascade_path)
         else:
             self.haar_cascade = None
 
-    def _get_thread_yunet(self):
-        """Thread-isolated YuNet detector instantiation to prevent C++ state race conditions."""
+    def _get_thread_yunet(self) -> Optional[Any]:
+        """Fetch or instantiate thread-isolated YuNet detector."""
         if not hasattr(self._local, "yunet"):
             cached_path = get_cached_yunet_path()
             if cached_path is not None and hasattr(cv2, "FaceDetectorYN"):
@@ -98,7 +108,7 @@ class DynamicFaceCropper:
                         input_size=(300, 300),
                         score_threshold=0.6,
                         nms_threshold=0.3,
-                        top_k=5000
+                        top_k=5000,
                     )
                 except Exception as e:
                     logging.warning("Failed to initialize thread-local YuNet detector: %s", e)
@@ -107,8 +117,10 @@ class DynamicFaceCropper:
                 self._local.yunet = None
         return self._local.yunet
 
-    def _detect_yunet(self, image_rgb: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-        """Detects faces using thread-isolated OpenCV YuNet (2-5ms per frame on CPU). Returns (boxes, 5-point landmarks)."""
+    def _detect_yunet(
+        self, image_rgb: np.ndarray
+    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Detect faces using OpenCV YuNet on RGB array [H, W, 3]. Returns (bounding_boxes, 5_point_landmarks)."""
         yunet_engine = self._get_thread_yunet()
         if yunet_engine is None:
             return None, None
@@ -139,7 +151,7 @@ class DynamicFaceCropper:
             return None, None
 
     def _detect_cpu_cascade(self, image_rgb: np.ndarray) -> Optional[np.ndarray]:
-        """Ultra-fast OpenCV Haar Cascade CPU face detector fallback (100+ FPS)."""
+        """Detect faces using CPU Haar Cascade on RGB array [H, W, 3]."""
         if self.haar_cascade is None:
             return None
         try:
@@ -149,15 +161,15 @@ class DynamicFaceCropper:
             )
             if len(faces) == 0:
                 return None
-            boxes = []
-            for (x, y, w, h) in faces:
-                boxes.append([x, y, x + w, y + h])
+            boxes = [[x, y, x + w, y + h] for (x, y, w, h) in faces]
             return np.array(boxes)
         except Exception:
             return None
 
-    def _apply_cosine_edge_taper(self, crop: np.ndarray, border_ratio: float = 0.05) -> np.ndarray:
-        """Applies 2D Cosine window edge tapering to smooth padded border step-discontinuities."""
+    def _apply_cosine_edge_taper(
+        self, crop: np.ndarray, border_ratio: float = 0.05
+    ) -> np.ndarray:
+        """Apply 2D Cosine window edge tapering to smooth padded border step-discontinuities on crop [H, W, 3]."""
         h, w, _ = crop.shape
         taper_h = max(1, int(h * border_ratio))
         taper_w = max(1, int(w * border_ratio))
@@ -173,8 +185,14 @@ class DynamicFaceCropper:
         window_2d = np.outer(win_y, win_x)[:, :, np.newaxis]
         return np.clip(crop.astype(np.float32) * window_2d, 0, 255).astype(np.uint8)
 
-    def _crop_single_box(self, image_rgb: np.ndarray, box: np.ndarray, landmarks: Optional[np.ndarray] = None, target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
-        """Crops a face box with 1.50x scaling, slicing image bounds with BORDER_REPLICATE and Cosine edge tapering."""
+    def _crop_single_box(
+        self,
+        image_rgb: np.ndarray,
+        box: np.ndarray,
+        landmarks: Optional[np.ndarray] = None,
+        target_size: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Crop face region from RGB image [H, W, 3] with scale factor and 5-point landmark similarity transform alignment."""
         out_size = target_size if target_size is not None else self.target_size
         h_img, w_img, _ = image_rgb.shape
         x1, y1, x2, y2 = box[:4]
@@ -199,8 +217,11 @@ class DynamicFaceCropper:
         if pad_left > 0 or pad_top > 0 or pad_right > 0 or pad_bottom > 0:
             padded_img = cv2.copyMakeBorder(
                 image_rgb,
-                pad_top, pad_bottom, pad_left, pad_right,
-                cv2.BORDER_REPLICATE
+                pad_top,
+                pad_bottom,
+                pad_left,
+                pad_right,
+                cv2.BORDER_REPLICATE,
             )
         else:
             padded_img = image_rgb
@@ -225,39 +246,60 @@ class DynamicFaceCropper:
             raw_crop = self._apply_cosine_edge_taper(raw_crop)
 
         raw_unwarped_crop = cv2.resize(raw_crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
-
         aligned_warped_crop = raw_unwarped_crop
 
         if landmarks is not None:
-            canonical_landmarks = np.array([
-                [0.30, 0.35],
-                [0.70, 0.35],
-                [0.50, 0.50],
-                [0.35, 0.70],
-                [0.65, 0.70]
-            ], dtype=np.float32) * out_size
+            canonical_landmarks = (
+                np.array(
+                    [
+                        [0.30, 0.35],
+                        [0.70, 0.35],
+                        [0.50, 0.50],
+                        [0.35, 0.70],
+                        [0.65, 0.70],
+                    ],
+                    dtype=np.float32,
+                )
+                * out_size
+            )
 
             try:
-                M, inliers = cv2.estimateAffinePartial2D(np.array(landmarks), canonical_landmarks, method=cv2.LMEDS)
+                M, inliers = cv2.estimateAffinePartial2D(
+                    np.array(landmarks), canonical_landmarks, method=cv2.LMEDS
+                )
                 if M is not None:
                     det = abs(M[0, 0] * M[1, 1] - M[0, 1] * M[1, 0])
                     if 0.2 < det < 5.0:
-                        aligned_warped_crop = cv2.warpAffine(image_rgb, M, (out_size, out_size), flags=cv2.INTER_AREA, borderMode=cv2.BORDER_REPLICATE)
+                        aligned_warped_crop = cv2.warpAffine(
+                            image_rgb,
+                            M,
+                            (out_size, out_size),
+                            flags=cv2.INTER_AREA,
+                            borderMode=cv2.BORDER_REPLICATE,
+                        )
             except Exception:
                 pass
 
         return aligned_warped_crop, raw_unwarped_crop
 
-
-    def _crop_from_box(self, image_rgb: np.ndarray, boxes, landmarks=None, target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
-        """Selects the largest detected bounding box and delegates to _crop_single_box."""
+    def _crop_from_box(
+        self,
+        image_rgb: np.ndarray,
+        boxes: Any,
+        landmarks: Any = None,
+        target_size: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Select largest detected bounding box and perform crop extraction."""
         out_size = target_size if target_size is not None else self.target_size
         if boxes is None or len(boxes) == 0:
             c = self._center_crop(image_rgb, target_size=out_size)
             return c, c
 
         if landmarks is not None and len(landmarks) == len(boxes):
-            best_idx = max(range(len(boxes)), key=lambda i: (boxes[i][2] - boxes[i][0]) * (boxes[i][3] - boxes[i][1]))
+            best_idx = max(
+                range(len(boxes)),
+                key=lambda i: (boxes[i][2] - boxes[i][0]) * (boxes[i][3] - boxes[i][1]),
+            )
             best_box = boxes[best_idx]
             best_landmarks = landmarks[best_idx]
         else:
@@ -266,8 +308,10 @@ class DynamicFaceCropper:
 
         return self._crop_single_box(image_rgb, best_box, best_landmarks, target_size=out_size)
 
-    def _center_crop(self, image_rgb: np.ndarray, target_size: Optional[int] = None) -> np.ndarray:
-        """Fallback center crop when no face bounding box is detected."""
+    def _center_crop(
+        self, image_rgb: np.ndarray, target_size: Optional[int] = None
+    ) -> np.ndarray:
+        """Fallback center square crop when no face bounding box is detected."""
         out_size = target_size if target_size is not None else self.target_size
         h, w, _ = image_rgb.shape
         side = min(h, w)
@@ -275,8 +319,12 @@ class DynamicFaceCropper:
         crop = image_rgb[cy - side // 2 : cy + side // 2, cx - side // 2 : cx + side // 2]
         return cv2.resize(crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
 
-    def crop_face_dual(self, image_input: Union[str, np.ndarray], target_size: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
-        """Extracts 1.50x scaled face crop returning both aligned warped and raw unwarped crops."""
+    def crop_face_dual(
+        self,
+        image_input: Union[str, np.ndarray, Image.Image],
+        target_size: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Extract face crop from image returning (aligned_warped_crop, raw_unwarped_crop)."""
         out_size = target_size if target_size is not None else self.target_size
         if isinstance(image_input, str):
             img_bgr = cv2.imread(image_input)
@@ -314,17 +362,21 @@ class DynamicFaceCropper:
         c = self._center_crop(image_rgb, target_size=out_size)
         return c, c
 
-    def crop_face(self, image_input: Union[str, np.ndarray], target_size: Optional[int] = None) -> np.ndarray:
-        """Extracts single 1.30x scaled aligned face crop array."""
+    def crop_face(
+        self,
+        image_input: Union[str, np.ndarray, Image.Image],
+        target_size: Optional[int] = None,
+    ) -> np.ndarray:
+        """Extract aligned face crop RGB numpy array of shape [target_size, target_size, 3]."""
         aligned_crop, _ = self.crop_face_dual(image_input, target_size=target_size)
         return aligned_crop
 
     def crop_faces_batched(
         self,
         image_inputs: List[Union[str, np.ndarray, Image.Image]],
-        target_size: Optional[int] = None
+        target_size: Optional[int] = None,
     ) -> List[np.ndarray]:
-        """Batched face crop extraction delegating to crop_face for each input image."""
+        """Batched face crop extraction returning list of RGB face arrays [H, W, 3]."""
         if not image_inputs:
             return []
         return [self.crop_face(img, target_size=target_size) for img in image_inputs]
@@ -336,9 +388,9 @@ class DynamicFaceCropper:
         prefix: str = "frame",
         frames_per_video: int = 15,
         target_size: Optional[int] = None,
-        max_frames: Optional[int] = None
+        max_frames: Optional[int] = None,
     ) -> List[str]:
-        """Extracts face crops from video frames saving as Lossless WebP images."""
+        """Extract face crops from video frames saving lossless WebP images to output directory."""
         if max_frames is not None:
             frames_per_video = max_frames
         out_size = target_size if target_size is not None else self.target_size
@@ -372,7 +424,6 @@ class DynamicFaceCropper:
                 out_filename = f"{prefix}_{saved_count:04d}.webp"
                 out_filepath = os.path.join(output_dir, out_filename)
 
-                # Save as Lossless WebP
                 Image.fromarray(crop_rgb).save(out_filepath, format="WEBP", lossless=True)
                 saved_paths.append(out_filepath)
                 saved_count += 1
@@ -386,10 +437,7 @@ class DynamicFaceCropper:
 def preprocess_tensors_batch(
     faces_rgb_list: List[np.ndarray], device: torch.device = torch.device("cpu")
 ) -> Tuple[np.ndarray, torch.Tensor]:
-    """
-    Applies ImageNet mean/std normalization to a list of uint8 RGB face crop arrays [H, W, 3].
-    Returns normalized numpy batch [B, 3, 256, 256] and PyTorch tensor batch.
-    """
+    """Apply ImageNet normalization to list of uint8 RGB face crop arrays [H, W, 3]. Return (numpy_batch, torch_tensor_batch) [B, 3, 256, 256]."""
     batch_arr = np.stack(faces_rgb_list)
     batch_nchw = batch_arr.transpose(0, 3, 1, 2)
 
@@ -400,4 +448,3 @@ def preprocess_tensors_batch(
 
     norm_nchw = tensor.cpu().numpy()
     return norm_nchw, tensor
-

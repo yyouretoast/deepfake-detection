@@ -1,8 +1,10 @@
+"""Configuration loader and default settings for Deepfake Detector."""
+
 from typing import Dict, Any, Optional
-import os
-import yaml
 import copy
 import logging
+import os
+import yaml
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "paths": {
@@ -41,11 +43,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "explainability": {
         "gradcam_layer": "spatial_backbone.stages.3",
         "target_class": 1,
-    }
+    },
 }
 
+
 def _deep_merge_dict(base: Dict[str, Any], custom: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively merges custom dictionary into base dictionary."""
+    """Recursively merge nested dictionaries, overriding base with custom values."""
     merged = copy.deepcopy(base)
     for key, value in custom.items():
         if isinstance(value, dict) and key in merged and isinstance(merged[key], dict):
@@ -54,8 +57,9 @@ def _deep_merge_dict(base: Dict[str, Any], custom: Dict[str, Any]) -> Dict[str, 
             merged[key] = copy.deepcopy(value)
     return merged
 
+
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
-    """Loads configuration from YAML file and merges missing keys from DEFAULT_CONFIG."""
+    """Load YAML configuration file and merge missing key defaults from DEFAULT_CONFIG."""
     if config_path is None or not os.path.exists(config_path):
         config_path = "config/default.yaml"
         if not os.path.exists(config_path):
@@ -74,3 +78,4 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             logging.warning("Failed to parse config file '%s': %s. Using DEFAULT_CONFIG.", config_path, e)
 
     return copy.deepcopy(DEFAULT_CONFIG)
+

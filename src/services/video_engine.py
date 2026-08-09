@@ -1,33 +1,34 @@
-"""
-Video inference and model loading service for Deepfake Detector Engine.
-Decouples video reading, keyframe seeking, face cropping, and batch inference from the UI layer.
-"""
+"""Video inference and model loading service for Deepfake Detector Engine."""
 
 import gc
-import os
 import json
 import logging
+import os
+from typing import Any, Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
 import torch
-from typing import List, Tuple, Dict, Any, Optional
 
+from src.config import load_config
 from src.dataset.preprocess import DynamicFaceCropper, preprocess_tensors_batch
 from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.config import load_config
-from src.utils.checkpoint import clean_state_dict, DEFAULT_THRESHOLD
+from src.utils.checkpoint import DEFAULT_THRESHOLD, clean_state_dict
 from src.utils.temporal_aggregation import aggregate_video_predictions
 
-CONFIG = load_config()
-APP_CFG = CONFIG.get("app", {})
+CONFIG: Dict[str, Any] = load_config()
+APP_CFG: Dict[str, Any] = CONFIG.get("app", {})
 IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
     """
-    Decoupled model loader function.
-    Returns: (pytorch_model, cropper, has_pytorch_weights, classification_threshold, temperature)
+    Load prediction engine model weights, sidecar metadata, and face cropper.
+
+    Returns:
+        Tuple containing (pytorch_model, cropper, has_pytorch_weights, classification_threshold, temperature).
     """
     candidate_paths = [
         "models/dual_stream_calibrated.pth",
@@ -35,9 +36,9 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
         "dual_stream_calibrated.pth",
         "models/dual_stream_best.pth",
         "weights/dual_stream_best.pth",
-        "dual_stream_best.pth"
+        "dual_stream_best.pth",
     ]
-    weights_path = None
+    weights_path: Optional[str] = None
     for p in candidate_paths:
         if os.path.exists(p):
             weights_path = p
@@ -46,10 +47,11 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     if weights_path is None:
         try:
             from huggingface_hub import hf_hub_download
+
             logging.info("No local checkpoint found. Attempting download from HuggingFace Hub...")
             weights_path = hf_hub_download(
                 repo_id="yyouretoast/deepfake-detector",
-                filename="dual_stream_calibrated.pth"
+                filename="dual_stream_calibrated.pth",
             )
             logging.info("Downloaded weights from HuggingFace Hub to %s", weights_path)
         except Exception as e:
@@ -62,7 +64,7 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     for sp in sidecar_paths:
         if os.path.exists(sp):
             try:
-                with open(sp, "r") as f:
+                with open(sp, "r", encoding="utf-8") as f:
                     meta = json.load(f)
                     opt_threshold = float(meta.get("optimal_threshold", DEFAULT_THRESHOLD))
                     temperature = float(meta.get("temperature", 1.0))
@@ -71,7 +73,7 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
                 logging.warning("Could not load sidecar metadata: %s", e)
 
     has_weights = weights_path is not None and os.path.exists(weights_path)
-    state_dict = None
+    state_dict: Optional[Dict[str, Any]] = None
     if has_weights:
         checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=True)
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
@@ -92,7 +94,8 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
     if state_dict is not None:
         incompatible_keys = pytorch_model.load_state_dict(state_dict, strict=False)
         missing_critical = [
-            k for k in incompatible_keys.missing_keys
+            k
+            for k in incompatible_keys.missing_keys
             if any(prefix in k for prefix in ["spatial_backbone", "freq_conv", "gate_fc", "classifier"])
         ]
         if missing_critical:
@@ -131,7 +134,9 @@ def process_video_frames(
         p_model, c_crop, h_weights, threshold, temp = load_prediction_engine()
         pytorch_model = pytorch_model or p_model
         cropper = cropper or c_crop
-        classification_threshold = classification_threshold if classification_threshold is not None else threshold
+        classification_threshold = (
+            classification_threshold if classification_threshold is not None else threshold
+        )
         temperature = temperature if temperature is not None else temp
         if has_pytorch_weights is None:
             has_pytorch_weights = h_weights
@@ -174,8 +179,8 @@ def process_video_frames(
     if not all_faces:
         return None
 
-    numpy_batch, torch_batch = preprocess_tensors_batch(all_faces, device=DEVICE)
-    sequence_tensor = torch_batch.unsqueeze(0)
+    _, torch_batch = preprocess_tensors_batch(all_faces, device=DEVICE)
+    sequence_tensor = torch_batch.unsqueeze(0)  # [1, N_faces, 3, H, W]
 
     unwrapped = pytorch_model.module if isinstance(pytorch_model, torch.nn.DataParallel) else pytorch_model
 
@@ -184,11 +189,11 @@ def process_video_frames(
             seq_logits = unwrapped.forward_sequence(sequence_tensor)
             video_prob = float(torch.sigmoid(seq_logits.float() / temperature).mean().item())
 
-    BATCH_SIZE = CONFIG.get("training", {}).get("batch_size", 16)
-    all_probs = []
+    batch_size = CONFIG.get("training", {}).get("batch_size", 16)
+    all_probs: List[float] = []
 
-    for i in range(0, len(all_faces), BATCH_SIZE):
-        batch_faces = all_faces[i : i + BATCH_SIZE]
+    for i in range(0, len(all_faces), batch_size):
+        batch_faces = all_faces[i : i + batch_size]
         _, sub_torch = preprocess_tensors_batch(batch_faces, device=DEVICE)
 
         with torch.inference_mode():
@@ -227,3 +232,4 @@ def process_video_frames(
         "frame_indices": detected_frame_indices,
         "timestamps": detected_timestamps,
     }
+
