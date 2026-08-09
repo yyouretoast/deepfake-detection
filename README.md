@@ -183,12 +183,14 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 ### 5. Hardware Inference & Serving Latency Benchmarks
 
-*Evaluated at 512×512 facial crop resolution using PyTorch 2.1 FP32 on local multi-thread CPU (`scripts/export_onnx.py`).*
+*Evaluated at 512×512 facial crop resolution across PyTorch 2.1 FP16 / FP32 hardware execution providers (`scripts/benchmark_latency.py`).*
 
 | Hardware Execution Provider | Precision | Batch Size | Single-Crop Latency | Throughput (FPS) | Provenance |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Intel CPU (Multi-thread)** | FP32 Standard | BS=1 (Single-Frame) | `188.25 ms/crop` | `5.3 FPS` | **Empirically Measured** |
-| **Intel CPU (Multi-thread)** | FP32 Standard | BS=32 (Batch Vectorized) | `4.77 ms/crop` | `209.6 FPS` | **Empirically Measured** |
+| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=1 (Single-Frame) | `21.54 ms/crop` | `46.4 FPS` | **Empirically Measured** (Kaggle GPU) |
+| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=32 (Batch Vectorized) | `16.27 ms/crop` | `61.5 FPS` | **Empirically Measured** (Kaggle GPU) |
+| **Intel CPU (Multi-thread)** | FP32 Standard | BS=1 (Single-Frame) | `188.25 ms/crop` | `5.3 FPS` | **Empirically Measured** (Local CPU) |
+| **Intel CPU (Multi-thread)** | FP32 Standard | BS=32 (Batch Vectorized) | `4.77 ms/crop` | `209.6 FPS` | **Empirically Measured** (Local CPU) |
 
 ### 6. Benchmark Performance & Visual Interpretability
 
@@ -273,6 +275,7 @@ deepfake-detection/
 │       ├── checkpoint.py          # Central state-dict cleaning, L-BFGS-B temp fitting & ECE calculation
 │       └── temporal_aggregation.py# Frame score pooling (soft-max, EMA, top-K, mean)
 ├── scripts/                       # Training, evaluation, export & plotting scripts
+│   ├── benchmark_latency.py       # Inference latency & throughput benchmark script
 │   ├── extract_face_crops.py      # Thread-pool multi-threaded face cropper
 │   ├── train_dual_stream_ddp.py   # Multi-GPU DDP training pipeline
 │   ├── train_loto_experiment.py   # LOTO cross-generator evaluation script
