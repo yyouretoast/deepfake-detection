@@ -51,11 +51,7 @@ def seed_everything(seed=42):
     torch.backends.cudnn.benchmark = False
 
 
-cv2.setNumThreads(0)
-
-
 def seed_worker(worker_id):
-    cv2.setNumThreads(0)
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
@@ -178,9 +174,9 @@ def main():
     pos_weight_val = num_real / max(1, num_fake)
 
     if accelerator.is_main_process:
-        from torchvision import models as tv_models
-        tv_models.convnext_small(weights=tv_models.ConvNeXt_Small_Weights.DEFAULT)
-    accelerator.wait_for_everyone()
+        logging.info(f"Class Distribution — Real: {num_real}, Fake: {num_fake} | Calculated pos_weight: {pos_weight_val:.4f}")
+
+    pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
 
     model = HybridDeepfakeDetector()
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))

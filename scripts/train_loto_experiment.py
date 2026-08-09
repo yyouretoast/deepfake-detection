@@ -69,23 +69,14 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     folder = sub_path.split("/")[1] if len(sub_path.split("/")) > 1 else ""
     if re.match(r"^\d{3}_\d{3}$", folder):
         pair_num = int(folder.split("_")[0])
-        if kw in ("neuraltextures", "nt", "neural_textures") and (600 <= pair_num <= 799):
+        if kw in ("neuraltextures", "nt") and (600 <= pair_num <= 799):
             return True
-        elif kw in ("deepfakes", "df", "deep_fakes") and (0 <= pair_num <= 199):
+        elif kw in ("deepfakes", "df") and (0 <= pair_num <= 199):
             return True
-        elif kw in ("face2face", "f2f", "face_2_face") and (200 <= pair_num <= 399):
+        elif kw in ("face2face", "f2f") and (200 <= pair_num <= 399):
             return True
-        elif kw in ("faceswap", "fs", "face_swap") and (400 <= pair_num <= 599):
+        elif kw in ("faceswap", "fs") and (400 <= pair_num <= 599):
             return True
-
-    if kw in ("faceswap", "fs", "face_swap"):
-        return any(k in sub_path for k in ("faceswap", "face_swap", "fs"))
-    if kw in ("face2face", "f2f", "face_2_face"):
-        return any(k in sub_path for k in ("face2face", "face_2_face", "f2f"))
-    if kw in ("deepfakes", "df", "deep_fakes"):
-        return any(k in sub_path for k in ("deepfakes", "deep_fakes", "df"))
-    if kw in ("neuraltextures", "nt", "neural_textures"):
-        return any(k in sub_path for k in ("neuraltextures", "neural_textures", "nt"))
 
     return kw in sub_path
 
@@ -150,17 +141,14 @@ def main():
     g = torch.Generator()
     g.manual_seed(42)
 
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True, worker_init_fn=seed_worker, generator=g)
-    target_loader = DataLoader(target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True, worker_init_fn=seed_worker, generator=g)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
+    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
+    target_loader = DataLoader(target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
 
     num_fake = sum(1 for s in train_samples if s[1] == 1)
     num_real = len(train_samples) - num_fake
-    pos_weight_val = min(10.0, float(num_real) / max(1.0, float(num_fake)))
-    if accelerator.is_main_process:
-        from torchvision import models as tv_models
-        tv_models.convnext_small(weights=tv_models.ConvNeXt_Small_Weights.DEFAULT)
-    accelerator.wait_for_everyone()
+    pos_weight_val = num_real / max(1, num_fake)
+    pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
 
     model = HybridDeepfakeDetector()
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
