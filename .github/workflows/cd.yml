@@ -23,4 +23,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          huggingface-cli upload yyouretoast/deepfake-detector . . --repo-type=space --token="$HF_TOKEN" --exclude "figures/*" "*.pth" "*.onnx" "data/*" ".git/*" ".github/*"
+          hf upload yyouretoast/deepfake-detector . . --repo-type=space --token="$HF_TOKEN" --exclude "figures/*" "*.pth" "*.onnx" "data/*" ".git/*" ".github/*"
