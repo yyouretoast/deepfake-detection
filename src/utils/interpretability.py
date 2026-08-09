@@ -1,29 +1,31 @@
-"""
-Model interpretability utilities for Deepfake Detector Engine.
-Includes ConvNeXtGradCAM backward-hook engine and 4-panel diagnostic generator.
-"""
+"""Model interpretability utilities including ConvNeXtGradCAM and 4-panel face diagnostic generator."""
 
-from typing import Dict
+from typing import Any, Dict, Optional
+
 import cv2
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+
 from src.models.hybrid_detector import HybridDeepfakeDetector
+
 
 class ConvNeXtGradCAM:
     """Grad-CAM Heatmap Engine for ConvNeXt Spatial Backbone."""
-    def __init__(self, model: HybridDeepfakeDetector):
+
+    def __init__(self, model: HybridDeepfakeDetector) -> None:
         self.model = model
-        self.feature_maps = None
-        self.gradients = None
+        self.feature_maps: Optional[torch.Tensor] = None
+        self.gradients: Optional[torch.Tensor] = None
         target_layer = self.model.spatial_backbone[-1]
         self.forward_handle = target_layer.register_forward_hook(self._save_feature_maps)
         self.backward_handle = target_layer.register_full_backward_hook(self._save_gradients)
 
-    def _save_feature_maps(self, module, input, output):
+    def _save_feature_maps(self, module: nn.Module, input: Any, output: torch.Tensor) -> None:
         self.feature_maps = output
 
-    def _save_gradients(self, module, grad_input, grad_output):
+    def _save_gradients(self, module: nn.Module, grad_input: Any, grad_output: Any) -> None:
         self.gradients = grad_output[0]
 
     def generate_heatmap(self, input_tensor: torch.Tensor, img_size: int = 512) -> np.ndarray:
@@ -43,7 +45,7 @@ class ConvNeXtGradCAM:
             cam += w * self.feature_maps[0, i]
 
         cam = F.relu(cam).detach().cpu().numpy()
-        denom = cam.max() - cam.min()
+        denom = float(cam.max() - cam.min())
         if denom > 1e-6:
             cam = (cam - cam.min()) / denom
         else:
@@ -51,7 +53,7 @@ class ConvNeXtGradCAM:
 
         return cv2.resize(cam, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
 
-    def remove_hooks(self):
+    def remove_hooks(self) -> None:
         try:
             self.forward_handle.remove()
             self.backward_handle.remove()
@@ -65,26 +67,21 @@ def generate_face_diagnostics(
     device: torch.device,
     temperature: float = 1.0,
 ) -> Dict[str, np.ndarray]:
-    """
-    Generates 4-panel interpretability representations:
-      (a) Original RGB Face Crop
-      (b) SRM High-Pass Spatial Noise Residual Map
-      (c) Centered 2D Real FFT Log-Magnitude Spectrum
-      (d) Grad-CAM Spatial ConvNeXt Attention Overlay Heatmap
-    """
+    """Generates 4-panel interpretability representations (RGB, SRM, FFT, Grad-CAM)."""
     img_size = face_rgb.shape[0]
     img_tensor = torch.from_numpy(face_rgb).permute(2, 0, 1).float().unsqueeze(0) / 255.0
     img_tensor = img_tensor.to(device)
 
     with torch.no_grad():
-        srm_out = model.srm(img_tensor)                           # [1, 9, H, W]
-        bayar_out = model.bayar(img_tensor)                       # [1, 1, H, W]
-        noise_combined = torch.cat([srm_out, bayar_out], dim=1)   # [1, 10, H, W]
-        freq_maps = model.fft(noise_combined)                     # [1, 20, H, W]
+        srm_out = model.srm(img_tensor)
+        bayar_out = model.bayar(img_tensor)
+        noise_combined = torch.cat([srm_out, bayar_out], dim=1)
+        freq_maps = model.fft(noise_combined)
 
     # Panel B: SRM High-Pass Residual Noise Map
     srm_map = srm_out[0].abs().mean(dim=0).cpu().numpy()
-    srm_norm = (srm_map - srm_map.min()) / max(srm_map.max() - srm_map.min(), 1e-6)
+    srm_denom = max(float(srm_map.max() - srm_map.min()), 1e-6)
+    srm_norm = (srm_map - srm_map.min()) / srm_denom
     srm_uint8 = (srm_norm * 255.0).astype(np.uint8)
     srm_colored = cv2.applyColorMap(srm_uint8, cv2.COLORMAP_VIRIDIS)
     srm_rgb = cv2.cvtColor(srm_colored, cv2.COLOR_BGR2RGB)
@@ -93,7 +90,8 @@ def generate_face_diagnostics(
     mag_maps = freq_maps[0, :10].cpu().numpy()
     mean_mag = np.mean(mag_maps, axis=0)
     fft_centered = np.fft.fftshift(mean_mag)
-    fft_norm = (fft_centered - fft_centered.min()) / max(fft_centered.max() - fft_centered.min(), 1e-6)
+    fft_denom = max(float(fft_centered.max() - fft_centered.min()), 1e-6)
+    fft_norm = (fft_centered - fft_centered.min()) / fft_denom
     fft_uint8 = (fft_norm * 255.0).astype(np.uint8)
     fft_colored = cv2.applyColorMap(fft_uint8, cv2.COLORMAP_MAGMA)
     fft_rgb = cv2.cvtColor(fft_colored, cv2.COLOR_BGR2RGB)
