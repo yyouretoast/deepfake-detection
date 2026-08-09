@@ -24,7 +24,8 @@ import streamlit as st
 from src.services.video_engine import load_prediction_engine, process_video_frames, DEVICE
 from src.utils.interpretability import generate_face_diagnostics
 from src.utils.visualization import render_temporal_anomaly_timeline
-from src.utils.checkpoint import normalize_confidence
+from src.utils.checkpoint import clean_state_dict, normalize_confidence  # noqa: F401
+from src.dataset.preprocess import preprocess_tensors_batch  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
