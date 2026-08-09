@@ -26,7 +26,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Ruff Linter
-        run: ruff check .
+        run: ruff check src scripts tests app.py
 
       - name: Run Pytest Suite
         run: pytest tests/ -v

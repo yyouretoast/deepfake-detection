@@ -1,5 +1,15 @@
 [tool.ruff]
 line-length = 100
+exclude = [
+    ".git",
+    ".gemini",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "scratch",
+    "build",
+    "dist",
+]
 
 [tool.ruff.lint]
 ignore = ["E402"]
