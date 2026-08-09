@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 import streamlit as st
 import torch
 
+import time
+
+# Ensure repository root is on sys.path
 REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
@@ -30,12 +33,29 @@ __all__ = [
     "clean_state_dict",
     "normalize_confidence",
     "preprocess_tensors_batch",
+    "safe_remove_file",
 ]
+
+
+def safe_remove_file(file_path: str, max_retries: int = 3, delay: float = 0.5) -> None:
+    """Safely attempt to remove a file with retries for file locks on Windows."""
+    if not file_path or not os.path.exists(file_path):
+        return
+    for attempt in range(max_retries):
+        try:
+            os.unlink(file_path)
+            return
+        except PermissionError:
+            if attempt < max_retries - 1:
+                time.sleep(delay)
+        except Exception:
+            return
 
 
 @st.cache_resource
 def _cached_model_loader() -> Tuple[Any, Any, bool, float, float]:
     return load_prediction_engine()
+
 
 
 def render_ui() -> None:
@@ -286,11 +306,8 @@ def render_ui() -> None:
                 st.session_state.analysis_results = res
                 st.session_state.last_file_id = file_id
             finally:
-                if tmp_path and os.path.exists(tmp_path):
-                    try:
-                        os.unlink(tmp_path)
-                    except PermissionError:
-                        pass
+                if tmp_path:
+                    safe_remove_file(tmp_path)
 
         res = st.session_state.analysis_results
 

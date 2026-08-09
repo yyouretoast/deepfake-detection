@@ -6,29 +6,33 @@ Usage:
     accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu train_accelerate.py
 """
 
+import argparse
+import json
+import logging
 import os
+import random
 import sys
+import time
+from typing import Optional
 
 # Ensure repository root is on sys.path for DDP spawned subprocesses
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-import json
-import time
-import random
-import logging
-import numpy as np
-import cv2
-import torch
-import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
-from sklearn.metrics import roc_auc_score
-from accelerate import Accelerator
-from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.dataset.loader import dedupe_split
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
+from accelerate import Accelerator  # noqa: E402
+from sklearn.metrics import roc_auc_score  # noqa: E402
+from torch.utils.data import DataLoader, Dataset  # noqa: E402
+from tqdm import tqdm  # noqa: E402
+
+from src.dataset.loader import dedupe_split  # noqa: E402
+from src.models.hybrid_detector import HybridDeepfakeDetector  # noqa: E402
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 IMG_SIZE = 256
 BATCH_SIZE = 16
@@ -36,13 +40,13 @@ NUM_EPOCHS = 5
 T_MAX_TOTAL = 15
 LEARNING_RATE_BACKBONE = 1e-4
 LEARNING_RATE_HEAD = 1e-3
-CHECKPOINT_STATE_DIR = '/kaggle/working/checkpoint_state'
-BEST_MODEL_WEIGHTS_PATH = '/kaggle/working/dual_stream_best.pth'
+CHECKPOINT_STATE_DIR = os.getenv("CHECKPOINT_STATE_DIR", "./models/checkpoint_state")
+BEST_MODEL_WEIGHTS_PATH = os.getenv("BEST_MODEL_WEIGHTS_PATH", "./models/dual_stream_best.pth")
 
 
 def seed_everything(seed=42):
     random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -91,20 +95,30 @@ class KaggleFastDataset(Dataset):
         return tensor, torch.tensor(label, dtype=torch.float32), torch.tensor(valid_flag, dtype=torch.float32)
 
 
-def find_dataset_root():
-    candidate_paths = [
-        '/kaggle/working/local_crops',
-        '/kaggle/input/datasets/yassinyasserr/deepfake-crops-512/deepfake_crops_512',
-        '/kaggle/input/deepfake-crops-512/deepfake_crops_512',
-        '/kaggle/input/deepfake_crops_512'
-    ]
-    for p in candidate_paths:
-        if os.path.exists(os.path.join(p, 'splits.json')):
+def find_dataset_root(custom_dir: Optional[str] = None) -> str:
+    """Locate dataset directory containing splits.json."""
+    candidates = []
+    if custom_dir:
+        candidates.append(custom_dir)
+    env_dir = os.getenv("DATASET_ROOT")
+    if env_dir:
+        candidates.append(env_dir)
+    candidates.extend([
+        "./data/cropped",
+        "./data",
+        "/kaggle/working/local_crops",
+        "/kaggle/input/datasets/yassinyasserr/deepfake-crops-512/deepfake_crops_512",
+        "/kaggle/input/deepfake-crops-512/deepfake_crops_512",
+        "/kaggle/input/deepfake_crops_512",
+    ])
+    for p in candidates:
+        if p and os.path.exists(os.path.join(p, "splits.json")):
             return p
-    for r, d, f in os.walk('/kaggle/input'):
-        if 'splits.json' in f:
-            return r
-    raise FileNotFoundError("Could not locate dataset containing splits.json under /kaggle/input")
+    if os.path.exists("/kaggle/input"):
+        for r, d, f in os.walk("/kaggle/input"):
+            if "splits.json" in f:
+                return r
+    raise FileNotFoundError("Could not locate dataset containing splits.json. Specify via --data_dir or DATASET_ROOT environment variable.")
 
 
 def get_differential_param_groups(model):
@@ -136,8 +150,12 @@ def get_differential_param_groups(model):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Train Dual-Stream Deepfake Detector DDP")
+    parser.add_argument("--data_dir", type=str, default=None, help="Directory containing splits.json and cropped dataset")
+    args = parser.parse_args()
+
     accelerator = Accelerator(mixed_precision='fp16')
-    data_root = find_dataset_root()
+    data_root = find_dataset_root(args.data_dir)
 
     if accelerator.is_main_process:
         logging.info(f"Verified Dataset Root: {data_root}")

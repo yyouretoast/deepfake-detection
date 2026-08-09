@@ -9,35 +9,36 @@ Usage:
     accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_loto_experiment.py --holdout celeb --epochs 3
 """
 
+import argparse
+import json
+import logging
 import os
-import sys
 import re
+import sys
+import time
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-import argparse
-import json
-import time
-import logging
-import numpy as np
-import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
-from accelerate import Accelerator
-from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.config import load_config
-from src.utils.checkpoint import fit_temperature_log
-from src.dataset.loader import dedupe_split
-from scripts.train_dual_stream_ddp import (
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
+from accelerate import Accelerator  # noqa: E402
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score  # noqa: E402
+from torch.utils.data import DataLoader  # noqa: E402
+
+from scripts.train_dual_stream_ddp import (  # noqa: E402
+    KaggleFastDataset,
     find_dataset_root,
     get_differential_param_groups,
     seed_everything,
     seed_worker,
-    KaggleFastDataset
 )
+from src.config import load_config  # noqa: E402
+from src.dataset.loader import dedupe_split  # noqa: E402
+from src.models.hybrid_detector import HybridDeepfakeDetector  # noqa: E402
+from src.utils.checkpoint import fit_temperature_log  # noqa: E402
 
 CONFIG = load_config()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -102,10 +103,11 @@ def main():
     parser = argparse.ArgumentParser(description="LOTO Dual-Stream Deepfake Training")
     parser.add_argument("--holdout", "--holdout_domain", dest="holdout", type=str, required=True, help="Generator domain to hold out (e.g. celeb, neuraltextures, deepfakes, face2face, faceswap)")
     parser.add_argument("--epochs", type=int, default=3, help="Number of LOTO training epochs")
+    parser.add_argument("--data_dir", type=str, default=None, help="Directory containing splits.json and cropped dataset")
     args = parser.parse_args()
 
     accelerator = Accelerator(mixed_precision='fp16')
-    data_root = find_dataset_root()
+    data_root = find_dataset_root(args.data_dir)
 
     splits_path = os.path.join(data_root, 'splits.json')
     with open(splits_path, 'r') as f:

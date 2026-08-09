@@ -42,7 +42,11 @@ def get_yunet_model_path() -> Optional[str]:
 
     try:
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        urllib.request.urlretrieve(YUNET_URL, local_path)
+        req = urllib.request.Request(
+            YUNET_URL, headers={"User-Agent": "DeepfakeDetector/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp, open(local_path, "wb") as f:
+            f.write(resp.read())
         if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
             return local_path
     except Exception as e:

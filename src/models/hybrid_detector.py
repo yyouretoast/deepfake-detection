@@ -80,7 +80,7 @@ class BayarConv2d(nn.Module):
 
 
 class RealFFT2DModule(nn.Module):
-    """2D Real FFT spectral decomposition into log-magnitude and normalized phase components."""
+    """2D FFT spectral decomposition into log-magnitude and normalized phase components."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -90,20 +90,14 @@ class RealFFT2DModule(nn.Module):
         device_type = x.device.type if x.is_cuda else "cpu"
         with torch.amp.autocast(device_type=device_type, enabled=False):
             x_fp32 = x.float()
-            fft = torch.fft.rfft2(x_fp32, norm="ortho")
-            mag = torch.log1p(torch.abs(fft))
-            phase = torch.clamp(torch.angle(fft) / torch.pi, -1.0, 1.0)
+            fft = torch.fft.fft2(x_fp32, norm="ortho")
+            fft_shift = torch.fft.fftshift(fft, dim=(-2, -1))
+            mag = torch.log1p(torch.clamp(torch.abs(fft_shift), min=1e-7))
+            phase = torch.angle(fft_shift) / torch.pi
 
-            mag = torch.nan_to_num(mag, nan=0.0, posinf=1.0, neginf=-1.0)
+            mag = torch.nan_to_num(mag, nan=0.0, posinf=10.0, neginf=-10.0)
             phase = torch.nan_to_num(phase, nan=0.0, posinf=1.0, neginf=-1.0)
-
-            mag_resized = F.interpolate(
-                mag, size=(x.shape[2], x.shape[3]), mode="bilinear", align_corners=False
-            )
-            phase_resized = F.interpolate(
-                phase, size=(x.shape[2], x.shape[3]), mode="bilinear", align_corners=False
-            )
-            out_fp32 = torch.cat([mag_resized, phase_resized], dim=1)
+            out_fp32 = torch.cat([mag, phase], dim=1)
         return out_fp32.to(dtype=x.dtype, device=x.device)
 
 

@@ -1,6 +1,7 @@
 """Video inference and model loading service for Deepfake Detector Engine."""
 
 import gc
+import hashlib
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ APP_CFG: Dict[str, Any] = CONFIG.get("app", {})
 IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+EXPECTED_WEIGHTS_SHA256: Optional[str] = os.getenv("EXPECTED_WEIGHTS_SHA256", None)
 
 
 def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
@@ -54,6 +56,16 @@ def load_prediction_engine() -> Tuple[torch.nn.Module, DynamicFaceCropper, bool,
                 filename="dual_stream_calibrated.pth",
             )
             logging.info("Downloaded weights from HuggingFace Hub to %s", weights_path)
+            if weights_path and EXPECTED_WEIGHTS_SHA256:
+                sha256 = hashlib.sha256()
+                with open(weights_path, "rb") as f:
+                    for chunk in iter(lambda: f.read(65536), b""):
+                        sha256.update(chunk)
+                computed_hash = sha256.hexdigest()
+                if computed_hash.lower() != EXPECTED_WEIGHTS_SHA256.lower():
+                    raise ValueError(
+                        f"Checksum mismatch for downloaded weights: expected {EXPECTED_WEIGHTS_SHA256}, got {computed_hash}"
+                    )
         except Exception as e:
             logging.warning("Could not download weights from HuggingFace Hub: %s", e)
 

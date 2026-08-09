@@ -57,6 +57,11 @@ def extract_identities(
         id_str = match_single.group(1)
         return id_str, id_str
 
+    logging.warning(
+        "Failed to isolate actor identity pairs via regex for '%s' (parsed base: '%s'). Fallback identity used; potential dataset split leakage risk.",
+        filename,
+        clean_base,
+    )
     return clean_base, clean_base
 
 
