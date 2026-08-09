@@ -195,7 +195,8 @@ def process_video_frames(
             with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
                 p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature)
                 p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature)
-                batch_probs = ((p1 + p2) / 2.0).cpu().numpy().tolist()
+                p_avg = ((p1 + p2) / 2.0).view(-1)
+                batch_probs = [float(val) for val in p_avg.cpu().numpy().tolist()]
 
         all_probs.extend(batch_probs)
 

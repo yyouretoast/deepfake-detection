@@ -292,10 +292,10 @@ def render_ui() -> None:
         if res is None:
             st.error("No clear face detections were found in the uploaded video.")
         else:
-            raw_video_prob = res["raw_video_prob"]
-            all_probs = res["all_probs"]
+            raw_video_prob = float(res["raw_video_prob"])
+            all_probs = [float(p[0]) if isinstance(p, (list, tuple)) else float(p) for p in res["all_probs"]]
             sample_faces = res["sample_faces"]
-            sample_probs = res["sample_probs"]
+            sample_probs = [float(p[0]) if isinstance(p, (list, tuple)) else float(p) for p in res["sample_probs"]]
 
             final_label = "Fake" if raw_video_prob > threshold_slider else "Real"
             final_conf = normalize_confidence(raw_video_prob, threshold_slider)
