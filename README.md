@@ -100,7 +100,7 @@ $$
 - **Recall (Fake)**: `0.9979` **[95% Non-Parametric Bootstrap CI: 0.9966 – 0.9987]**
 - **Optimal Temperature ($T^*$)**: `1.4788`
 - **Expected Calibration Error (ECE)**: `0.0122` (Raw) $\rightarrow$ `0.0093` (Calibrated)
-- **Inference Aggregation Policy**: Per-frame predictions are evaluated on 256×256 facial crops (with 512×512 resolution support). For full video inference, frame-level scores are aggregated via Softmax-Weighted Aggregation ($\text{Score}_{\text{video}} = \sum_{k=1}^K w_k \cdot p_k$, where $w_k = \frac{e^{p_k / \tau}}{\sum_{j=1}^K e^{p_j / \tau}}$ with temperature $\tau=0.10$), alongside configurable $\text{Top-}k$, Exponential Moving Average (EMA), and Mean pooling.
+- **Inference Aggregation Policy**: Per-frame predictions are evaluated on 256×256 facial crops (with 512×512 resolution support). For full video inference, frame-level scores are aggregated via Softmax-Weighted Aggregation ($\text{Score}_{\text{video}} = \sum_{k=1}^K w_k \cdot p_k$, where $w_k = \frac{\exp(p_k/\tau)}{\sum_{j=1}^K \exp(p_j/\tau)}$ with temperature $\tau=0.10$), alongside configurable $\text{Top-}k$, Exponential Moving Average (EMA), and Mean pooling.
 
 ### 2. Per-Generator Sub-Domain Evaluation (2-Class AUC vs Real Faces)
 

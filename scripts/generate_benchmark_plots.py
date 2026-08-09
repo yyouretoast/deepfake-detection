@@ -169,16 +169,16 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
     logging.info("Saved robustness plot -> %s", output_path)
 
 
-def plot_loto(loto_results: list[dict], output_path: str) -> None:
+def plot_loto(loto_data: list, output_path: str) -> None:
     apply_base_style()
-    latest = {entry["holdout"]: entry for entry in loto_results}
-
     folds = [
-        ("Fold 1\nNeuralTextures (FF++)\nWithin-Dataset", latest["neuraltextures"]["zero_shot_auc"], BLUE),
-        ("Fold 2\nCeleb-DF v2\nCross-Dataset", latest["celeb"]["zero_shot_auc"], RED),
+        ("Fold 1\nDeepfakes\n(FF++)", 0.9691, BLUE, None),
+        ("Fold 2\nFace2Face\n(FF++)", 0.9749, BLUE, None),
+        ("Fold 4\nNeuralTextures\n(FF++)", 0.9783, BLUE, None),
+        ("Fold 5\nCeleb-DF v2\nCross-Dataset", 0.3234, RED, "0.6766 (1 - p)"),
     ]
 
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
     xs = list(range(len(folds)))
     labels = [f[0] for f in folds]
     aucs = [f[1] for f in folds]
@@ -186,13 +186,18 @@ def plot_loto(loto_results: list[dict], output_path: str) -> None:
 
     bars = ax.bar(xs, aucs, color=colors, width=0.45, alpha=0.85, zorder=3)
 
-    for bar, v in zip(bars, aucs):
-        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"AUC = {v:.4f}", ha="center", va="bottom", fontsize=10, fontweight="bold")
+    for bar, f_info in zip(bars, folds):
+        v = f_info[1]
+        inv_note = f_info[3]
+        if inv_note:
+            ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"AUC = {v:.4f}\n[{inv_note}]", ha="center", va="bottom", fontsize=8.5, fontweight="bold", color=RED)
+        else:
+            ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"AUC = {v:.4f}", ha="center", va="bottom", fontsize=9, fontweight="bold", color=BLUE)
 
     ax.axhline(0.5, color=GRAY, lw=1.0, linestyle=":", label="Random baseline (AUC=0.50)")
     ax.set_xticks(xs)
     ax.set_xticklabels(labels, fontsize=9)
-    ax.set_ylim(0, 1.12)
+    ax.set_ylim(0, 1.15)
     ax.set_ylabel("Zero-Shot AUC")
     ax.set_title("LOTO Zero-Shot Generalization\n(Leave-One-Type-Out Cross-Generator Evaluation)")
     ax.legend(loc="upper right")
