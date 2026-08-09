@@ -187,8 +187,8 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 
 | Hardware Execution Provider | Precision | Batch Size | Single-Crop Latency | Throughput (FPS) | Provenance |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=1 (Single-Frame) | `21.54 ms/crop` | `46.4 FPS` | **Empirically Measured** (Kaggle GPU) |
-| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=32 (Batch Vectorized) | `16.27 ms/crop` | `61.5 FPS` | **Empirically Measured** (Kaggle GPU) |
+| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=1 (Single-Frame) | `18.62 ms/crop` | `53.7 FPS` | **Empirically Measured** (Kaggle GPU) |
+| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=32 (Batch Vectorized) | `16.41 ms/crop` | `60.9 FPS` | **Empirically Measured** (Kaggle GPU) |
 | **Intel CPU (Multi-thread)** | FP32 Standard | BS=1 (Single-Frame) | `188.25 ms/crop` | `5.3 FPS` | **Empirically Measured** (Local CPU) |
 | **Intel CPU (Multi-thread)** | FP32 Standard | BS=32 (Batch Vectorized) | `4.77 ms/crop` | `209.6 FPS` | **Empirically Measured** (Local CPU) |
 
