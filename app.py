@@ -321,7 +321,9 @@ def render_ui() -> None:
             with col_video:
                 st.markdown("#### Input Video Stream")
                 uploaded_file.seek(0)
-                st.video(uploaded_file)
+                _v_bytes = uploaded_file.read()
+                uploaded_file.seek(0)
+                st.video(_v_bytes, format="video/mp4")
 
             with col_results:
                 st.markdown("#### Detection Result")
