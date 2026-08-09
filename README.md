@@ -120,7 +120,7 @@ $$
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
 | **Fold 1** | `FF++ Deepfakes` | Within-Dataset LOTO | 5,289 | **`0.9691`** | `0.0309` | **`0.9065`** |
 | **Fold 2** | `FF++ Face2Face` | Within-Dataset LOTO | 5,289 | **`0.9749`** | `0.0251` | **`0.9179`** |
-| **Fold 3** | `FF++ FaceSwap` | Within-Dataset LOTO | 5,200 | *Pending GPU Run* | *Pending* | *Pending* |
+| **Fold 3** | `FF++ FaceSwap` | Within-Dataset LOTO | 5,289 | **`0.9662`** | `0.0338` | **`0.8969`** |
 | **Fold 4** | `FF++ NeuralTextures` | Within-Dataset LOTO | 5,289 | `0.9783` | `0.0217` | `0.9230` |
 | **Fold 5** | `Celeb-DF v2` | Cross-Dataset Zero-Shot | 82,549 | `0.3234` | **`0.6766`** | `0.1202` |
 

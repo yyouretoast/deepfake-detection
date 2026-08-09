@@ -174,6 +174,7 @@ def plot_loto(loto_data: list, output_path: str) -> None:
     folds = [
         ("Fold 1\nDeepfakes\n(FF++)", 0.9691, BLUE, None),
         ("Fold 2\nFace2Face\n(FF++)", 0.9749, BLUE, None),
+        ("Fold 3\nFaceSwap\n(FF++)", 0.9662, BLUE, None),
         ("Fold 4\nNeuralTextures\n(FF++)", 0.9783, BLUE, None),
         ("Fold 5\nCeleb-DF v2\nCross-Dataset", 0.3234, RED, "0.6766 (1 - p)"),
     ]
