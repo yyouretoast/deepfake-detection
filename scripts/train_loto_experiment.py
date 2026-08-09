@@ -157,7 +157,10 @@ def main():
     num_fake = sum(1 for s in train_samples if s[1] == 1)
     num_real = len(train_samples) - num_fake
     pos_weight_val = min(10.0, float(num_real) / max(1.0, float(num_fake)))
-    pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
+    if accelerator.is_main_process:
+        from torchvision import models as tv_models
+        tv_models.convnext_small(weights=tv_models.ConvNeXt_Small_Weights.DEFAULT)
+    accelerator.wait_for_everyone()
 
     model = HybridDeepfakeDetector()
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
