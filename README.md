@@ -118,7 +118,7 @@ $$
 
 | Experiment Fold | Held-Out Target Domain | Category Type | Test Samples | Zero-Shot AUC | Inverted AUC (1 - p) | Zero-Shot F1 |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Fold 1** | `FF++ Deepfakes` | Within-Dataset LOTO | 5,200 | *Pending GPU Run* | *Pending* | *Pending* |
+| **Fold 1** | `FF++ Deepfakes` | Within-Dataset LOTO | 5,289 | **`0.9691`** | `0.0309` | **`0.9065`** |
 | **Fold 2** | `FF++ Face2Face` | Within-Dataset LOTO | 5,200 | *Pending GPU Run* | *Pending* | *Pending* |
 | **Fold 3** | `FF++ FaceSwap` | Within-Dataset LOTO | 5,200 | *Pending GPU Run* | *Pending* | *Pending* |
 | **Fold 4** | `FF++ NeuralTextures` | Within-Dataset LOTO | 5,289 | `0.9783` | `0.0217` | `0.9230` |
