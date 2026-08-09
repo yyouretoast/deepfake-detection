@@ -409,7 +409,7 @@ def render_ui() -> None:
                         st.image(
                             s_face,
                             caption=f"Scrubbed Face Crop at {s_time:.2f}s (Frame #{s_frame})",
-                            use_container_width=True,
+                            use_column_width=True,
                         )
 
                     with scrub_col2:
@@ -452,25 +452,25 @@ def render_ui() -> None:
                                 st.image(
                                     diag["original"],
                                     caption="(a) RGB Face Crop",
-                                    use_container_width=True,
+                                    use_column_width=True,
                                 )
                             with d_col2:
                                 st.image(
                                     diag["srm_residual"],
                                     caption="(b) SRM Noise Residual",
-                                    use_container_width=True,
+                                    use_column_width=True,
                                 )
                             with d_col3:
                                 st.image(
                                     diag["fft_spectrum"],
                                     caption="(c) 2D FFT Magnitude",
-                                    use_container_width=True,
+                                    use_column_width=True,
                                 )
                             with d_col4:
                                 st.image(
                                     diag["gradcam_overlay"],
                                     caption="(d) Grad-CAM Attention",
-                                    use_container_width=True,
+                                    use_column_width=True,
                                 )
 
             if sample_faces:
@@ -481,7 +481,7 @@ def render_ui() -> None:
                     label = "Fake" if prob > threshold_slider else "Real"
                     conf = normalize_confidence(prob, threshold_slider)
                     with col:
-                        st.image(face_img, use_container_width=True)
+                        st.image(face_img, use_column_width=True)
                         c_color = "#22c55e" if label == "Real" else "#ef4444"
                         st.markdown(
                             f"<p style='text-align:center; color:{c_color}; font-size: 12px; margin-top:4px;'><b>{label}</b><br>{conf:.1f}%</p>",
@@ -525,19 +525,19 @@ def render_ui() -> None:
                             st.image(
                                 diag["original"],
                                 caption="(a) RGB Face Crop",
-                                use_container_width=True,
+                                use_column_width=True,
                             )
                         with d_col2:
                             st.image(
                                 diag["srm_residual"],
                                 caption="(b) SRM Noise Residual",
-                                use_container_width=True,
+                                use_column_width=True,
                             )
                         with d_col3:
                             st.image(
                                 diag["fft_spectrum"],
                                 caption="(c) 2D FFT Magnitude",
-                                use_container_width=True,
+                                use_column_width=True,
                             )
                         with d_col4:
                             st.image(
