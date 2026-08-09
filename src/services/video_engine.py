@@ -5,7 +5,6 @@ Decouples video reading, keyframe seeking, face cropping, and batch inference fr
 
 import gc
 import os
-import sys
 import json
 import logging
 import cv2

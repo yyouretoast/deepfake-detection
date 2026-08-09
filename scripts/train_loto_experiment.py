@@ -23,6 +23,7 @@ import time
 import logging
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score
 from accelerate import Accelerator
@@ -120,14 +121,14 @@ def main():
 
     all_heldout_fakes = train_heldout_fakes + val_heldout_fakes + test_heldout_fakes
     test_reals = [s for s in raw_test if s[1] == 0.0]
-    
+
     eval_target_samples = all_heldout_fakes + test_reals
 
     if accelerator.is_main_process:
         logging.info("Starting LOTO experiment (Holdout domain: %s)", args.holdout.upper())
         logging.info("  Retained train samples: %d (Filtered out %d FAKE '%s' samples)", len(train_samples), len(train_heldout_fakes), args.holdout)
         logging.info("  Retained val samples:   %d", len(val_samples))
-        logging.info("  Zero-shot test set:     %d samples (%d zero-shot fakes vs %d reals)", 
+        logging.info("  Zero-shot test set:     %d samples (%d zero-shot fakes vs %d reals)",
                      len(eval_target_samples), len(all_heldout_fakes), len(test_reals))
 
     if len(all_heldout_fakes) < 5:

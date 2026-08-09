@@ -1,4 +1,3 @@
-import pytest
 from src.dataset.loader import perform_graph_split, extract_identities
 
 def test_extract_identities_parsing():

@@ -14,7 +14,6 @@ if REPO_ROOT not in sys.path:
 
 import json
 import torch
-import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score, classification_report
@@ -36,11 +35,11 @@ def evaluate():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = HybridDeepfakeDetector().to(device)
-    
+
     weights_path = '/kaggle/working/dual_stream_best.pth'
     if not os.path.exists(weights_path):
         weights_path = os.path.join(data_root, 'dual_stream_best.pth')
-    
+
     model.load_state_dict(torch.load(weights_path, map_location=device))
     model.eval()
 
@@ -71,7 +70,7 @@ def evaluate():
 
     optimal_temp = fit_temperature_log(val_logits, val_targets)
     val_preds_calibrated = 1.0 / (1.0 + np.exp(-(val_logits / optimal_temp)))
-    
+
     val_ece_before = compute_ece(val_preds_uncalibrated, val_targets)
     val_ece_after = compute_ece(val_preds_calibrated, val_targets)
 

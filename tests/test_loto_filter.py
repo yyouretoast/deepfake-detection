@@ -6,7 +6,7 @@ def test_matches_holdout_domain_pair_ranges():
     assert matches_holdout_domain("fake/600_605/frame_001.webp", "neuraltextures") is True
     assert matches_holdout_domain("fake/799_800/frame_001.webp", "neuraltextures") is True
     assert matches_holdout_domain("fake/600_605/frame_001.webp", "nt") is True
-    
+
     # Boundary checks: 599 is FaceSwap, 800 is out-of-range
     assert matches_holdout_domain("fake/599_600/frame_001.webp", "neuraltextures") is False
     assert matches_holdout_domain("fake/800_805/frame_001.webp", "neuraltextures") is False

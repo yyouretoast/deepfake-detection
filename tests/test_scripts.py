@@ -5,11 +5,8 @@ Unit tests for executable script helpers in scripts/*.py
 
 import os
 import sys
-import tempfile
 import numpy as np
 import pytest
-import cv2
-import torch
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:

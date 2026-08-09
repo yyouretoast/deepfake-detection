@@ -3,7 +3,6 @@ Checkpoint loading and calibration helper utilities.
 """
 
 from typing import Dict, Any
-import torch
 
 DEFAULT_THRESHOLD = 0.01
 DEFAULT_TEMPERATURE = 1.4788
@@ -73,7 +72,6 @@ def compute_ece(probs: Any, targets: Any, n_bins: int = 15) -> float:
 
     bin_boundaries = np.linspace(0.5, 1.0, n_bins + 1)
     ece = 0.0
-    n_samples = len(probs_arr)
 
     for i in range(n_bins):
         in_bin = (confidences > bin_boundaries[i]) & (confidences <= bin_boundaries[i+1])

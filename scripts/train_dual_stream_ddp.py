@@ -21,7 +21,6 @@ import logging
 import numpy as np
 import cv2
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
@@ -116,7 +115,7 @@ def get_differential_param_groups(model):
         if not param.requires_grad:
             continue
         is_no_decay = len(param.shape) == 1 or name.endswith(".bias") or "bn" in name or "norm" in name
-        
+
         if "spatial_backbone" in name:
             if is_no_decay:
                 backbone_nodecay.append(param)
@@ -246,7 +245,7 @@ def main():
                 labels = labels.unsqueeze(1)
                 valid_flags = valid_flags.unsqueeze(1)
                 val_failures_tensor += (1.0 - valid_flags).sum()
-                
+
                 outputs = model(images)
                 loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, pos_weight=pos_weight_tensor, reduction='none')
                 loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)

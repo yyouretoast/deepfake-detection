@@ -19,7 +19,7 @@ def test_dynamic_face_cropper_synthetic_fallback():
 def test_dynamic_face_cropper_bounding_box_expansion_math():
     """Verifies deterministic 20% margin expansion, aspect ratio scaling, and target resolution extraction."""
     cropper = DynamicFaceCropper(target_size=512, scale_factor=1.50)
-    
+
     # Mock Haar cascade detector to return a deterministic bounding box [x=100, y=100, w=100, h=100]
     mock_cascade = MagicMock()
     mock_cascade.detectMultiScale.return_value = np.array([[100, 100, 100, 100]])
@@ -36,7 +36,7 @@ def test_dynamic_face_cropper_similarity_transform_math():
     """Verifies 5-point landmark similarity transformation warpAffine alignment."""
     cropper = DynamicFaceCropper(target_size=256, scale_factor=1.50)
     synthetic_image = np.ones((400, 400, 3), dtype=np.uint8) * 128
-    
+
     # 5 2D landmarks (left eye, right eye, nose, left mouth corner, right mouth corner)
     landmarks = np.array([
         [150.0, 150.0],

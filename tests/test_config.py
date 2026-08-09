@@ -1,4 +1,3 @@
-import os
 from src.config import load_config
 from src.models.hybrid_detector import HybridDeepfakeDetector
 

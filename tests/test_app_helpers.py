@@ -2,7 +2,6 @@
 Unit tests for app.py helper and inference functions.
 """
 
-import pytest
 import numpy as np
 import torch
 

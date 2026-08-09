@@ -24,8 +24,7 @@ import streamlit as st
 from src.services.video_engine import load_prediction_engine, process_video_frames, DEVICE
 from src.utils.interpretability import generate_face_diagnostics
 from src.utils.visualization import render_temporal_anomaly_timeline
-from src.utils.checkpoint import clean_state_dict, normalize_confidence
-from src.dataset.preprocess import preprocess_tensors_batch
+from src.utils.checkpoint import normalize_confidence
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +138,7 @@ def render_ui() -> None:
 
     # Sidebar Controls & System Panel
     st.sidebar.markdown("### Control Panel & Settings")
-    
+
     threshold_slider = st.sidebar.slider(
         "Decision Threshold (T*)",
         min_value=0.01,
@@ -277,7 +276,7 @@ def render_ui() -> None:
             real_faces_count = len(all_probs) - fake_faces_count
 
             st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
-            
+
             # Side-by-side Video Player + Detection Metrics
             col_video, col_results = st.columns([1, 1])
 
@@ -399,7 +398,7 @@ def render_ui() -> None:
                 if sample_faces:
                     face_options = [f"Face Crop #{i+1} (Prob: {prob:.4f})" for i, prob in enumerate(sample_probs)]
                     selected_idx = st.selectbox("Select Face Crop to Inspect", options=list(range(len(face_options))), format_func=lambda i: face_options[i])
-                    
+
                     if st.button("Generate Interpretability Maps", key="btn_crop_diag"):
                         unwrapped = pytorch_model.module if isinstance(pytorch_model, torch.nn.DataParallel) else pytorch_model
                         selected_face = sample_faces[selected_idx]

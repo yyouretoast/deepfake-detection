@@ -62,7 +62,7 @@ class ConvNeXtGradCAM:
 
         # Target final block of torchvision.models.convnext.features Sequential container
         target_layer = self.model.spatial_backbone[-1]
-        
+
         self.forward_handle = target_layer.register_forward_hook(self._save_feature_maps)
         self.backward_handle = target_layer.register_full_backward_hook(self._save_gradients)
 
@@ -78,7 +78,7 @@ class ConvNeXtGradCAM:
         Returns 2D float numpy array in [0.0, 1.0] resized to target image size.
         """
         self.model.zero_grad(set_to_none=True)
-        
+
         with torch.enable_grad():
             input_tensor.requires_grad_(True)
             logits = self.model(input_tensor)
@@ -91,7 +91,7 @@ class ConvNeXtGradCAM:
 
         # Global average pooling of gradients: [1, C, H, W] -> [C]
         weights = torch.mean(self.gradients[0], dim=(1, 2))
-        
+
         # Weighted combination of feature maps: [C, H, W] * [C, 1, 1] -> [H, W]
         cam = torch.zeros(self.feature_maps.shape[2:], dtype=torch.float32, device=input_tensor.device)
         for i, w in enumerate(weights):
@@ -307,7 +307,7 @@ def main():
         test_samples = dedupe_split(splits.get("test", []))
         reals = [s for s in test_samples if s[1] == 0]
         fakes = [s for s in test_samples if s[1] == 1]
-        
+
         n_each = args.n_samples // 2
         random.seed(42)
         sampled_reals = random.sample(reals, min(n_each, len(reals)))

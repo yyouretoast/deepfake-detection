@@ -23,7 +23,7 @@ def get_yunet_model_path() -> Optional[str]:
     local_path = os.path.join(repo_root, "models", YUNET_MODEL_FILENAME)
     if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
         return local_path
-    
+
     alt_path = os.path.join("models", YUNET_MODEL_FILENAME)
     if os.path.exists(alt_path) and os.path.getsize(alt_path) > 1000:
         return os.path.abspath(alt_path)
@@ -119,7 +119,7 @@ class DynamicFaceCropper:
             _, faces = yunet_engine.detect(img_bgr)
             if faces is None or len(faces) == 0:
                 return None, None
-            
+
             boxes = []
             landmarks_list = []
             for face in faces:
@@ -132,7 +132,7 @@ class DynamicFaceCropper:
                 l_mouth = face[12:14]
                 lms = np.array([l_eye, r_eye, nose, l_mouth, r_mouth], dtype=np.float32)
                 landmarks_list.append(lms)
-                
+
             return np.array(boxes), np.array(landmarks_list)
         except Exception as e:
             logging.warning("YuNet detection exception: %s", e)
@@ -161,7 +161,7 @@ class DynamicFaceCropper:
         h, w, _ = crop.shape
         taper_h = max(1, int(h * border_ratio))
         taper_w = max(1, int(w * border_ratio))
-        
+
         win_y = np.ones(h, dtype=np.float32)
         win_y[:taper_h] = 0.5 * (1.0 - np.cos(np.linspace(0, np.pi, taper_h)))
         win_y[-taper_h:] = 0.5 * (1.0 - np.cos(np.linspace(np.pi, 0, taper_h)))
@@ -178,14 +178,14 @@ class DynamicFaceCropper:
         out_size = target_size if target_size is not None else self.target_size
         h_img, w_img, _ = image_rgb.shape
         x1, y1, x2, y2 = box[:4]
-        
+
         w_box = x2 - x1
         h_box = y2 - y1
         cx = x1 + w_box / 2.0
         cy = y1 + h_box / 2.0
 
         side = max(w_box, h_box) * self.scale_factor
-        
+
         crop_x1 = int(round(cx - side / 2.0))
         crop_y1 = int(round(cy - side / 2.0))
         crop_x2 = int(round(cx + side / 2.0))
@@ -255,7 +255,7 @@ class DynamicFaceCropper:
         if boxes is None or len(boxes) == 0:
             c = self._center_crop(image_rgb, target_size=out_size)
             return c, c
-        
+
         if landmarks is not None and len(landmarks) == len(boxes):
             best_idx = max(range(len(boxes)), key=lambda i: (boxes[i][2] - boxes[i][0]) * (boxes[i][3] - boxes[i][1]))
             best_box = boxes[best_idx]
@@ -299,7 +299,7 @@ class DynamicFaceCropper:
                         res = self.detector.detect(image_rgb, landmarks=True)
                     except TypeError:
                         res = self.detector.detect(image_rgb)
-                
+
                 boxes = res[0]
                 landmarks = res[2] if len(res) >= 3 else None
                 if boxes is not None and len(boxes) > 0:
@@ -371,7 +371,7 @@ class DynamicFaceCropper:
                 crop_rgb = self.crop_face(rgb_frame, target_size=out_size)
                 out_filename = f"{prefix}_{saved_count:04d}.webp"
                 out_filepath = os.path.join(output_dir, out_filename)
-                
+
                 # Save as Lossless WebP
                 Image.fromarray(crop_rgb).save(out_filepath, format="WEBP", lossless=True)
                 saved_paths.append(out_filepath)

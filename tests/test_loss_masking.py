@@ -1,7 +1,5 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import pytest
 
 def test_loss_masking_zero_gradient_for_corrupt_samples(eval_model_factory):
     """
@@ -10,13 +8,13 @@ def test_loss_masking_zero_gradient_for_corrupt_samples(eval_model_factory):
     model = eval_model_factory(use_fft=True)
     images = torch.randn(2, 3, 256, 256)
     labels = torch.tensor([1.0, 0.0])
-    
+
     # Sample 0 is valid (1.0), Sample 1 is corrupt/invalid (0.0)
     valid_flags = torch.tensor([1.0, 0.0])
 
     outputs = model(images).squeeze(1)
     loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction='none')
-    
+
     loss_sample0 = loss_unreduced[0] * valid_flags[0]
     loss_sample1 = loss_unreduced[1] * valid_flags[1]
 

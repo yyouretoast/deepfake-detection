@@ -7,7 +7,6 @@ import os
 import sys
 import time
 import torch
-import numpy as np
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -23,7 +22,7 @@ def benchmark_inference():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU Multi-thread"
     print(f"[1/2] Instantiating PyTorch Model on {device_name} (Resolution: {IMG_SIZE}x{IMG_SIZE})...")
-    
+
     model = HybridDeepfakeDetector().to(device)
     model.eval()
 
@@ -41,7 +40,7 @@ def benchmark_inference():
     # Benchmark Batch Size 1 (Real-time Single-Frame Latency)
     # -----------------------------------------------------------------------
     bs1_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE, device=device)
-    
+
     # Warmup Phase (5 passes)
     for _ in range(5):
         with torch.inference_mode():

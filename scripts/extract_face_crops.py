@@ -180,7 +180,7 @@ def process_single_video_worker(vid_path: str, cropper: DynamicFaceCropper) -> T
     path_lower = vid_path.lower().replace('\\', '/')
     fake_keywords = ['manipulated_sequences', 'deepfakes', 'face2face', 'faceswap', 'neuraltextures', 'celeb-synthesis', 'spliced', 'fake', 'swap']
     real_keywords = ['original_sequences', 'youtube-real', 'celeb-real', 'real', 'original']
-    
+
     if any(kw in path_lower for kw in fake_keywords):
         is_fake = 1
     elif any(kw in path_lower for kw in real_keywords):
@@ -208,13 +208,13 @@ def main() -> None:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     cropper = DynamicFaceCropper(target_size=FACE_SIZE, scale_factor=CROP_SCALE_FACTOR)
     kaggle_input = '/kaggle/input'
-    
+
     video_extensions = ('*.mp4', '*.MP4', '*.avi', '*.AVI', '*.mov', '*.MOV', '*.mkv', '*.MKV')
     all_videos_set = set()
     for ext in video_extensions:
         for found_p in glob.glob(f"{kaggle_input}/**/{ext}", recursive=True):
             all_videos_set.add(found_p)
-            
+
     all_videos = sorted(list(all_videos_set))
     logging.info("Discovered %d video files in %s", len(all_videos), kaggle_input)
     if not all_videos:
@@ -239,7 +239,7 @@ def main() -> None:
 
     with open(os.path.join(OUTPUT_DIR, 'manifest.json'), 'w', encoding='utf-8') as f:
         json.dump(manifest, f, indent=2)
-        
+
     with open(os.path.join(OUTPUT_DIR, 'corrupted_videos.json'), 'w', encoding='utf-8') as f:
         json.dump(corrupted_videos, f, indent=2)
 

@@ -27,7 +27,7 @@ jobs:
 
       - name: Run Ruff Static Analysis Linter
         run: |
-          ruff check src/ scripts/ tests/ app.py --select E,F,W --ignore E501
+          ruff check src/ scripts/ tests/ app.py --select E,F,W --ignore E501,E402,E731,E741
 
       - name: Run Unit Test Suite
         run: |

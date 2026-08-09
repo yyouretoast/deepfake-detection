@@ -6,9 +6,6 @@ soft-max emphasis on high scores, out-of-order frame index sorting, NaN/Inf
 safety, and empty input default behaviour.
 """
 
-import math
-import pytest
-import numpy as np
 
 from src.utils.temporal_aggregation import (
     mean_aggregation,

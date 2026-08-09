@@ -32,7 +32,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 def extract_identities(filename: str, metadata_map: Optional[Dict[str, Tuple[str, str]]] = None) -> Tuple[str, str]:
     if metadata_map and filename in metadata_map:
         return metadata_map[filename]
-        
+
     parts = os.path.normpath(filename).replace("\\", "/").split("/")
     target = parts[-2] if len(parts) > 1 else parts[-1]
     clean_base = re.sub(r"_(?:f|frame)\d+", "", target, flags=re.IGNORECASE).split('.')[0]
@@ -134,7 +134,7 @@ def perform_graph_split(
         comp_set = set(comp)
         n_samples = sum(1 for s in parsed_samples if s[2] in comp_set or s[3] in comp_set)
         comp_stats.append((comp, n_samples))
-    
+
     comp_stats.sort(key=lambda x: x[1], reverse=True)
     total_samples = len(parsed_samples)
     target_val = max(1, int(total_samples * val_ratio))
@@ -216,7 +216,7 @@ class DeepfakeDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
         path, label = self.samples[idx]
         img_rgb = load_image_rgb(path)
-        
+
         if self.transform is not None:
             if HAS_ALBUMENTATIONS and isinstance(self.transform, A.Compose):
                 augmented = self.transform(image=img_rgb)
@@ -313,11 +313,11 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
     batch_size = train_cfg.get("batch_size", 16)
     num_workers = train_cfg.get("num_workers", 4)
     seed = train_cfg.get("seed", 42)
-    
+
     worker_init = lambda w: cv2.setNumThreads(0) if num_workers > 0 else None
 
     samples = []
-    
+
     # Manifest caching logic
     manifest_path = os.path.join(cropped_dir, "splits.json")
     dir_hash = ""
@@ -334,7 +334,7 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
                 val_samples = [(os.path.join(cropped_dir, p), l) for p, l in val_s]
                 test_samples = [(os.path.join(cropped_dir, p), l) for p, l in test_s]
                 samples = train_samples + val_samples + test_samples
-    
+
     if not samples and os.path.exists(cropped_dir):
         for root, _, files in os.walk(cropped_dir):
             for file in files:
@@ -355,7 +355,7 @@ def create_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dat
                     }, f)
             except Exception as e:
                 logging.warning("Failed to write splits manifest to %s: %s", manifest_path, e)
-    
+
     if not samples:
         train_samples, val_samples, test_samples = [], [], []
 
@@ -401,7 +401,7 @@ def create_sequence_dataloaders(config: Optional[Dict[str, Any]] = None) -> Dict
     num_workers = train_cfg.get("num_workers", 4)
     seed = train_cfg.get("seed", 42)
     seq_len = train_cfg.get("seq_len", 8)
-    
+
     worker_init = lambda w: cv2.setNumThreads(0) if num_workers > 0 else None
 
     samples = []
