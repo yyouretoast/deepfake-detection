@@ -13,12 +13,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify HF_TOKEN Secret
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::HF_TOKEN secret is empty! Please add your Hugging Face write token as a repository secret under Settings -> Secrets and variables -> Actions -> HF_TOKEN."
+            exit 1
+          fi
+
       - name: Push to Hugging Face Hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git config --global user.email "yyasso2005@gmail.com"
           git config --global user.name "Yassin Yasser"
+          git rm -r --cached figures/ || true
+          git commit -m "Strip binary figure files for HF Space deployment" || true
           git remote add space https://yyouretoast:$HF_TOKEN@huggingface.co/spaces/yyouretoast/deepfake-detector
           git push --force space main
-

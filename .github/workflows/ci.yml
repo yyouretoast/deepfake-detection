@@ -23,7 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install ruff
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
       - name: Run Ruff Static Analysis Linter
         run: |
