@@ -6,9 +6,13 @@ exclude = [
     ".pytest_cache",
     ".ruff_cache",
     "__pycache__",
+    ".venv",
+    "venv",
+    "env",
     "scratch",
     "build",
     "dist",
+    "*.ipynb",
 ]
 
 [tool.ruff.lint]
