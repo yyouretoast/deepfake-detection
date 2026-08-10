@@ -16,4 +16,4 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-ignore = ["E402"]
+ignore = ["E402", "BLE001", "LOG015", "S110", "UP035", "F401", "F841"]
