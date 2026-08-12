@@ -129,6 +129,10 @@ class HybridDeepfakeDetector(nn.Module):
         weights = models.ConvNeXt_Small_Weights.DEFAULT if pretrained else None
         convnext = models.convnext_small(weights=weights)
         self.spatial_backbone = convnext.features
+        # Extract the LayerNorm2d that ConvNeXt applies before its classifier head.
+        # Omitting it leaves spatial features unscaled, which causes volatile gradients
+        # and poor convergence, especially when fused with the normalized frequency branch.
+        self.spatial_norm = convnext.classifier[0]  # nn.LayerNorm2d(768)
         self.spatial_pool = nn.AdaptiveAvgPool2d(1)
         self.spatial_fc = nn.Sequential(nn.Linear(768, 512), nn.ReLU())
         self.register_buffer("imagenet_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
@@ -168,8 +172,11 @@ class HybridDeepfakeDetector(nn.Module):
         mean = self.imagenet_mean.to(dtype=x.dtype, device=x.device)
         std = self.imagenet_std.to(dtype=x.dtype, device=x.device)
         x_spatial = (x - mean) / std
-        f_s = self.spatial_pool(self.spatial_backbone(x_spatial)).flatten(1)  # [B, 768] -> [B, 512]
-        f_s = self.spatial_fc(f_s)  # [B, 512]
+        # Apply backbone features then LayerNorm2d (critical for stable distributions)
+        feat_maps = self.spatial_backbone(x_spatial)   # [B, 768, H', W']
+        feat_maps = self.spatial_norm(feat_maps)        # LayerNorm2d normalisation
+        f_s = self.spatial_pool(feat_maps).flatten(1)   # [B, 768]
+        f_s = self.spatial_fc(f_s)                      # [B, 512]
 
         if self.use_fft_branch:
             srm_out = self.srm(x)  # [B, 9, H, W]
@@ -181,22 +188,36 @@ class HybridDeepfakeDetector(nn.Module):
 
             concat_feat = torch.cat([f_s, f_f], dim=1)  # [B, 1024]
             gate = self.gate_fc(concat_feat)  # [B, 512]
-            gated_freq = f_f * gate  # [B, 512]
-            fused = torch.cat([f_s, gated_freq], dim=1)  # [B, 1024]
+            # Symmetric gated fusion: both streams are gated so neither has a free
+            # gradient path to the classifier. This prevents early training from
+            # saturating the gate to 0 and permanently starving the frequency branch.
+            fused = torch.cat([f_s * (1.0 - gate), f_f * gate], dim=1)  # [B, 1024]
         else:
             fused = f_s  # [B, 512]
 
         return self.classifier(fused)  # [B, 1]
 
-    def forward_sequence(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_sequence(self, x: torch.Tensor, chunk_size: int = 8) -> torch.Tensor:
         """
         Forward pass for 5D video sequence input tensor [B, T, 3, H, W].
-        Performs frame-level forward passes followed by logit-space temporal average pooling.
+        Processes frames in chunks of `chunk_size` to avoid OOM when B*T is large,
+        then averages logits across the temporal dimension.
         Returns pooled sequence logits [B, 1].
+
+        Args:
+            x: Tensor of shape [B, T, 3, H, W].
+            chunk_size: Number of frames per GPU forward chunk. Reduce if OOM occurs.
         """
-        batch_size, seq_len, c, h, w = x.shape  # [B, T, C, H, W]
+        batch_size, seq_len, c, h, w = x.shape
         x_flat = x.view(batch_size * seq_len, c, h, w)  # [B*T, 3, H, W]
-        frame_logits = self.forward(x_flat)  # [B*T, 1]
+
+        # Process in chunks to avoid OOM from flattening large B*T batches
+        logit_chunks: list[torch.Tensor] = []
+        for start in range(0, batch_size * seq_len, chunk_size):
+            chunk = x_flat[start : start + chunk_size]
+            logit_chunks.append(self.forward(chunk))
+
+        frame_logits = torch.cat(logit_chunks, dim=0)  # [B*T, 1]
         frame_logits = frame_logits.view(batch_size, seq_len)  # [B, T]
         return frame_logits.mean(dim=1, keepdim=True)  # [B, 1]
 

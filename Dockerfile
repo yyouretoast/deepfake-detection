@@ -2,17 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for OpenCV and GL
+# Install system dependencies required for libglib (used by OpenCV headless)
+# Note: libgl1, libsm6, libxext6, libxrender-dev are NOT needed because
+# requirements.txt uses opencv-python-headless which excludes X11/GL dependencies.
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     git \
-    libgl1 \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Install Python requirements
 COPY requirements.txt ./

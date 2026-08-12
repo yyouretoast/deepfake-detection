@@ -100,3 +100,57 @@ class TestTemperatureCalibration:
 
         ece_val = compute_ece(calibrated_probs, labels)
         assert 0.0 <= ece_val <= 1.0, "ECE must be a valid probability error in [0, 1]"
+
+
+class TestGradCAMDiagnostics:
+    def test_generate_face_diagnostics_keys_and_hook_cleanup(self) -> None:
+        from src.utils.interpretability import generate_face_diagnostics
+
+        model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
+        model.eval()
+        face_rgb = np.ones((256, 256, 3), dtype=np.uint8) * 128
+        device = torch.device("cpu")
+
+        diag = generate_face_diagnostics(model, face_rgb, device=device)
+
+        assert "original" in diag
+        assert "srm_residual" in diag
+        assert "fft_spectrum" in diag
+        assert "gradcam_overlay" in diag
+        assert diag["gradcam_overlay"].shape == (256, 256, 3)
+
+        # Check hook cleanup: spatial_backbone[-1] should have no registered forward/backward hooks
+        target_layer = model.spatial_backbone[-1]
+        assert len(target_layer._forward_hooks) == 0, "Forward hook was not cleaned up after Grad-CAM"
+        assert len(target_layer._backward_hooks) == 0, "Backward hook was not cleaned up after Grad-CAM"
+
+
+class TestSyntheticVideoInference:
+    def test_process_video_frames_with_synthetic_mp4(self, tmp_path) -> None:
+        import cv2
+
+        video_path = str(tmp_path / "test_synthetic.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        out = cv2.VideoWriter(video_path, fourcc, 30.0, (128, 128))
+
+        # Write 5 synthetic frames (colored boxes simulating faces)
+        for i in range(5):
+            frame = np.ones((128, 128, 3), dtype=np.uint8) * (50 + i * 30)
+            cv2.rectangle(frame, (30, 30), (90, 90), (200, 200, 200), -1)
+            out.write(frame)
+        out.release()
+
+        model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
+        model.eval()
+
+        res = process_video_frames(
+            video_path=video_path,
+            pytorch_model=model,
+            num_frames=3,
+        )
+
+        # Video engine processes frames safely (returns dict or None if no face detected by YuNet)
+        if res is not None:
+            assert "raw_video_prob" in res
+            assert 0.0 <= res["raw_video_prob"] <= 1.0
+

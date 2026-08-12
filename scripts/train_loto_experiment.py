@@ -141,8 +141,11 @@ def main():
     val_ds = KaggleFastDataset(val_samples, data_root, is_train=False)
     target_ds = KaggleFastDataset(eval_target_samples, data_root, is_train=False)
 
+    fold_seed = 42 + (abs(hash(args.holdout)) % 1000)
+    seed_everything(fold_seed)
+
     g = torch.Generator()
-    g.manual_seed(42)
+    g.manual_seed(fold_seed)
 
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)

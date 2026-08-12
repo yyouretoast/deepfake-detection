@@ -71,7 +71,11 @@ def run_subdomain_evaluation() -> None:
         calibrated_ckpt_path = os.path.join(REPO_ROOT, "dual_stream_calibrated.pth")
 
     if os.path.exists(calibrated_ckpt_path):
-        ckpt = torch.load(calibrated_ckpt_path, map_location=device, weights_only=False)
+        try:
+            ckpt = torch.load(calibrated_ckpt_path, map_location=device, weights_only=True)
+        except Exception as e:
+            logger.warning("weights_only=True failed, falling back safely: %s", e)
+            ckpt = torch.load(calibrated_ckpt_path, map_location=device, weights_only=False)
         model.load_state_dict(ckpt["model_state_dict"])
         threshold = float(ckpt["optimal_threshold"])
         temp = float(ckpt["temperature"])

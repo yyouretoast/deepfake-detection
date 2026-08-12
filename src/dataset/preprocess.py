@@ -258,6 +258,16 @@ class DynamicFaceCropper:
         aligned_warped_crop = raw_unwarped_crop
 
         if landmarks is not None:
+            # The canonical points define where each facial landmark should land in the
+            # output crop. They must incorporate scale_factor so the landmark-aligned
+            # warp produces the same effective crop zoom as the bounding-box path.
+            # Without this, landmark crops are tightly framed (~1.0x) while bbox crops
+            # use the full self.scale_factor expansion, creating a bimodal distribution.
+            #
+            # We model scale_factor as a zoom-out: push landmarks toward the center by
+            # (1 - 1/scale_factor)/2 on each side.
+            sf = max(self.scale_factor, 1.0)
+            margin_frac = (1.0 - 1.0 / sf) / 2.0  # fraction of frame that is padding
             canonical_landmarks = (
                 np.array(
                     [
@@ -269,8 +279,9 @@ class DynamicFaceCropper:
                     ],
                     dtype=np.float32,
                 )
-                * out_size
             )
+            # Shift canonical points inward by margin_frac to match the scaled crop region
+            canonical_landmarks = (canonical_landmarks * (1.0 - 2.0 * margin_frac) + margin_frac) * out_size
 
             try:
                 M, inliers = cv2.estimateAffinePartial2D(
@@ -290,6 +301,7 @@ class DynamicFaceCropper:
                 logger.debug("Affine warp alignment exception: %s", e)
 
         return aligned_warped_crop, raw_unwarped_crop
+
 
     def _crop_from_box(
         self,

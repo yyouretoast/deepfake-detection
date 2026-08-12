@@ -100,9 +100,14 @@ def generate_face_diagnostics(
     fft_rgb = cv2.cvtColor(fft_colored, cv2.COLOR_BGR2RGB)
 
     # Panel D: Grad-CAM Heatmap Overlay
+    # Hooks are registered on model creation and MUST always be removed, even if an
+    # exception (OOM, shape mismatch, etc.) is thrown inside generate_heatmap.
     grad_cam = ConvNeXtGradCAM(model)
-    cam_map = grad_cam.generate_heatmap(img_tensor.clone(), img_size=img_size)
-    grad_cam.remove_hooks()
+    try:
+        cam_map = grad_cam.generate_heatmap(img_tensor.clone(), img_size=img_size)
+    finally:
+        # Guaranteed cleanup: prevents hook accumulation / memory leaks across requests
+        grad_cam.remove_hooks()
 
     cam_uint8 = (cam_map * 255.0).astype(np.uint8)
     cam_colored = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)
@@ -115,3 +120,4 @@ def generate_face_diagnostics(
         "fft_spectrum": fft_rgb,
         "gradcam_overlay": cam_overlay,
     }
+

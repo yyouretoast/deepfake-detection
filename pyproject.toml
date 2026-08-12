@@ -16,4 +16,12 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-ignore = ["E402", "BLE001", "LOG015", "S110", "UP035", "F401", "F841"]
+# E402: module-level import not at top — needed by scripts that set sys.path before importing
+# BLE001: blind exception (legitimate in fallback chains)
+# LOG015: root logger (acceptable in scripts)
+# S110: try-except-pass (used in intentional no-op handlers)
+# UP035: deprecated typing imports (kept for py3.9 compat)
+# NOTE: F401 (unused imports) and F841 (unused variables) are intentionally NOT suppressed
+# here — they were masking dead code. Suppress them per-line where genuinely needed.
+ignore = ["E402", "BLE001", "LOG015", "S110", "UP035"]
+

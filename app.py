@@ -54,7 +54,16 @@ def safe_remove_file(file_path: str, max_retries: int = 3, delay: float = 0.5) -
 
 @st.cache_resource
 def _cached_model_loader() -> tuple[Any, Any, bool, float, float]:
-    return load_prediction_engine()
+    engine = load_prediction_engine()
+    model, cropper, has_weights, threshold, temp = engine
+    # Model warm-up: run one dummy forward pass to warm PyTorch CUDA/JIT kernels
+    try:
+        dummy_tensor = torch.zeros(1, 3, 256, 256, device=DEVICE)
+        with torch.inference_mode():
+            model(dummy_tensor)
+    except Exception as e:
+        logger.debug("Model warm-up pass skipped: %s", e)
+    return engine
 
 
 
@@ -263,9 +272,11 @@ def render_ui() -> None:
     )
 
     if uploaded_file:
+        file_size_mb = uploaded_file.size / (1024 * 1024)
         if uploaded_file.size > 50 * 1024 * 1024:
-            st.error("File size exceeds 50MB limit.")
+            st.error(f"File size ({file_size_mb:.1f} MB) exceeds 50 MB limit.")
             st.stop()
+        st.caption(f"📁 **Uploaded File:** `{uploaded_file.name}` ({file_size_mb:.2f} MB)")
 
         _hasher = hashlib.md5()
         _hasher.update(uploaded_file.name.encode())

@@ -57,22 +57,27 @@ def evaluate() -> None:
     val_targets_arr = np.array(val_targets)
     val_preds_uncalibrated = 1.0 / (1.0 + np.exp(-val_logits_arr))
 
-    best_thresh = 0.5
-    best_val_f1 = 0.0
-    for thresh in np.arange(0.01, 0.95, 0.01):
-        f1 = f1_score(val_targets_arr, (val_preds_uncalibrated > thresh).astype(int))
-        if f1 > best_val_f1:
-            best_val_f1 = f1
-            best_thresh = thresh
-
+    # Fit temperature on the validation set first
     optimal_temp = fit_temperature_log(val_logits_arr, val_targets_arr)
     val_preds_calibrated = 1.0 / (1.0 + np.exp(-(val_logits_arr / optimal_temp)))
 
     val_ece_before = compute_ece(val_preds_uncalibrated, val_targets_arr)
     val_ece_after = compute_ece(val_preds_calibrated, val_targets_arr)
 
-    print(f"Optimal Validation Decision Threshold: {best_thresh:.2f} (Val F1: {best_val_f1:.4f})")
+    # CRITICAL: tune threshold on CALIBRATED probabilities.
+    # If threshold were tuned on raw (uncalibrated) preds but applied to calibrated preds,
+    # the probability scale mismatch (T*=1.4788 squashes toward 0.5) would silently tank
+    # Recall and F1 for all downstream evaluation scripts.
+    best_thresh = 0.5
+    best_val_f1 = 0.0
+    for thresh in np.arange(0.01, 0.95, 0.01):
+        f1 = f1_score(val_targets_arr, (val_preds_calibrated > thresh).astype(int))
+        if f1 > best_val_f1:
+            best_val_f1 = f1
+            best_thresh = thresh
+
     print(f"Optimal Temperature (T*): {optimal_temp:.4f}")
+    print(f"Optimal Validation Decision Threshold (tuned on calibrated probs): {best_thresh:.2f} (Val F1: {best_val_f1:.4f})")
     print(f"Validation ECE: {val_ece_before:.4f} (Raw) -> {val_ece_after:.4f} (Calibrated)")
 
     print("\nRunning Final Test Set Evaluation...")
@@ -96,19 +101,43 @@ def evaluate() -> None:
     test_preds_cal = 1.0 / (1.0 + np.exp(-(test_logits_arr / optimal_temp)))
 
     test_auc = roc_auc_score(test_targets_arr, test_preds_raw)
-    test_binary = (test_preds_raw > best_thresh).astype(int)
+    test_binary = (test_preds_cal > best_thresh).astype(int)
     test_f1 = f1_score(test_targets_arr, test_binary)
     test_prec = precision_score(test_targets_arr, test_binary)
     test_rec = recall_score(test_targets_arr, test_binary)
+
+    def compute_bootstrap_ci(
+        y_true: np.ndarray, y_score_or_pred: np.ndarray, metric_fn: Any, n_bootstraps: int = 1000, seed: int = 42
+    ) -> tuple[float, float]:
+        rng = np.random.default_rng(seed)
+        bootstrapped_scores = []
+        n = len(y_true)
+        for _ in range(n_bootstraps):
+            indices = rng.choice(n, size=n, replace=True)
+            if len(np.unique(y_true[indices])) < 2:
+                continue
+            score = metric_fn(y_true[indices], y_score_or_pred[indices])
+            bootstrapped_scores.append(score)
+        if not bootstrapped_scores:
+            return 0.0, 0.0
+        sorted_scores = np.sort(bootstrapped_scores)
+        lower = float(np.percentile(sorted_scores, 2.5))
+        upper = float(np.percentile(sorted_scores, 97.5))
+        return lower, upper
+
+    auc_ci = compute_bootstrap_ci(test_targets_arr, test_preds_raw, roc_auc_score)
+    f1_ci = compute_bootstrap_ci(test_targets_arr, test_binary, f1_score)
+    prec_ci = compute_bootstrap_ci(test_targets_arr, test_binary, precision_score)
+    rec_ci = compute_bootstrap_ci(test_targets_arr, test_binary, recall_score)
 
     test_ece_before = compute_ece(test_preds_raw, test_targets_arr)
     test_ece_after = compute_ece(test_preds_cal, test_targets_arr)
 
     print("\nFINAL HELD-OUT TEST SET RESULTS:")
-    print(f"  Test AUC:          {test_auc:.4f}")
-    print(f"  Test F1-Score:     {test_f1:.4f}")
-    print(f"  Precision:         {test_prec:.4f}")
-    print(f"  Recall:            {test_rec:.4f}")
+    print(f"  Test AUC:          {test_auc:.4f} [95% CI: {auc_ci[0]:.4f} - {auc_ci[1]:.4f}]")
+    print(f"  Test F1-Score:     {test_f1:.4f} [95% CI: {f1_ci[0]:.4f} - {f1_ci[1]:.4f}]")
+    print(f"  Precision:         {test_prec:.4f} [95% CI: {prec_ci[0]:.4f} - {prec_ci[1]:.4f}]")
+    print(f"  Recall:            {test_rec:.4f} [95% CI: {rec_ci[0]:.4f} - {rec_ci[1]:.4f}]")
     print(f"  Optimal Threshold: {best_thresh:.2f}")
     print(f"  Temperature (T*):  {optimal_temp:.4f}")
     print(f"  Test ECE:          {test_ece_before:.4f} (Raw) -> {test_ece_after:.4f} (Calibrated)")

@@ -44,23 +44,36 @@ def extract_identities(
 
     parts = os.path.normpath(filename).replace("\\", "/").split("/")
     target = parts[-2] if len(parts) > 1 else parts[-1]
+    # Strip frame-counter suffixes (e.g. "_f0001", "_frame012") before parsing identities
     clean_base = re.sub(r"_(?:f|frame)\d+", "", target, flags=re.IGNORECASE).split(".")[0]
 
+    # Priority 1: explicit id{N}_id{M} pattern (most reliable)
     match_alpha = re.search(r"(id\d+)_(id\d+)", clean_base)
     if match_alpha:
         return match_alpha.group(1), match_alpha.group(2)
 
+    # Priority 2: numeric pair pattern — but ONLY when neither number looks like a
+    # zero-padded frame counter (≥4 digits). Actor IDs in FF++ / Celeb-DF are ≤3 digits.
     match_num = re.search(r"(\d+)_(\d+)", clean_base)
     if match_num:
-        return match_num.group(1), match_num.group(2)
+        g1, g2 = match_num.group(1), match_num.group(2)
+        if len(g1) <= 3 and len(g2) <= 3:  # noqa: PLR2004 — actor IDs are ≤3 digits
+            return g1, g2
+        # Fall through if either looks like a frame counter
+        logger.debug(
+            "Skipping numeric pair '%s_%s' in '%s': one or both numbers look like frame counters (≥4 digits).",
+            g1, g2, clean_base,
+        )
 
+    # Priority 3: single numeric id (real-face videos like "000.mp4")
     match_single = re.search(r"(\d+)", clean_base)
     if match_single:
         id_str = match_single.group(1)
         return id_str, id_str
 
     logger.warning(
-        "Failed to isolate actor identity pairs via regex for '%s' (parsed base: '%s'). Fallback identity used; potential dataset split leakage risk.",
+        "Failed to isolate actor identity pairs via regex for '%s' (parsed base: '%s'). "
+        "Fallback identity used; potential dataset split leakage risk.",
         filename,
         clean_base,
     )
@@ -209,10 +222,13 @@ def get_transforms(img_size: int = 256) -> tuple[Optional[Any], Optional[Any]]:
         A.HorizontalFlip(p=0.5),
         A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.3),
         A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.3),
-        A.OneOf([
-            A.ImageCompression(quality_lower=40, quality_upper=90, p=0.5),
-            A.GaussianBlur(blur_limit=(3, 5), p=0.5),
-        ], p=0.4),
+        # NOTE: ImageCompression and GaussianBlur were intentionally removed.
+        # Both low-pass filtering (blur) and re-encoding artifacts (JPEG) destroy the
+        # high-frequency residual noise that the SRM + Bayar + 2D FFT frequency branch
+        # is specifically designed to extract. Augmenting with them during training
+        # starves the frequency stream of its primary signal, which contradicts the
+        # architectural premise. Robustness to these degradations is evaluated separately
+        # via scripts/evaluate_robustness.py without contaminating the training signal.
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
     ])

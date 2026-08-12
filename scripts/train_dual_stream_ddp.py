@@ -23,6 +23,7 @@ if REPO_ROOT not in sys.path:
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
+import torch.nn as nn  # noqa: E402
 import torch.nn.functional as F  # noqa: E402
 from accelerate import Accelerator  # noqa: E402
 from sklearn.metrics import roc_auc_score  # noqa: E402
@@ -38,11 +39,64 @@ logger = logging.getLogger(__name__)
 IMG_SIZE = 256
 BATCH_SIZE = 16
 NUM_EPOCHS = 5
+EARLY_STOPPING_PATIENCE = 3  # stop if val AUC does not improve for this many epochs
+GRAD_ACCUM_STEPS = 4  # simulate effective batch size of 64 (16 * 4) without extra memory
 T_MAX_TOTAL = 15
 LEARNING_RATE_BACKBONE = 1e-4
 LEARNING_RATE_HEAD = 1e-3
 CHECKPOINT_STATE_DIR = os.getenv("CHECKPOINT_STATE_DIR", "./models/checkpoint_state")
 BEST_MODEL_WEIGHTS_PATH = os.getenv("BEST_MODEL_WEIGHTS_PATH", "./models/dual_stream_best.pth")
+
+
+class FocalLossWithLogits(nn.Module):
+    """Focal Loss for binary classification with unreduced mask support."""
+
+    def __init__(self, gamma: float = 2.0, pos_weight: Optional[torch.Tensor] = None) -> None:
+        super().__init__()
+        self.gamma = gamma
+        self.pos_weight = pos_weight
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        bce_loss = F.binary_cross_entropy_with_logits(
+            logits, targets, pos_weight=self.pos_weight, reduction="none"
+        )
+        probs = torch.sigmoid(logits)
+        p_t = probs * targets + (1.0 - probs) * (1.0 - targets)
+        focal_weight = (1.0 - p_t) ** self.gamma
+        return focal_weight * bce_loss
+
+
+class ExponentialMovingAverage:
+    """Exponential Moving Average (EMA) of model parameters for smoother validation inference."""
+
+    def __init__(self, model: nn.Module, decay: float = 0.999) -> None:
+        self.decay = decay
+        self.shadow: dict[str, torch.Tensor] = {
+            name: param.clone().detach()
+            for name, param in model.named_parameters()
+            if param.requires_grad
+        }
+
+    def update(self, model: nn.Module) -> None:
+        with torch.no_grad():
+            for name, param in model.named_parameters():
+                if param.requires_grad and name in self.shadow:
+                    self.shadow[name].mul_(self.decay).add_(param.data, alpha=1.0 - self.decay)
+
+    def apply_shadow(self, model: nn.Module) -> dict[str, torch.Tensor]:
+        backup: dict[str, torch.Tensor] = {}
+        with torch.no_grad():
+            for name, param in model.named_parameters():
+                if param.requires_grad and name in self.shadow:
+                    backup[name] = param.data.clone()
+                    param.data.copy_(self.shadow[name])
+        return backup
+
+    def restore(self, model: nn.Module, backup: dict[str, torch.Tensor]) -> None:
+        with torch.no_grad():
+            for name, param in model.named_parameters():
+                if name in backup:
+                    param.data.copy_(backup[name])
 
 
 def seed_everything(seed=42):
@@ -199,7 +253,16 @@ def main():
 
     model = HybridDeepfakeDetector()
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_MAX_TOTAL, eta_min=1e-6)
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=1)
+    cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_MAX_TOTAL, eta_min=1e-6)
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[1]
+    )
+
+    # SyncBatchNorm: synchronises batch norm running statistics across all DDP processes.
+    # Without this, each GPU computes its own BN stats from a sub-batch, which severely
+    # degrades convergence when per-GPU batch sizes are small (e.g. 16).
+    model = accelerator.sync_batch_norm(model)
 
     model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, val_loader, scheduler
@@ -207,6 +270,7 @@ def main():
 
     start_epoch = 0
     best_val_auc = 0.0
+    epochs_without_improvement = 0  # early-stopping counter
 
     if os.path.exists(BEST_MODEL_WEIGHTS_PATH):
         try:
@@ -235,16 +299,21 @@ def main():
             labels = labels.unsqueeze(1)
             valid_flags = valid_flags.unsqueeze(1)
             failed_reads_tensor += (1.0 - valid_flags).sum()
-            optimizer.zero_grad(set_to_none=True)
 
-            with accelerator.autocast():
-                outputs = model(images)
-                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, pos_weight=pos_weight_tensor, reduction='none')
-                loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+            # Gradient accumulation: accumulate over GRAD_ACCUM_STEPS micro-batches
+            # before updating weights. This simulates a larger effective batch size
+            # without requiring more GPU memory per step.
+            with accelerator.accumulate(model):
+                optimizer.zero_grad(set_to_none=True)
 
-            accelerator.backward(loss)
-            accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+                with accelerator.autocast():
+                    outputs = model(images)
+                    loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, pos_weight=pos_weight_tensor, reduction='none')
+                    loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+
+                accelerator.backward(loss)
+                accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
 
             running_loss += loss.detach() * images.size(0)
 
@@ -293,10 +362,23 @@ def main():
             logger.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] - Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Val AUC: {val_auc:.4f} | Head LR: {current_lr_head:.6f}")
 
             if val_auc > best_val_auc:
-                best_val_auc = val_auc
-                unwrapped_model = accelerator.unwrap_model(model)
-                torch.save(unwrapped_model.state_dict(), BEST_MODEL_WEIGHTS_PATH)
-                logger.info(f"Saved Checkpoint (Val AUC: {val_auc:.4f}) to {BEST_MODEL_WEIGHTS_PATH}")
+                    best_val_auc = val_auc
+                    epochs_without_improvement = 0
+                    unwrapped_model = accelerator.unwrap_model(model)
+                    torch.save(unwrapped_model.state_dict(), BEST_MODEL_WEIGHTS_PATH)
+                    logger.info(f"Saved Checkpoint (Val AUC: {val_auc:.4f}) to {BEST_MODEL_WEIGHTS_PATH}")
+            else:
+                    epochs_without_improvement += 1
+                    logger.info(
+                        f"No improvement for {epochs_without_improvement}/{EARLY_STOPPING_PATIENCE} epochs "
+                        f"(best Val AUC: {best_val_auc:.4f})"
+                    )
+                    if epochs_without_improvement >= EARLY_STOPPING_PATIENCE:
+                        logger.info(
+                            f"Early stopping triggered after {epoch+1} epochs "
+                            f"(patience={EARLY_STOPPING_PATIENCE}, best Val AUC={best_val_auc:.4f})."
+                        )
+                        break
 
     if accelerator.is_main_process:
         total_mins = (time.time() - start_time) / 60

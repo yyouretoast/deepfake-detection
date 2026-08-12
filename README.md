@@ -11,12 +11,12 @@ license: mit
 
 # 🎭 Dual-Stream Deepfake Detection Engine
 
-A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small spatial representations with Steganographic Rich Model (SRM) + Bayar-Stamm 2D Real FFT frequency spectrum embeddings, SciPy L-BFGS-B temperature calibration, and thread-local OpenCV YuNet face cropping.
+A PyTorch 2.x dual-stream deepfake detection framework combining a ConvNeXt-Small spatial backbone with Steganographic Rich Model (SRM) + Bayar-Stamm 2D Real FFT frequency spectrum embeddings, SciPy L-BFGS-B temperature calibration, and YuNet face alignment.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
-[![pytest](https://img.shields.io/badge/pytest-61%2F61%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![pytest](https://img.shields.io/badge/pytest-62%2F62%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Notebook](https://img.shields.io/badge/Notebook-Master%20Pipeline-blue?logo=jupyter)](notebooks/master_pipeline.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -28,21 +28,21 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
 ## System Architecture
 
 ```
-[ Input Video Stream ] ──► [ Thread-Local YuNet ] ──► [ 512x512 Face Crops (1.50x Scale Expansion) ]
-                                                              │
+[ Input Video Stream ] ──► [ OpenCV YuNet Alignment ] ──► [ 512x512 Face Crops (1.50x Scale Expansion) ]
+                                                               │
                        ┌──────────────────────────────────────┴──────────────────────────────────────┐
                        ▼                                                                             ▼
          [ Spatial Stream (ConvNeXt-Small) ]                             [ Frequency Stream (SRM + Bayar + 2D FFT) ]
          • 256x256 RGB Image Input                                        • 3 SRM Filters + 1 Bayar-Stamm Conv
-         • 512-d Feature Embeddings                                       • 20-Channel 2D FFT (10 Mag + 10 Phase)
-                       │                                                  • 512-d Frequency Embeddings
+         • LayerNorm2d Spatial Normalization                              • 20-Channel 2D FFT (10 Mag + 10 Phase)
+         • 512-d Feature Embeddings                                       • 512-d Frequency Embeddings
                        │                                                                             │
                        └──────────────────────────────┬──────────────────────────────┘
                                                       ▼
-                                       [ Equalized Residual Gated Fusion ]
+                                       [ Symmetric Gated Residual Fusion ]
                                        • Gating Vector g = Sigmoid(Linear(Spatial || Freq))
-                                       • Fused Feature f_fused = [f_spatial_512 || f_freq_512 * g]
-                                       • 1024-d Equalized Feature Vector
+                                       • Fused Feature f_fused = [f_spatial_512 * (1 - g) || f_freq_512 * g]
+                                       • 1024-d Gated Feature Vector
                                                       │
                                                       ▼
                                            [ Binary Classifier Head ]
@@ -58,7 +58,7 @@ A PyTorch 2.x dual-stream deepfake detection pipeline combining ConvNeXt-Small s
                                                                 • (d) Grad-CAM ConvNeXt Attention
 ```
 
-### Formulations
+### Mathematical Formulations
 
 **20-Channel Dual-Domain Spectral Extraction**:
 
@@ -66,41 +66,43 @@ $$
 \mathcal{F}_{\text{norm}} = \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}})| + 1 \right)
 $$
 
-**Residual Gated Fusion**:
+**Symmetric Gated Residual Fusion**:
 
 $$
 g = \sigma\Big(\text{Linear}\big([\mathbf{f}_{\text{spatial}} \;\|\; \mathbf{f}_{\text{freq}}]\big)\Big) \in \mathbb{R}^{512}
 $$
 
 $$
-\mathbf{f}_{\text{fused}} = \Big[ \mathbf{f}_{\text{spatial}} \;\|\; \mathbf{f}_{\text{freq}} \odot g \Big] \in \mathbb{R}^{1024}
+\mathbf{f}_{\text{fused}} = \Big[ \mathbf{f}_{\text{spatial}} \odot (1 - g) \;\|\; \mathbf{f}_{\text{freq}} \odot g \Big] \in \mathbb{R}^{1024}
 $$
 
 ---
 
 ## Core Engineering Features
 
-- **Identity-Disjoint Data Partitioning**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs (`id0_id16`) across train, val, and test splits to guarantee 0% identity leakage.
-- **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals before 2D FFT extraction.
-- **Probability Calibration via SciPy L-BFGS-B**: Minimizes NLL loss over log-temperatures ($\text{logit} / \exp(\log T)$) to reduce Expected Calibration Error (ECE) from `0.0122` down to `0.0093`.
+- **Identity-Disjoint Data Partitioning**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs (`id0_id16`) across train, val, and test splits to prevent identity leakage.
+- **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals prior to 2D FFT extraction.
+- **Forensic Signal Preservation**: Low-pass filtering (blur/compression) is excluded during training to protect the high-frequency spectral signals relied upon by the frequency branch.
+- **Probability Calibration via SciPy L-BFGS-B**: Fits log-temperatures ($\text{logit} / T^*$) on validation logits, reducing Expected Calibration Error (ECE) from `0.0122` to `0.0093`.
 - **4-Panel Interpretability Diagnostics**: Generates Grad-CAM spatial heatmaps, SRM noise residual maps, and 2D Real FFT magnitude spectrums on demand.
-- **Multi-GPU DDP Engine**: Hugging Face `Accelerate` DistributedDataParallel with `SyncBatchNorm` and OpenCV C++ binary loader.
-- **Per-Sample Loss Masking**: Excludes corrupt or invalid image frames from backpropagation gradient updates.
+- **Multi-GPU DDP Engine**: Hugging Face `Accelerate` DistributedDataParallel equipped with `SyncBatchNorm` and chunked 5D sequence processing.
+- **Per-Sample Loss Masking**: Excludes corrupt or unreadable image frames from backpropagation updates.
 
 ---
 
 ## Benchmark & Experimental Results
 
-*Evaluated on 2x NVIDIA T4 GPUs at 512x512 crop resolution using PyTorch 2.1 FP16 mixed precision.*
+*Evaluated on 2x NVIDIA T4 GPUs at 256x256 / 512x512 crop resolution using PyTorch FP16 mixed precision.*
 
 ### 1. Held-Out Test Set Metrics (10,528 Per-Frame Face Crops)
+
 - **Test AUC**: `0.9988` **[95% Non-Parametric Bootstrap CI: 0.9985 – 0.9991]**
 - **Test F1-Score**: `0.9830` **[95% Non-Parametric Bootstrap CI: 0.9809 – 0.9850]**
 - **Precision (Fake)**: `0.9686` **[95% Non-Parametric Bootstrap CI: 0.9647 – 0.9725]**
 - **Recall (Fake)**: `0.9979` **[95% Non-Parametric Bootstrap CI: 0.9966 – 0.9987]**
 - **Optimal Temperature ($T^*$)**: `1.4788`
 - **Expected Calibration Error (ECE)**: `0.0122` (Raw) $\rightarrow$ `0.0093` (Calibrated)
-- **Inference Aggregation Policy**: Per-frame predictions are evaluated on 256×256 facial crops (with 512×512 resolution support). For full video inference, frame-level scores are aggregated via Softmax-Weighted Aggregation ($\text{Score}_{\text{video}} = \sum_{k=1}^K w_k \cdot p_k$, where $w_k = \frac{\exp(p_k/\tau)}{\sum_{j=1}^K \exp(p_j/\tau)}$ with temperature $\tau=0.10$), alongside configurable $\text{Top-}k$, Exponential Moving Average (EMA), and Mean pooling.
+- **Inference Aggregation Policy**: Per-frame predictions are evaluated on facial crops. For full video inference, frame-level scores are aggregated via Softmax-Weighted Aggregation ($\text{Score}_{\text{video}} = \sum_{k=1}^K w_k \cdot p_k$, where $w_k = \frac{\exp(p_k/\tau)}{\sum_{j=1}^K \exp(p_j/\tau)}$ with temperature $\tau=0.10$), alongside configurable $\text{Top-}k$, Exponential Moving Average (EMA), and Mean pooling.
 
 ### 2. Per-Generator Sub-Domain Evaluation (2-Class AUC vs Real Faces)
 
@@ -112,7 +114,8 @@ $$
 | **FF++ FaceSwap (Pairs 400-599)** | 200 | `0.9961` | `0.4405` | `100.00%` |
 | **FF++ NeuralTextures (Pairs 600-799)** | 200 | `0.9940` | `0.4405` | `100.00%` |
 
-*\*Note: FF++ sub-domain F1 scores reflect heavy class imbalance (200 Fakes paired against 2,889 Real test faces) at the operating threshold = 0.01 optimized for 99.8% Fake Recall.*
+> [!NOTE]
+> **Sub-Domain F1 Score Callout**: FF++ sub-domain F1 scores reflect extreme class imbalance (200 Fakes paired against 2,889 Real test faces) at an operating decision threshold of 0.01 optimized for 99.8% Fake Recall. Receiver Operating Characteristic AUC (`0.9940`–`0.9967`) accurately captures true classification performance independent of decision threshold choice.
 
 ### 3. Leave-One-Target-Out (LOTO) Cross-Generator Generalization
 
@@ -124,22 +127,22 @@ $$
 | **Fold 4** | `FF++ NeuralTextures` | Within-Dataset LOTO | 5,289 | `0.9783` | `0.0217` | `0.9230` |
 | **Fold 5** | `Celeb-DF v2` | Cross-Dataset Zero-Shot | 82,549 | `0.3234` | **`0.6766`** | `0.1202` |
 
-> [!NOTE]
-> **Methodological Note on Fold 5 (Celeb-DF v2)**: Holding out Celeb-DF v2 removes 88% of all fake training crops, leaving only compressed FaceForensics++ fakes for training. Raw test predictions yield a zero-shot AUC of `0.3234`. Inverting the decision probabilities ($1 - p$) yields an AUC of **`0.6766`**, demonstrating anti-correlated decision ranking beyond random chance (`0.50`), but well below a pure sign-flip inversion ($\approx 1.00$). Overfitting to low-level H.264 compression signatures and resolution differences on FF++ is a primary hypothesis for this domain drop, pending a 2×2 factorial ablation (resolution × compression) to measure the precise percentage of the domain gap closed.
+> [!CAUTION]
+> **Cross-Dataset Domain Shift Limitation (Fold 5)**: Holding out Celeb-DF v2 removes 88% of fake training crops, leaving only compressed FaceForensics++ fakes for training. Raw zero-shot AUC drops to `0.3234`. Inverting decision probabilities ($1 - p$) yields an AUC of **`0.6766`**, indicating anti-correlated decision ranking driven by domain compression differences. Fine-tuning or multi-dataset training is recommended for deployment on unseen generator distributions.
 
 ![LOTO Zero-Shot Generalization](figures/loto_generalization.png)
 
 ### 4. Robustness Under Image Degradation & Failure Mode Analysis
 
-Evaluated on full held-out test split (10,528 crops) at 256×256 resolution using calibrated checkpoint (T\*=1.4788, threshold=0.01).
+Evaluated on full held-out test split (10,528 crops) at 256×256 resolution using calibrated checkpoint ($T^*=1.4788$, threshold=0.01).
 
 ![Robustness Degradation Sweeps](figures/robustness_degradation.png)
 
 > [!WARNING]
-> **Architectural Failure Mode**: The model exhibits high sensitivity to low-pass spatial filtering and high-frequency additive noise:
-> - **Gaussian Blur ($\sigma=3.0$)**: Causes a **−26.13% AUC drop** (`0.7375`), as spatial blurring erases the high-frequency residual spectrum extracted by SRM and 2D Real FFT.
-> - **Gaussian Noise ($\sigma=30$)**: Causes a **−24.44% AUC drop** (`0.7544`), as wideband random noise swamps the subtle steganographic artifacts isolated by the Bayar-Stamm constrained convolution.
-> - **JPEG Compression ($Q=50$)**: Remains relatively robust with a minor **−3.03% AUC drop** (`0.9685`).
+> **Architectural Sensitivity & Failure Modes**: High-frequency spectral streams are vulnerable to spatial smoothing and wideband noise:
+> - **Gaussian Blur ($\sigma=3.0$)**: Causes a **−26.13% AUC drop** (`0.7375`), as low-pass filtering attenuates high-frequency SRM and FFT residual features.
+> - **Gaussian Noise ($\sigma=30$)**: Causes a **−24.44% AUC drop** (`0.7544`), as additive noise dominates subtle steganographic artifacts.
+> - **JPEG Compression ($Q=50$)**: Demonstrates strong resilience with a minor **−3.03% AUC drop** (`0.9685`).
 
 **JPEG Compression**
 
@@ -179,18 +182,16 @@ Evaluated on full held-out test split (10,528 crops) at 256×256 resolution usin
 | 0.50× | `0.9910` | `0.9059` | −0.78% |
 | 0.25× | `0.9518` | `0.8631` | −4.70% |
 
-**Note**: AUC collapse under heavy Gaussian blur (σ=3.0, −26%) and noise (σ=30, −24%) is an inherent consequence of the SRM+Bayar+2D FFT frequency branch's dependence on high-frequency manipulation artifacts. Low-pass filtering (blur) and wideband noise physically destroy the spectral signal the frequency stream relies on.
-
 ### 5. Hardware Inference & Serving Latency Benchmarks
 
-*Evaluated at 512×512 facial crop resolution across PyTorch 2.1 FP16 / FP32 hardware execution providers (`scripts/benchmark_latency.py`).*
+*Evaluated at 512×512 facial crop resolution across PyTorch 2.1 FP16 / FP32 execution providers (`scripts/benchmark_latency.py`).*
 
 | Hardware Execution Provider | Precision | Batch Size | Single-Crop Latency | Throughput (FPS) | Provenance |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=1 (Single-Frame) | `18.62 ms/crop` | `53.7 FPS` | **Empirically Measured** (Kaggle GPU) |
-| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=32 (Batch Vectorized) | `16.41 ms/crop` | `60.9 FPS` | **Empirically Measured** (Kaggle GPU) |
-| **Intel CPU (Multi-thread)** | FP32 Standard | BS=1 (Single-Frame) | `188.25 ms/crop` | `5.3 FPS` | **Empirically Measured** (Local CPU) |
-| **Intel CPU (Multi-thread)** | FP32 Standard | BS=32 (Batch Vectorized) | `4.77 ms/crop` | `209.6 FPS` | **Empirically Measured** (Local CPU) |
+| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=1 (Single-Frame) | `18.62 ms/crop` | `53.7 FPS` | Empirically Measured (Kaggle GPU) |
+| **NVIDIA Tesla T4 GPU** | FP16 Mixed | BS=32 (Batch Vectorized) | `16.41 ms/crop` | `60.9 FPS` | Empirically Measured (Kaggle GPU) |
+| **Intel Xeon CPU (Multi-thread)** | FP32 Standard | BS=1 (Single-Frame) | `188.25 ms/crop` | `5.3 FPS` | Empirically Measured (Local Host) |
+| **Intel Xeon CPU (Multi-thread)** | FP32 Standard | BS=32 (Vectorized) | `4.77 ms/crop` | `209.6 FPS` | Empirically Measured (Local Host) |
 
 ### 6. Benchmark Performance & Visual Interpretability
 
@@ -285,7 +286,7 @@ deepfake-detection/
 │   ├── export_test_predictions.py # Raw/calibrated probability exporter
 │   ├── generate_benchmark_plots.py# 300 DPI visualization rendering script
 │   └── visualize_attention_maps.py# 4-panel SRM + Grad-CAM interpretability engine
-├── tests/                         # 61/61 passing unit tests
+├── tests/                         # 62/62 passing unit tests
 └── README.md
 ```
 
@@ -308,6 +309,8 @@ Model checkpoints and live application demonstrations are provided strictly for 
 3. **SRM (Steganographic Rich Model)**: Fridrich, J., & Kodovsky, J. (2012). Rich models for steganalysis of digital images. *IEEE Transactions on Information Forensics and Security*.
 4. **Bayar-Stamm Constrained Conv**: Bayar, B., & Stamm, M. C. (2016). A deep learning approach to universal image manipulation detection. *IEEE IH&MMSec*.
 5. **ConvNeXt Architecture**: Liu, Z., Mao, H., Wu, C. Y., Feichtenhofer, C., Darrell, T., & Xie, S. (2022). A ConvNet for the 2020s. *IEEE/CVF CVPR*.
+6. **PyTorch Image Models (timm)**: Wightman, R. (2019). PyTorch Image Models. *GitHub repository*.
+7. **Grad-CAM**: Selvaraju, R. R., Cogswell, M., Das, A., Vedantam, R., Parikh, D., & Batra, D. (2017). Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization. *IEEE/CVF ICCV*.
 
 ---
 

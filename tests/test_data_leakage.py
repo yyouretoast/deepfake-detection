@@ -13,6 +13,30 @@ def test_extract_identities_parsing() -> None:
     assert id2_real == "000"
 
 
+def test_extract_identities_frame_counter_not_parsed_as_actor_pair() -> None:
+    """Regression: filenames with >=4-digit frame counters must NOT be interpreted
+    as actor-pair IDs. 'real_001_0001.png' (actor 001, frame counter 0001) must
+    yield a single-actor identity, NOT the pair ('001', '0001').
+    Previously the fallback regex turned '0001' into a second actor ID, causing
+    the entire real-data identity graph to collapse into one component."""
+    id1, id2 = extract_identities("real_001_0001.png")
+    assert id1 == id2, (
+        f"Frame-counter filename 'real_001_0001.png' should yield single-actor identity, "
+        f"got id1='{id1}', id2='{id2}'. This would cause identity graph collapse."
+    )
+    assert len(id1) <= 3, (  # noqa: PLR2004
+        f"Parsed identity '{id1}' looks like a frame counter (>=4 digits)"
+    )
+
+    # A genuine actor pair with short IDs must still parse correctly
+    id1c, id2c = extract_identities("000_003/frame_0001.webp")
+    assert id1c == "000" and id2c == "003", (
+        f"Fake-pair path should yield ('000', '003'), got ('{id1c}', '{id2c}')"
+    )
+
+
+
+
 def test_perform_graph_split_zero_identity_leakage() -> None:
     samples = [
         ("000_001.mp4", 1),

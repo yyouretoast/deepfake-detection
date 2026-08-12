@@ -24,7 +24,11 @@ APP_CFG: dict[str, Any] = CONFIG.get("app", {})
 IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-EXPECTED_WEIGHTS_SHA256: Optional[str] = os.getenv("EXPECTED_WEIGHTS_SHA256", None)
+# Expected SHA-256 hash of published checkpoint weights (can be overridden via ENV)
+EXPECTED_WEIGHTS_SHA256: Optional[str] = os.getenv(
+    "EXPECTED_WEIGHTS_SHA256",
+    os.getenv("PUBLISHED_WEIGHTS_SHA256", None)
+)
 
 
 def load_prediction_engine() -> tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
@@ -172,18 +176,29 @@ def process_video_frames(
         detected_frame_indices: list[int] = []
         detected_timestamps: list[float] = []
 
-        for idx in frame_indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
+        # Sequential reading is significantly faster and more accurate than random seeking
+        # via cap.set(CAP_PROP_POS_FRAMES). Random seeking on compressed formats (H.264)
+        # forces decoding from the nearest I-frame, which is slow and can be inaccurate
+        # for Variable Frame Rate videos or containers with bad headers.
+        target_set = set(frame_indices)
+        current_frame = 0
+
+        while cap.isOpened():
             ret, frame = cap.read()
             if not ret or frame is None:
-                ret, frame = cap.read()
-            if ret and frame is not None:
+                break
+            if current_frame in target_set:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 face = cropper.crop_face(rgb)
                 if face is not None:
                     all_faces.append(face)
-                    detected_frame_indices.append(idx)
-                    detected_timestamps.append(float(idx) / fps)
+                    detected_frame_indices.append(current_frame)
+                    detected_timestamps.append(float(current_frame) / fps)
+                target_set.discard(current_frame)
+                if not target_set:
+                    break  # All target frames collected — stop early
+            current_frame += 1
+
     finally:
         cap.release()
         gc.collect()

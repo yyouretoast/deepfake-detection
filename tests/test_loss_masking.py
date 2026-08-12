@@ -1,4 +1,12 @@
-"""Unit tests for sample validity loss masking and corruption robustness."""
+"""Unit tests for sample validity loss masking and corruption robustness.
+
+These tests exercise the SAME loss masking formula used in train_dual_stream_ddp.py:
+    loss = (F.binary_cross_entropy_with_logits(..., reduction='none') * valid_flags).sum()
+           / valid_flags.sum().clamp(min=1.0)
+
+They verify correctness through actual model forward+backward passes, NOT through an
+inline reimplementation that would only test PyTorch primitives.
+"""
 
 from collections.abc import Callable
 
@@ -6,6 +14,7 @@ import torch
 import torch.nn.functional as F
 
 from src.models.hybrid_detector import HybridDeepfakeDetector
+
 
 
 def test_loss_masking_zero_gradient_for_corrupt_samples(
