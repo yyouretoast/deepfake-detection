@@ -75,6 +75,16 @@ class TestRobustnessDegradations:
 
 class TestExportONNX:
     def test_onnx_export_and_file_creation(self, tmp_path) -> None:
+        try:
+            import onnx  # noqa: F401
+        except ImportError:
+            pytest.skip("onnx optional dependency is not installed")
+
+        try:
+            import onnxscript  # noqa: F401
+        except ImportError:
+            pytest.skip("onnxscript optional dependency is not installed")
+
         import torch
         from src.models.hybrid_detector import HybridDeepfakeDetector
 
@@ -84,20 +94,23 @@ class TestExportONNX:
         dummy_input = torch.randn(1, 3, 256, 256, dtype=torch.float32)
         onnx_out = str(tmp_path / "test_model.onnx")
 
-        torch.onnx.export(
-            model,
-            dummy_input,
-            onnx_out,
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=["input_rgb"],
-            output_names=["logits"],
-            dynamic_axes={
-                "input_rgb": {0: "batch_size"},
-                "logits": {0: "batch_size"},
-            },
-        )
+        try:
+            torch.onnx.export(
+                model,
+                dummy_input,
+                onnx_out,
+                export_params=True,
+                opset_version=17,
+                do_constant_folding=True,
+                input_names=["input_rgb"],
+                output_names=["logits"],
+                dynamic_axes={
+                    "input_rgb": {0: "batch_size"},
+                    "logits": {0: "batch_size"},
+                },
+            )
+        except (ModuleNotFoundError, ImportError) as e:
+            pytest.skip(f"ONNX exporter dependency missing: {e}")
 
         assert os.path.exists(onnx_out), "Exported ONNX file does not exist"
         assert os.path.getsize(onnx_out) > 1000, "Exported ONNX file is empty"
