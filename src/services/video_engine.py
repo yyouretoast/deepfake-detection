@@ -208,18 +208,9 @@ def process_video_frames(
     if not all_faces:
         return None
 
-    _, torch_batch = preprocess_tensors_batch(all_faces, device=DEVICE)
-    sequence_tensor = torch_batch.unsqueeze(0)  # [1, N_faces, 3, H, W]
-
-    unwrapped = pytorch_model.module if isinstance(pytorch_model, torch.nn.DataParallel) else pytorch_model
-
-    with torch.inference_mode():
-        with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-            seq_logits = unwrapped.forward_sequence(sequence_tensor)
-            video_prob = float(torch.sigmoid(seq_logits.float() / temperature).mean().item())
-
     batch_size = CONFIG.get("training", {}).get("batch_size", 16)
     all_probs: list[float] = []
+    unflipped_probs: list[float] = []
 
     for i in range(0, len(all_faces), batch_size):
         batch_faces = all_faces[i : i + batch_size]
@@ -227,13 +218,13 @@ def process_video_frames(
 
         with torch.inference_mode():
             with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature)
-                p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature)
-                p_avg = ((p1 + p2) / 2.0).view(-1)
-                batch_probs = [float(val) for val in p_avg.cpu().numpy().tolist()]
+                p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature).view(-1)
+                p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature).view(-1)
+                p_avg = (p1 + p2) / 2.0
+                unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
+                all_probs.extend([float(val) for val in p_avg.cpu().numpy().tolist()])
 
-        all_probs.extend(batch_probs)
-
+    video_prob = float(np.mean(unflipped_probs)) if unflipped_probs else 0.5
     _agg = aggregate_video_predictions(
         scores=all_probs,
         method=aggregation_method,

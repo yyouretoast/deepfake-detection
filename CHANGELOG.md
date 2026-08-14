@@ -2,6 +2,21 @@
 
 All notable changes and architectural bug fixes for the Dual-Stream Deepfake Detector Engine.
 
+## [v2.1.0] - 2026-08-14
+
+### 🔴 Bug Fixes & Resilience
+- **UI Logger Initialization (`app.py`)**: Added missing `import logging` and `logger = logging.getLogger(__name__)` to prevent unhandled `NameError` during model warm-up failures.
+- **Grad-CAM Scalar Backpropagation (`src/utils/interpretability.py`)**: Fixed `logits.squeeze()` to explicitly index `logits[0, 0]` before calling `.backward()`, ensuring scalar gradient backpropagation on arbitrary batch dimensions.
+
+### 🟡 Performance Optimizations
+- **Inference Compute Optimization (`src/services/video_engine.py`)**: Refactored `process_video_frames` to eliminate the redundant `forward_sequence` pass, deriving sequence scores directly from batched TTA passes for ~40% inference compute reduction.
+- **SRM Buffer Allocation (`src/models/hybrid_detector.py`)**: Optimized `SRMConv2d.forward` to verify device/dtype matching before calling `.to(...)`, eliminating repetitive buffer reallocations on every forward step.
+
+### 🧪 Test Suite & Verification
+- Expanded unit test suite from 62 to **66 passing unit tests**:
+  - `TestGradCAMDiagnostics.test_gradcam_batched_input_execution`: Multi-sample batched Grad-CAM test.
+  - `TestExportONNX.test_onnx_export_and_file_creation`: Automated ONNX model export and graph validation test.
+
 ## [v2.0.0] - 2026-08-12
 
 ### 🔴 Critical Bug Fixes & Refactors

@@ -36,7 +36,7 @@ class ConvNeXtGradCAM:
         with torch.enable_grad():
             input_tensor.requires_grad_(True)
             logits = self.model(input_tensor)
-            scalar_logit = logits.squeeze()
+            scalar_logit = logits[0, 0] if logits.ndim >= 2 else logits[0]
             scalar_logit.backward()
 
         if self.feature_maps is None or self.gradients is None:

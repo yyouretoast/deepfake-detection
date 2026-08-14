@@ -44,7 +44,7 @@ class SRMConv2d(nn.Module):
         Input:  x [B, 3, H, W]
         Output: SRM residual maps [B, 9, H, W]
         """
-        w = self.weights.to(dtype=x.dtype, device=x.device)
+        w = self.weights if self.weights.device == x.device and self.weights.dtype == x.dtype else self.weights.to(dtype=x.dtype, device=x.device)
         return F.conv2d(x, w, stride=1, padding=2, groups=3)
 
 

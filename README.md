@@ -16,7 +16,7 @@ A PyTorch 2.x dual-stream deepfake detection framework combining a ConvNeXt-Smal
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
-[![pytest](https://img.shields.io/badge/pytest-62%2F62%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![pytest](https://img.shields.io/badge/pytest-66%2F66%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Notebook](https://img.shields.io/badge/Notebook-Master%20Pipeline-blue?logo=jupyter)](notebooks/master_pipeline.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -288,7 +288,7 @@ deepfake-detection/
 │   ├── export_test_predictions.py # Raw/calibrated probability exporter
 │   ├── generate_benchmark_plots.py# 300 DPI visualization rendering script
 │   └── visualize_attention_maps.py# 4-panel SRM + Grad-CAM interpretability engine
-├── tests/                         # 62/62 passing unit tests
+├── tests/                         # 66/66 passing unit tests
 └── README.md
 ```
 

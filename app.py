@@ -2,11 +2,14 @@
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import sys
 import tempfile
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 import matplotlib
 

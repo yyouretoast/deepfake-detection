@@ -124,6 +124,20 @@ class TestGradCAMDiagnostics:
         assert len(target_layer._forward_hooks) == 0, "Forward hook was not cleaned up after Grad-CAM"
         assert len(target_layer._backward_hooks) == 0, "Backward hook was not cleaned up after Grad-CAM"
 
+    def test_gradcam_batched_input_execution(self) -> None:
+        from src.utils.interpretability import ConvNeXtGradCAM
+
+        model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
+        model.eval()
+        grad_cam = ConvNeXtGradCAM(model)
+        try:
+            batch_tensor = torch.rand(2, 3, 256, 256)
+            heatmap = grad_cam.generate_heatmap(batch_tensor, img_size=256)
+            assert heatmap.shape == (256, 256)
+            assert 0.0 <= heatmap.min() <= heatmap.max() <= 1.0
+        finally:
+            grad_cam.remove_hooks()
+
 
 class TestSyntheticVideoInference:
     def test_process_video_frames_with_synthetic_mp4(self, tmp_path) -> None:

@@ -20,7 +20,7 @@ dist/
 *.onnx_data
 *.bin
 *.h5
-models/
+/models/
 checkpoint_state/
 
 # Heavy Binary Data & Datasets
