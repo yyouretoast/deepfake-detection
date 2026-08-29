@@ -1,6 +1,5 @@
 """Video inference and model loading service for Deepfake Detector Engine."""
 
-import gc
 import hashlib
 import json
 import logging

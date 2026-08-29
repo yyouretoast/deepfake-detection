@@ -1,6 +1,7 @@
 """Per-Generator Sub-Domain Evaluation Script for Dual-Stream Deepfake Detector."""
 
 import json
+import logging
 import os
 import re
 import sys
@@ -8,6 +9,8 @@ import sys
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import torch

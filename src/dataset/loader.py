@@ -230,7 +230,7 @@ def perform_graph_split(
             val_samples.append((path, label))
         elif id1 in test_comps or id2 in test_comps:
             test_samples.append((path, label))
-        else:
+        elif id1 in train_comps or id2 in train_comps:
             train_samples.append((path, label))
 
     if is_string_list:
