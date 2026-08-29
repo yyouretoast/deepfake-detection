@@ -82,7 +82,8 @@ $$
 
 - **Identity-Disjoint Data Partitioning**: Graph connected-component partitioning (`networkx.Graph`) segregates actor IDs (`id0_id16`) across train, val, and test splits to prevent identity leakage.
 - **Steganographic SRM + Bayar Noise Residuals**: Combines 3 fixed SRM high-pass kernels with 1 learnable Bayar-Stamm constrained convolution to isolate spatial noise residuals prior to 2D FFT extraction.
-- **Forensic Signal Preservation**: Low-pass filtering (blur/compression) is excluded during training to protect the high-frequency spectral signals relied upon by the frequency branch.
+- **Balanced Spatial Degradation Augmentation**: Employs conservative compression ($Q \in [85, 100], p=0.15$) and mild Gaussian blur ($\sigma \in [0.2, 0.6], p=0.15$) during training to provide degradation resilience without attenuating high-frequency SRM/Bayar steganographic noise residuals.
+- **Strict $[0.0, 1.0]$ Tensor Contract**: Unifies data loaders and inference pipelines to feed uncorrupted raw pixel distributions directly to steganographic filters, with single internal normalization on the spatial path.
 - **Probability Calibration via SciPy L-BFGS-B**: Fits log-temperatures ($\text{logit} / T^*$) on validation logits, reducing Expected Calibration Error (ECE) from `0.0122` to `0.0093`.
 - **4-Panel Interpretability Diagnostics**: Generates Grad-CAM spatial heatmaps, SRM noise residual maps, and 2D Real FFT magnitude spectrums on demand.
 - **Multi-GPU DDP Engine**: Hugging Face `Accelerate` DistributedDataParallel equipped with `SyncBatchNorm` and chunked 5D sequence processing.
@@ -246,7 +247,7 @@ python scripts/visualize_attention_maps.py --n_samples 6 --output_dir figures/at
 ### 5. Multi-GPU Training
 
 ```bash
-accelerate launch --mixed_precision fp16 --num_processes 2 --multi_gpu scripts/train_dual_stream_ddp.py
+accelerate launch --mixed_precision fp16 --num_processes 2 scripts/train_dual_stream_ddp.py
 ```
 
 ---
@@ -278,6 +279,7 @@ deepfake-detection/
 │   │   └── video_engine.py        # Video prediction engine & checkpoint loader
 │   └── utils/
 │       ├── checkpoint.py          # Central state-dict cleaning, L-BFGS-B temp fitting & ECE calculation
+│       ├── interpretability.py    # Thread-safe ConvNeXt Grad-CAM & 4-panel diagnostic visualizer
 │       └── temporal_aggregation.py# Frame score pooling (soft-max, EMA, top-K, mean)
 ├── scripts/                       # Training, evaluation, export & plotting scripts
 │   ├── benchmark_latency.py       # Inference latency & throughput benchmark script
