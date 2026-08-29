@@ -269,7 +269,8 @@ def main():
     # SyncBatchNorm: synchronises batch norm running statistics across all DDP processes.
     # Without this, each GPU computes its own BN stats from a sub-batch, which severely
     # degrades convergence when per-GPU batch sizes are small (e.g. 16).
-    model = accelerator.sync_batch_norm(model)
+    if accelerator.num_processes > 1:
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
     model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, val_loader, scheduler
