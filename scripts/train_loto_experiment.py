@@ -111,6 +111,14 @@ def main():
     data_root = find_dataset_root(args.data_dir)
 
     splits_path = os.path.join(data_root, 'splits.json')
+    if os.path.exists('/kaggle/working/splits.json'):
+        splits_path = '/kaggle/working/splits.json'
+    elif os.path.exists('./splits.json'):
+        splits_path = './splits.json'
+
+    if accelerator.is_main_process:
+        logger.info(f"Loading LOTO dataset splits from: {splits_path}")
+
     with open(splits_path, 'r') as f:
         splits = json.load(f)
 
@@ -284,9 +292,18 @@ def main():
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
         })
 
-        with open(res_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        logger.info("Saved LOTO result entry to %s", res_file)
+        save_paths = [os.path.join(REPO_ROOT, "loto_results.json")]
+        if os.path.exists("/kaggle/working"):
+            save_paths.append("/kaggle/working/loto_results.json")
+            save_paths.append("/kaggle/working/repo/loto_results.json")
+
+        for p in save_paths:
+            try:
+                with open(p, 'w') as f:
+                    json.dump(results, f, indent=2)
+                logger.info("Saved LOTO result entry to %s", p)
+            except OSError:
+                pass
 
 if __name__ == '__main__':
     main()
