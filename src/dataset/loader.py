@@ -65,7 +65,13 @@ def extract_identities(
             g1, g2, clean_base,
         )
 
-    # Priority 3: single numeric id (real-face videos like "000.mp4")
+    # Priority 3: single id pattern (Celeb-real videos like "id0_0000.mp4")
+    match_single_id = re.search(r"(id\d+)", clean_base)
+    if match_single_id:
+        id_str = match_single_id.group(1)
+        return id_str, id_str
+
+    # Priority 4: single numeric id (real-face videos like "000.mp4" or "00000.mp4")
     match_single = re.search(r"(\d+)", clean_base)
     if match_single:
         id_str = match_single.group(1)

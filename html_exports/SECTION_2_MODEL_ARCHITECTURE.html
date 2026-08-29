@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SECTION_2_MODEL_ARCHITECTURE</title>
+    
+    <!-- KaTeX CSS & JS for 100% Crisp LaTeX Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+            onload="renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\[', right: '\\]', display: true},
+                    {left: '\\(', right: '\\)', display: false}
+                ],
+                throwOnError: false
+            });"></script>
+
+    <!-- Modern Typography & GitHub Markdown Styling -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        @page {
+            size: A4 portrait;
+            margin: 20mm 15mm 20mm 15mm;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 10.5pt;
+            line-height: 1.6;
+            color: #1e293b;
+            background-color: #ffffff;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        h1 {
+            font-size: 20pt;
+            font-weight: 700;
+            color: #0f172a;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 8px;
+            margin-top: 25px;
+            margin-bottom: 16px;
+        }
+
+        h2 {
+            font-size: 15pt;
+            font-weight: 600;
+            color: #1e3a8a;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            margin-top: 22px;
+            margin-bottom: 12px;
+        }
+
+        h3 {
+            font-size: 12pt;
+            font-weight: 600;
+            color: #1d4ed8;
+            margin-top: 18px;
+            margin-bottom: 8px;
+        }
+
+        p {
+            margin-top: 0;
+            margin-bottom: 12px;
+            text-align: justify;
+        }
+
+        ul, ol {
+            margin-top: 4px;
+            margin-bottom: 12px;
+            padding-left: 24px;
+        }
+
+        li {
+            margin-bottom: 4px;
+        }
+
+        pre {
+            background-color: #0f172a;
+            color: #f8fafc;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 9pt;
+            line-height: 1.4;
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            background-color: #f1f5f9;
+            color: #0f172a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9pt;
+        }
+
+        pre code {
+            background-color: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+            margin-bottom: 18px;
+            font-size: 9.5pt;
+        }
+
+        th, td {
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f8fafc;
+            color: #0f172a;
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        blockquote {
+            border-left: 4px solid #3b82f6;
+            background-color: #eff6ff;
+            color: #1e40af;
+            padding: 10px 16px;
+            margin: 14px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px solid #e2e8f0;
+            margin: 20px 0;
+        }
+
+        a {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .katex-display {
+            margin: 14px 0 !important;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 4px 0;
+        }
+
+        @media print {
+            body {
+                max-width: 100%;
+                padding: 0;
+                font-size: 10pt;
+            }
+            h1 { font-size: 18pt; }
+            h2 { font-size: 14pt; }
+            h3 { font-size: 11pt; }
+            pre {
+                background-color: #1e293b !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+<h1 id="section-2-neural-network-architecture-deep-dive">📘 Section 2: Neural Network Architecture Deep Dive</h1>
+<hr />
+<h2 id="table-of-contents">📑 Table of Contents</h2>
+<ol>
+<li><a href="#1-overview--architectural-philosophy">Overview &amp; Architectural Philosophy</a></li>
+<li><a href="#2-pytorch-fundamentals--module-hierarchy">PyTorch Fundamentals &amp; Module Hierarchy</a></li>
+<li><a href="#3-the-spatial-stream-convnext-small-backbone">The Spatial Stream: ConvNeXt-Small Backbone</a></li>
+<li><a href="#31-why-convnext-small-modern-convnet-design">3.1 Why ConvNeXt-Small? (Modern ConvNet Design)</a></li>
+<li><a href="#32-input-preprocessing--imagenet-standardization">3.2 Input Preprocessing &amp; ImageNet Standardization</a></li>
+<li><a href="#33-feature-extraction-stages">3.3 Feature Extraction Stages</a></li>
+<li><a href="#34-the-critical-role-of-pre-classifier-layernorm2d">3.4 The Critical Role of Pre-Classifier LayerNorm2d</a></li>
+<li><a href="#35-spatial-projection-to-512-dimensions">3.5 Spatial Projection to 512 Dimensions</a></li>
+<li><a href="#4-the-frequency-stream-steganographic--spectral-decomposition">The Frequency Stream: Steganographic &amp; Spectral Decomposition</a></li>
+<li><a href="#41-spatial-rich-model-filter-bank-srmconv2d">4.1 Spatial Rich Model Filter Bank (<code>SRMConv2d</code>)</a></li>
+<li><a href="#42-bayar-stamm-constrained-convolution-bayarconv2d">4.2 Bayar-Stamm Constrained Convolution (<code>BayarConv2d</code>)</a></li>
+<li><a href="#43-10-channel-noise-residual-assembly">4.3 10-Channel Noise Residual Assembly</a></li>
+<li><a href="#44-2d-real-fft-spectral-decomposition-realfft2dmodule">4.4 2D Real FFT Spectral Decomposition (<code>RealFFT2DModule</code>)</a></li>
+<li><a href="#45-why-fp32-is-mandatory-autocast-disabling">4.5 Why FP32 is Mandatory (Autocast Disabling)</a></li>
+<li><a href="#46-spectral-convolutional-reduction-to-512-dimensions">4.6 Spectral Convolutional Reduction to 512 Dimensions</a></li>
+<li><a href="#5-symmetric-gated-residual-fusion">Symmetric Gated Residual Fusion</a></li>
+<li><a href="#51-mathematical-motivation-avoiding-gradient-starvation">5.1 Mathematical Motivation: Avoiding Gradient Starvation</a></li>
+<li><a href="#52-gating-vector-computation-g-in-mathbbr512">5.2 Gating Vector Computation ($g \in \mathbb{R}^{512}$)</a></li>
+<li><a href="#53-symmetrical-feature-modulation-1024text-d">5.3 Symmetrical Feature Modulation ($1024\text{-d}$)</a></li>
+<li><a href="#6-the-binary-classification-head">The Binary Classification Head</a></li>
+<li><a href="#7-temporal-sequence-processing-forward_sequence">Temporal Sequence Processing (<code>forward_sequence</code>)</a></li>
+<li><a href="#71-5d-video-tensor-ingestion">7.1 5D Video Tensor Ingestion</a></li>
+<li><a href="#72-chunked-inference-to-prevent-gpu-out-of-memory-oom">7.2 Chunked Inference to Prevent GPU Out-of-Memory (OOM)</a></li>
+<li><a href="#73-logit-averaging-over-temporal-sequences">7.3 Logit Averaging over Temporal Sequences</a></li>
+<li><a href="#8-complete-forward-pass-tensor-shape-lifecycle-trace">Complete Forward Pass: Tensor Shape Lifecycle Trace</a></li>
+<li><a href="#9-code-walkthrough--reference">Code Walkthrough &amp; Reference</a></li>
+</ol>
+<hr />
+<h1 id="1-overview-architectural-philosophy">1. Overview &amp; Architectural Philosophy</h1>
+<p>The entire model architecture is defined in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py"><code>src/models/hybrid_detector.py</code></a>. </p>
+<p>The detector operates on the principle that <strong>facial manipulation creates distinct artifacts in two orthogonal domains</strong>:
+1. <strong>Spatial Domain</strong>: High-level semantic inconsistencies, facial boundary blending seams, unnatural skin texture, and lighting mismatches.
+2. <strong>Frequency Domain</strong>: Microscopic noise discrepancies, steganographic residual disruptions, and repeating upsampling checkerboard grid patterns.</p>
+<p>Rather than forcing a single network to learn both macroscopic semantics and microscopic noise simultaneously, the architecture decouples them into two specialized parallel streams and joins them via a <strong>Symmetric Gated Residual Fusion</strong> mechanism.</p>
+<pre><code>                                  [ Input Facial Image x: (B, 3, H, W) ]
+                                                    │
+                   ┌────────────────────────────────┴────────────────────────────────┐
+                   ▼                                                                 ▼
+     [ 1. SPATIAL STREAM ]                                             [ 2. FREQUENCY STREAM ]
+     • ImageNet Normalization                                          • 3 SRM Fixed Kernels -&gt; 9 channels
+     • ConvNeXt-Small Backbone                                         • 1 Bayar Constrained Kernel -&gt; 1 channel
+     • LayerNorm2d(768) Normalization                                  • Combined 10-Channel Noise Residual
+     • AdaptiveAvgPool2d(1) -&gt; 768-d                                   • 2D Real FFT Decomposition -&gt; 20 channels
+     • Linear(768, 512) + ReLU                                         • Spectral ConvNet (20 -&gt; 64 -&gt; 128)
+     • Output: f_spatial in R^512                                      • Linear(128, 512) + ReLU
+                   │                                                   • Output: f_freq in R^512
+                   │                                                                 │
+                   └────────────────────────────────┬────────────────────────────────┘
+                                                    ▼
+                                   [ 3. SYMMETRIC GATED FUSION ]
+                                   • Concatenate: [f_spatial || f_freq] -&gt; 1024-d
+                                   • Gating Vector: g = Sigmoid(Linear(1024, 512))
+                                   • Fused: [f_spatial * (1 - g) || f_freq * g] -&gt; 1024-d
+                                                    │
+                                                    ▼
+                                       [ 4. CLASSIFIER HEAD ]
+                                       • Linear(1024, 256) + ReLU
+                                       • Dropout(p = 0.3)
+                                       • Linear(256, 1) -&gt; Raw Logit z
+</code></pre>
+<hr />
+<h1 id="2-pytorch-fundamentals-module-hierarchy">2. PyTorch Fundamentals &amp; Module Hierarchy</h1>
+<p>In PyTorch, all neural network layers inherit from <code>torch.nn.Module</code>. A module encapsulates:
+1. <strong>Parameters (<code>nn.Parameter</code>)</strong>: Learnable weights and biases updated via backpropagation gradients ($\mathbf{w} \leftarrow \mathbf{w} - \eta \nabla_{\mathbf{w}} \mathcal{L}$).
+2. <strong>Buffers (<code>register_buffer</code>)</strong>: Persistent state tensors (such as fixed SRM filter weights or ImageNet running statistics) that are not updated by gradient descent, but must move to the GPU alongside the model and be saved in checkpoint state dictionaries.
+3. <strong>The <code>forward(*args)</code> Method</strong>: The computational graph executed during inference and training.</p>
+<p>The model hierarchy in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py"><code>src/models/hybrid_detector.py</code></a> consists of 4 distinct modules:
+- <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L20-L50"><code>SRMConv2d</code></a>: Fixed high-pass steganographic filter bank.
+- <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L51-L80"><code>BayarConv2d</code></a>: Learnable constrained convolutional layer.
+- <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L82-L102"><code>RealFFT2DModule</code></a>: 2D Fast Fourier spectral decomposition module.
+- <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L104-L224"><code>HybridDeepfakeDetector</code></a>: The master dual-stream fusion container.</p>
+<hr />
+<h1 id="3-the-spatial-stream-convnext-small-backbone">3. The Spatial Stream: ConvNeXt-Small Backbone</h1>
+<h3 id="31-why-convnext-small-modern-convnet-design">3.1 Why ConvNeXt-Small? (Modern ConvNet Design)</h3>
+<p>Historically, deepfake detectors relied on ResNet-50 or EfficientNet. ConvNeXt (Liu et al., CVPR 2022) modernized standard convolutional networks by incorporating architectural innovations from Vision Transformers (ViT) while retaining convolutional inductive bias:
+1. <strong>$7 \times 7$ Depthwise Separable Convolutions</strong>: Matches the large receptive field of ViT self-attention windows.
+2. <strong>Inverted Bottleneck Design</strong>: Expands hidden channel dimensions ($1 \times 1 \text{ conv} \to 7 \times 7 \text{ depthwise} \to 1 \times 1 \text{ projection}$) rather than contracting them.
+3. <strong>Fewer Normalization &amp; Activation Layers</strong>: Uses <strong>GELU</strong> (Gaussian Error Linear Unit) instead of ReLU, and LayerNorm instead of BatchNorm, resulting in smoother gradient landscapes.
+4. <strong>Parameter Efficiency</strong>: <code>convnext_small</code> achieves superior feature representations with ~50 million parameters compared to larger ViT variants.</p>
+<h3 id="32-input-preprocessing-imagenet-standardization">3.2 Input Preprocessing &amp; ImageNet Standardization</h3>
+<p>In <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L138-L139"><code>HybridDeepfakeDetector.__init__</code></a>, ImageNet mean and standard deviation are registered as persistent buffers:</p>
+<pre><code class="language-python">self.register_buffer(&quot;imagenet_mean&quot;, torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+self.register_buffer(&quot;imagenet_std&quot;, torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+</code></pre>
+<p>During the spatial forward pass:
+$$x_{\text{spatial}} = \frac{x - \mu_{\text{imagenet}}}{\sigma_{\text{imagenet}}}$$</p>
+<h3 id="33-feature-extraction-stages">3.3 Feature Extraction Stages</h3>
+<p>The input image $x_{\text{spatial}} \in \mathbb{R}^{B \times 3 \times H \times W}$ passes through <code>self.spatial_backbone</code> (<code>convnext_small.features</code>), which consists of 4 successive downsampling stages:
+- <strong>Stage 1 (Stem)</strong>: $4 \times 4$ patchify conv with stride 4 $\implies \mathbb{R}^{B \times 96 \times \frac{H}{4} \times \frac{W}{4}}$
+- <strong>Stage 2</strong>: Downsample + ConvNeXt Blocks $\implies \mathbb{R}^{B \times 192 \times \frac{H}{8} \times \frac{W}{8}}$
+- <strong>Stage 3</strong>: Downsample + ConvNeXt Blocks $\implies \mathbb{R}^{B \times 384 \times \frac{H}{16} \times \frac{W}{16}}$
+- <strong>Stage 4</strong>: Downsample + ConvNeXt Blocks $\implies \mathbb{R}^{B \times 768 \times \frac{H}{32} \times \frac{W}{32}}$</p>
+<p>For an input resolution of $H=W=256$, the final spatial feature map has shape:
+$$\text{feat_maps} \in \mathbb{R}^{B \times 768 \times 8 \times 8}$$</p>
+<h3 id="34-the-critical-role-of-pre-classifier-layernorm2d">3.4 The Critical Role of Pre-Classifier LayerNorm2d</h3>
+<p>In standard torchvision implementations, <code>convnext.classifier[0]</code> is an <code>nn.LayerNorm2d(768)</code> layer placed between the feature extractor and the classification head.</p>
+<pre><code class="language-python">self.spatial_norm = convnext.classifier[0]  # nn.LayerNorm2d(768)
+</code></pre>
+<p><strong>Why this is mathematically essential</strong>:
+Without <code>self.spatial_norm</code>, the spatial feature activations have unconstrained variances ($\sigma^2 &gt; 15.0$). When concatenated with the normalized frequency stream ($\sigma^2 \approx 1.0$), the unscaled spatial features dominate the gating mechanism, causing severe training instability and volatile gradients. Applying <code>spatial_norm</code> standardizes spatial activations to zero mean and unit variance before pooling.</p>
+<h3 id="35-spatial-projection-to-512-dimensions">3.5 Spatial Projection to 512 Dimensions</h3>
+<ol>
+<li><strong>Global Adaptive Average Pooling</strong>:
+   $$f_{\text{pooled}} = \text{AdaptiveAvgPool2d}(1)(\text{feat_maps}) \implies \mathbb{R}^{B \times 768 \times 1 \times 1} \xrightarrow{\text{flatten}} \mathbb{R}^{B \times 768}$$</li>
+<li><strong>Dense Linear Projection</strong>:
+   $$\mathbf{f}<em>{\text{spatial}} = \text{ReLU}\big( \mathbf{W}_s f</em>{\text{pooled}} + \mathbf{b}_s \big) \in \mathbb{R}^{B \times 512}$$
+   where $\mathbf{W}_s \in \mathbb{R}^{512 \times 768}$.</li>
+</ol>
+<hr />
+<h1 id="4-the-frequency-stream-steganographic-spectral-decomposition">4. The Frequency Stream: Steganographic &amp; Spectral Decomposition</h1>
+<p>The frequency stream isolates high-frequency steganographic noise residuals, converts them into 2D Fourier space, and extracts a 512-dimensional spectral representation.</p>
+<h3 id="41-spatial-rich-model-filter-bank-srmconv2d">4.1 Spatial Rich Model Filter Bank (<code>SRMConv2d</code>)</h3>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L20-L50"><code>SRMConv2d</code></a>.</p>
+<p>Three $5 \times 5$ high-pass filter kernels are defined in NumPy:</p>
+<pre><code class="language-python"># 1st-Order High-Pass Difference Kernel (divided by 4.0)
+srm1 = np.array([
+    [ 0,  0,  0,  0,  0],
+    [ 0, -1,  2, -1,  0],
+    [ 0,  2, -4,  2,  0],
+    [ 0, -1,  2, -1,  0],
+    [ 0,  0,  0,  0,  0]
+], dtype=np.float32) / 4.0
+
+# 2nd-Order High-Pass Laplacian Kernel (divided by 12.0)
+srm2 = np.array([
+    [-1,  2, -2,  2, -1],
+    [ 2, -6,  8, -6,  2],
+    [-2,  8,-12,  8, -2],
+    [ 2, -6,  8, -6,  2],
+    [-1,  2, -2,  2, -1]
+], dtype=np.float32) / 12.0
+
+# Horizontal/Vertical Edge Kernel (divided by 2.0)
+srm3 = np.array([
+    [ 0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0],
+    [ 0,  1, -2,  1,  0],
+    [ 0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0]
+], dtype=np.float32) / 2.0
+</code></pre>
+<ul>
+<li>The 3 kernels are stacked and tiled across the 3 RGB color channels to create a tensor of shape <code>[9, 1, 5, 5]</code>.</li>
+<li>Stored as a non-trainable parameter buffer: <code>self.register_buffer("weights", torch.from_numpy(filters))</code>.</li>
+<li>Executed via grouped 2D convolution (<code>groups=3</code>, <code>padding=2</code>):
+  $$I_{\text{SRM}} = \text{F.conv2d}(x, \mathbf{W}_{\text{SRM}}, \text{groups}=3, \text{padding}=2) \in \mathbb{R}^{B \times 9 \times H \times W}$$</li>
+<li>Channels 0, 1, 2: 3 SRM filters applied to Red channel.</li>
+<li>Channels 3, 4, 5: 3 SRM filters applied to Green channel.</li>
+<li>Channels 6, 7, 8: 3 SRM filters applied to Blue channel.</li>
+</ul>
+<h3 id="42-bayar-stamm-constrained-convolution-bayarconv2d">4.2 Bayar-Stamm Constrained Convolution (<code>BayarConv2d</code>)</h3>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L51-L80"><code>BayarConv2d</code></a>.</p>
+<p>Unlike the fixed SRM filters, the Bayar-Stamm layer contains a learnable kernel parameter:
+$$\mathbf{W}_{\text{raw}} \in \mathbb{R}^{1 \times 3 \times 5 \times 5}$$
+Before every convolution forward pass, the kernel is dynamically transformed by <code>_get_constrained_kernel()</code> to enforce the prediction-error constraint:</p>
+<pre><code class="language-python">def _get_constrained_kernel(self) -&gt; torch.Tensor:
+    w = self.kernel  # [1, 3, 5, 5]
+    mask = torch.ones_like(w)
+    mask[:, :, 2, 2] = 0.0  # Zero out center coefficient (row 2, col 2)
+
+    w_masked = w * mask
+    sum_w = w_masked.sum(dim=(2, 3), keepdim=True)
+
+    # Prevent division by zero with safe clamping
+    sign_w = torch.sign(sum_w)
+    sign_w = torch.where(sign_w == 0, torch.ones_like(sign_w), sign_w)
+    sum_w_safe = sign_w * sum_w.abs().clamp(min=1e-5)
+
+    # Normalize non-center weights so their sum equals exactly 1.0
+    w_norm = w_masked / sum_w_safe
+
+    # Set center coefficient to exactly -1.0
+    center_mask = torch.zeros_like(w)
+    center_mask[:, :, 2, 2] = -1.0
+    return w_norm + center_mask
+</code></pre>
+<p>The constrained convolution yields 1 adaptive residual channel:
+$$I_{\text{Bayar}} = \text{F.conv2d}(x, \mathbf{W}_{\text{constrained}}, \text{padding}=2) \in \mathbb{R}^{B \times 1 \times H \times W}$$</p>
+<h3 id="43-10-channel-noise-residual-assembly">4.3 10-Channel Noise Residual Assembly</h3>
+<p>The fixed SRM residuals and adaptive Bayar residuals are concatenated along the channel dimension:
+$$I_{\text{noise}} = \big[ I_{\text{SRM}} \;|\; I_{\text{Bayar}} \big] \in \mathbb{R}^{B \times 10 \times H \times W}$$</p>
+<h3 id="44-2d-real-fft-spectral-decomposition-realfft2dmodule">4.4 2D Real FFT Spectral Decomposition (<code>RealFFT2DModule</code>)</h3>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L82-L102"><code>RealFFT2DModule</code></a>.</p>
+<p>The 10-channel spatial noise residual tensor $I_{\text{noise}}$ is transformed into frequency space:</p>
+<pre><code class="language-python"># 1. 2D Orthogonal Fast Fourier Transform across spatial dimensions (H, W)
+fft = torch.fft.fft2(x_fp32, norm=&quot;ortho&quot;)
+
+# 2. Quadrant Shift to place zero-frequency (DC) at center
+fft_shift = torch.fft.fftshift(fft, dim=(-2, -1))
+
+# 3. Log-Magnitude Compression (log(1 + |FFT|))
+mag = torch.log1p(torch.clamp(torch.abs(fft_shift), min=1e-7))
+
+# 4. Normalized Phase Angle (atan2(Im, Re) / pi)
+phase = torch.angle(fft_shift) / torch.pi
+
+# 5. Numerical NaN/Inf Sanitization
+mag = torch.nan_to_num(mag, nan=0.0, posinf=10.0, neginf=-10.0)
+phase = torch.nan_to_num(phase, nan=0.0, posinf=1.0, neginf=-1.0)
+
+# 6. Concatenate along channel dimension
+out_spectral = torch.cat([mag, phase], dim=1)  # [B, 20, H, W]
+</code></pre>
+<ul>
+<li><strong>10 Magnitude Channels</strong>: Captures periodic energy spikes and checkerboard grid frequencies.</li>
+<li><strong>10 Phase Channels</strong>: Captures phase shifts and spatial coherence boundaries.</li>
+<li>Total Spectral Channels: $10 + 10 = 20$ channels of size $H \times W$.</li>
+</ul>
+<h3 id="45-why-fp32-is-mandatory-autocast-disabling">4.5 Why FP32 is Mandatory (Autocast Disabling)</h3>
+<p>During PyTorch mixed-precision training (<code>torch.amp.autocast(device_type='cuda', dtype=torch.float16)</code>), general tensor operations execute in 16-bit float (<code>fp16</code>).
+However, <code>fp16</code> has an exponent range limited to $\approx 65,504$ and a smallest positive value of $\approx 6 \times 10^{-5}$.
+- Complex FFT operations compute exponential sums $\sum e^{-j 2\pi (\dots)}$ that frequently exceed the dynamic range of <code>fp16</code>, causing immediate numerical underflow or <code>NaN</code> outputs.
+- In <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L91-L93"><code>RealFFT2DModule.forward</code></a>, autocasting is explicitly disabled during the spectral pass:
+  <code>python
+  with torch.amp.autocast(device_type=device_type, enabled=False):
+      x_fp32 = x.float()
+      # Execute FFT in full 32-bit floating point precision</code>
+  The resulting tensor is then cast back to the model's active precision dtype.</p>
+<h3 id="46-spectral-convolutional-reduction-to-512-dimensions">4.6 Spectral Convolutional Reduction to 512 Dimensions</h3>
+<p>The $B \times 20 \times H \times W$ spectral map passes through <code>self.freq_conv</code>:</p>
+<pre><code class="language-python">self.freq_conv = nn.Sequential(
+    nn.Conv2d(20, 64, kernel_size=3, padding=1),
+    nn.BatchNorm2d(64),
+    nn.ReLU(),
+    nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+    nn.BatchNorm2d(128),
+    nn.ReLU(),
+    nn.AdaptiveAvgPool2d(1),
+)
+</code></pre>
+<ol>
+<li>Layer 1: $20 \to 64$ channels with spatial resolution preserved ($H \times W$).</li>
+<li>Layer 2: $64 \to 128$ channels with stride 2 ($\frac{H}{2} \times \frac{W}{2}$).</li>
+<li>Adaptive Global Pooling: Collapses spatial dimensions to $1 \times 1 \implies \mathbb{R}^{B \times 128}$.</li>
+<li>Linear Projection:
+   $$\mathbf{f}<em>{\text{freq}} = \text{ReLU}\big( \mathbf{W}_f f</em>{\text{freq_pooled}} + \mathbf{b}_f \big) \in \mathbb{R}^{B \times 512}$$
+   where $\mathbf{W}_f \in \mathbb{R}^{512 \times 128}$.</li>
+</ol>
+<hr />
+<h1 id="5-symmetric-gated-residual-fusion">5. Symmetric Gated Residual Fusion</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L189-L194"><code>HybridDeepfakeDetector.forward</code></a>.</p>
+<h3 id="51-mathematical-motivation-avoiding-gradient-starvation">5.1 Mathematical Motivation: Avoiding Gradient Starvation</h3>
+<p>Consider an asymmetric gating model:
+$$\mathbf{f}<em>{\text{fused}} = \big[ \mathbf{f}</em>{\text{spatial}} \;|\; \mathbf{f}<em>{\text{freq}} \odot g \big]$$
+In this asymmetric setup, $\mathbf{f}</em>{\text{spatial}}$ has a direct, unimpeded gradient path:
+$$\frac{\partial \mathcal{L}}{\partial \mathbf{f}<em>{\text{spatial}}} = \frac{\partial \mathcal{L}}{\partial \mathbf{f}</em>{\text{fused}}}[0:512]$$
+Because the spatial ConvNeXt backbone starts with pre-trained ImageNet weights, the optimizer can rapidly minimize training loss using spatial features alone. The network quickly learns to set $g \to 0$, permanently starving the frequency branch of gradient flow $\left(\frac{\partial \mathcal{L}}{\partial \mathbf{f}_{\text{freq}}} \to 0\right)$.</p>
+<h3 id="52-gating-vector-computation-g-in-mathbbr512">5.2 Gating Vector Computation ($g \in \mathbb{R}^{512}$)</h3>
+<p>To solve gradient starvation, we concatenate the 512-d spatial embedding and 512-d frequency embedding into a 1024-d joint feature vector:
+$$\mathbf{f}<em>{\text{concat}} = \big[ \mathbf{f}</em>{\text{spatial}} \;|\; \mathbf{f}<em>{\text{freq}} \big] \in \mathbb{R}^{B \times 1024}$$
+The gating vector $g$ is computed via a learned linear projection followed by a Sigmoid activation:
+$$g = \sigma\big( \mathbf{W}_g \mathbf{f}</em>{\text{concat}} + \mathbf{b}_g \big) \in [0, 1]^{B \times 512}$$
+where $\mathbf{W}_g \in \mathbb{R}^{512 \times 1024}$.</p>
+<h3 id="53-symmetrical-feature-modulation-1024text-d">5.3 Symmetrical Feature Modulation ($1024\text{-d}$)</h3>
+<p>The gating vector $g$ simultaneously modulates <strong>both</strong> branches:
+$$\mathbf{f}<em>{\text{fused}} = \Big[ \mathbf{f}</em>{\text{spatial}} \odot (1 - g) \;|\; \mathbf{f}_{\text{freq}} \odot g \Big] \in \mathbb{R}^{B \times 1024}$$</p>
+<pre><code>   f_spatial (512-d)           f_freq (512-d)
+         │                           │
+         ├─────────────┬─────────────┤
+         │             ▼             │
+         │     [ Linear(1024, 512) ] │
+         │             ▼             │
+         │        [ Sigmoid ]        │
+         │             │             │
+         │      Gating Vector g      │
+         ▼             ▼             ▼
+      * (1 - g)        │            * g
+         │             │             │
+         ▼             │             ▼
+   gated_spatial       │        gated_freq
+   (512-d)             │        (512-d)
+         │             │             │
+         └─────────────┼─────────────┘
+                       ▼
+             f_fused (1024-d)
+</code></pre>
+<p><strong>Why this guarantees dual-stream optimization</strong>:
+1. If $g_i \to 0$: The frequency stream is suppressed, but the spatial stream receives full weight $(1 - g_i \to 1)$.
+2. If $g_i \to 1$: The spatial stream is suppressed, and the frequency stream receives full weight.
+3. If the classifier requires both spatial layout and spectral noise, $g_i \approx 0.5$, allowing gradients to flow equally back into both the ConvNeXt backbone and the SRM/Bayar/FFT convolutions.</p>
+<hr />
+<h1 id="6-the-binary-classification-head">6. The Binary Classification Head</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L160-L165"><code>HybridDeepfakeDetector.__init__</code></a>.</p>
+<p>The 1024-dimensional fused representation $\mathbf{f}_{\text{fused}}$ passes through an MLP classifier:</p>
+<pre><code class="language-python">self.classifier = nn.Sequential(
+    nn.Linear(1024, 256),
+    nn.ReLU(),
+    nn.Dropout(p=0.3),
+    nn.Linear(256, 1)
+)
+</code></pre>
+<ol>
+<li><strong>First Dense Layer</strong>: Projects $1024 \to 256$ dimensions with ReLU non-linearity.</li>
+<li><strong>Dropout ($p=0.3$)</strong>: Randomly zeros out $30\%$ of activations during training to prevent co-adaptation and overfitting.</li>
+<li>
+<p><strong>Final Linear Layer</strong>: Projects $256 \to 1$ scalar logit:
+   $$z = \mathbf{W}<em>2 \big( \text{Dropout}(\text{ReLU}(\mathbf{W}_1 \mathbf{f}</em>{\text{fused}} + \mathbf{b}_1)) \big) + b_2 \in \mathbb{R}^{B \times 1}$$</p>
+</li>
+<li>
+<p>$z &gt; 0 \implies p = \sigma(z) &gt; 0.5$ (Predicted Fake)</p>
+</li>
+<li>$z &lt; 0 \implies p = \sigma(z) &lt; 0.5$ (Predicted Real)</li>
+</ol>
+<hr />
+<h1 id="7-temporal-sequence-processing-forward_sequence">7. Temporal Sequence Processing (<code>forward_sequence</code>)</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L200-L223"><code>HybridDeepfakeDetector.forward_sequence</code></a>.</p>
+<h3 id="71-5d-video-tensor-ingestion">7.1 5D Video Tensor Ingestion</h3>
+<p>When performing inference or training on video sequences, inputs arrive as a <strong>5D Tensor</strong>:
+$$x \in \mathbb{R}^{B \times T \times 3 \times H \times W}$$
+where $B$ is the batch size (number of videos) and $T$ is the temporal sequence length (e.g., $T=16$ sampled frames per video).</p>
+<h3 id="72-chunked-inference-to-prevent-gpu-out-of-memory-oom">7.2 Chunked Inference to Prevent GPU Out-of-Memory (OOM)</h3>
+<p>If $B=8$ and $T=16$, flattening the tensor produces:
+$$B \cdot T = 8 \times 16 = 128 \text{ full-resolution images}$$
+Passing 128 high-resolution face crops through the dual-stream network simultaneously would exceed typical GPU VRAM (e.g., 16 GB on an NVIDIA T4).</p>
+<p><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L200-L223"><code>forward_sequence</code></a> prevents OOM crashes by processing frames in configurable sub-chunks (default <code>chunk_size = 8</code>):</p>
+<pre><code class="language-python">batch_size, seq_len, c, h, w = x.shape
+x_flat = x.view(batch_size * seq_len, c, h, w)  # [B*T, 3, H, W]
+
+logit_chunks: list[torch.Tensor] = []
+for start in range(0, batch_size * seq_len, chunk_size):
+    chunk = x_flat[start : start + chunk_size]
+    logit_chunks.append(self.forward(chunk))  # [chunk_size, 1]
+
+frame_logits = torch.cat(logit_chunks, dim=0)  # [B*T, 1]
+</code></pre>
+<h3 id="73-logit-averaging-over-temporal-sequences">7.3 Logit Averaging over Temporal Sequences</h3>
+<p>The per-frame logits are reshaped back to the sequence dimension $[B, T]$ and averaged across time:</p>
+<pre><code class="language-python">frame_logits = frame_logits.view(batch_size, seq_len)  # [B, T]
+video_logits = frame_logits.mean(dim=1, keepdim=True)   # [B, 1]
+return video_logits
+</code></pre>
+<p>This produces a single, stabilized video-level logit per sequence.</p>
+<hr />
+<h1 id="8-complete-forward-pass-tensor-shape-lifecycle-trace">8. Complete Forward Pass: Tensor Shape Lifecycle Trace</h1>
+<p>The table below traces the exact shape transformations of a tensor throughout the model forward pass for a batch of $B=4$ face crops of resolution $256 \times 256$:</p>
+<pre><code>┌──────────────────────────────────────┬───────────────────────────────┬──────────────────────────────────────────┐
+│ Network Stage / Operation            │ Output Tensor Shape           │ Description                              │
+├──────────────────────────────────────┼───────────────────────────────┼──────────────────────────────────────────┤
+│ 0. Raw Input Image Batch             │ [4, 3, 256, 256]              │ RGB Face Crops in [0, 1]                 │
+├──────────────────────────────────────┴───────────────────────────────┴──────────────────────────────────────────┤
+│ SPATIAL STREAM PATHWAY                                                                                          │
+├──────────────────────────────────────┬───────────────────────────────┬──────────────────────────────────────────┤
+│ 1. ImageNet Standardization          │ [4, 3, 256, 256]              │ (x - mean) / std                         │
+│ 2. ConvNeXt Feature Extraction       │ [4, 768, 8, 8]                │ Stage 4 backbone feature maps            │
+│ 3. LayerNorm2d Normalization         │ [4, 768, 8, 8]                │ Standardized spatial distribution        │
+│ 4. Adaptive Global Average Pooling   │ [4, 768]                      │ Collapsed spatial dimensions             │
+│ 5. Linear(768, 512) + ReLU           │ [4, 512]                      │ Spatial Feature Vector (f_spatial)       │
+├──────────────────────────────────────┴───────────────────────────────┴──────────────────────────────────────────┤
+│ FREQUENCY STREAM PATHWAY                                                                                        │
+├──────────────────────────────────────┬───────────────────────────────┬──────────────────────────────────────────┤
+│ 6. SRMConv2d (3 filters x 3 channels)│ [4, 9, 256, 256]              │ Fixed steganographic high-pass residuals │
+│ 7. BayarConv2d (Constrained Conv)    │ [4, 1, 256, 256]              │ Adaptive prediction error residuals      │
+│ 8. Channel Concatenation             │ [4, 10, 256, 256]             │ Assembled noise residual maps            │
+│ 9. 2D Real FFT + fftshift            │ [4, 10, 256, 256] (complex64) │ Frequency domain representation          │
+│ 10. Log-Magnitude + Normalized Phase │ [4, 20, 256, 256]             │ 10 Mag + 10 Phase spectral channels      │
+│ 11. Spectral Conv1 (20 -&gt; 64, pad 1) │ [4, 64, 256, 256]             │ Spatial spectral filtering               │
+│ 12. Spectral Conv2 (64 -&gt; 128, str 2)│ [4, 128, 128, 128]            │ Downsampled spectral feature maps        │
+│ 13. Adaptive Global Average Pooling  │ [4, 128]                      │ Collapsed spectral dimensions            │
+│ 14. Linear(128, 512) + ReLU          │ [4, 512]                      │ Frequency Feature Vector (f_freq)        │
+├──────────────────────────────────────┴───────────────────────────────┴──────────────────────────────────────────┤
+│ SYMMETRIC GATED FUSION &amp; CLASSIFICATION                                                                         │
+├──────────────────────────────────────┬───────────────────────────────┬──────────────────────────────────────────┤
+│ 15. Feature Concatenation            │ [4, 1024]                     │ [f_spatial || f_freq]                    │
+│ 16. Linear(1024, 512) + Sigmoid      │ [4, 512]                      │ Gating Vector (g)                        │
+│ 17. Symmetrical Gated Multiplication │ [4, 1024]                     │ [f_spatial*(1-g) || f_freq*g]            │
+│ 18. Linear(1024, 256) + ReLU         │ [4, 256]                      │ Classifier hidden representation         │
+│ 19. Dropout(p=0.3)                   │ [4, 256]                      │ Regularized hidden representation        │
+│ 20. Linear(256, 1)                   │ [4, 1]                        │ Final Raw Logit Output (z)               │
+└──────────────────────────────────────┴───────────────────────────────┴──────────────────────────────────────────┘
+</code></pre>
+<hr />
+<h1 id="9-code-walkthrough-reference">9. Code Walkthrough &amp; Reference</h1>
+<p>The complete code implementation is organized in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py"><code>src/models/hybrid_detector.py</code></a>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Class / Function</th>
+<th style="text-align: left;">Line Numbers</th>
+<th style="text-align: left;">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L20-L50"><code>SRMConv2d</code></a></td>
+<td style="text-align: left;">Lines 20–50</td>
+<td style="text-align: left;">Constructs the 9-channel fixed SRM steganographic high-pass filter bank.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L51-L80"><code>BayarConv2d</code></a></td>
+<td style="text-align: left;">Lines 51–80</td>
+<td style="text-align: left;">Implements adaptive constrained convolution with automatic kernel normalization.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L82-L102"><code>RealFFT2DModule</code></a></td>
+<td style="text-align: left;">Lines 82–102</td>
+<td style="text-align: left;">Executes 2D Real FFT decomposition, quadrant centering, and log-magnitude/phase extraction.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L111-L166"><code>HybridDeepfakeDetector.__init__</code></a></td>
+<td style="text-align: left;">Lines 111–166</td>
+<td style="text-align: left;">Instantiates ConvNeXt spatial backbone, frequency branch, gating layer, and classifier head.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L167-L199"><code>HybridDeepfakeDetector.forward</code></a></td>
+<td style="text-align: left;">Lines 167–199</td>
+<td style="text-align: left;">Executes full forward pass on 4D batch tensors $[B, 3, H, W]$.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/models/hybrid_detector.py#L200-L223"><code>HybridDeepfakeDetector.forward_sequence</code></a></td>
+<td style="text-align: left;">Lines 200–223</td>
+<td style="text-align: left;">Executes chunked forward pass on 5D video sequence tensors $[B, T, 3, H, W]$.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>This document serves as the permanent reference for Section 2 (Neural Network Architecture) of the Deepfake Detection Engine.</em></p>
+</body>
+</html>

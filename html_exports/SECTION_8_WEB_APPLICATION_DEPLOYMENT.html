@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SECTION_8_WEB_APPLICATION_DEPLOYMENT</title>
+    
+    <!-- KaTeX CSS & JS for 100% Crisp LaTeX Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+            onload="renderMathInElement(document.body, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\[', right: '\\]', display: true},
+                    {left: '\\(', right: '\\)', display: false}
+                ],
+                throwOnError: false
+            });"></script>
+
+    <!-- Modern Typography & GitHub Markdown Styling -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        @page {
+            size: A4 portrait;
+            margin: 20mm 15mm 20mm 15mm;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 10.5pt;
+            line-height: 1.6;
+            color: #1e293b;
+            background-color: #ffffff;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        h1 {
+            font-size: 20pt;
+            font-weight: 700;
+            color: #0f172a;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 8px;
+            margin-top: 25px;
+            margin-bottom: 16px;
+        }
+
+        h2 {
+            font-size: 15pt;
+            font-weight: 600;
+            color: #1e3a8a;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            margin-top: 22px;
+            margin-bottom: 12px;
+        }
+
+        h3 {
+            font-size: 12pt;
+            font-weight: 600;
+            color: #1d4ed8;
+            margin-top: 18px;
+            margin-bottom: 8px;
+        }
+
+        p {
+            margin-top: 0;
+            margin-bottom: 12px;
+            text-align: justify;
+        }
+
+        ul, ol {
+            margin-top: 4px;
+            margin-bottom: 12px;
+            padding-left: 24px;
+        }
+
+        li {
+            margin-bottom: 4px;
+        }
+
+        pre {
+            background-color: #0f172a;
+            color: #f8fafc;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 9pt;
+            line-height: 1.4;
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            background-color: #f1f5f9;
+            color: #0f172a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9pt;
+        }
+
+        pre code {
+            background-color: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+            margin-bottom: 18px;
+            font-size: 9.5pt;
+        }
+
+        th, td {
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f8fafc;
+            color: #0f172a;
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        blockquote {
+            border-left: 4px solid #3b82f6;
+            background-color: #eff6ff;
+            color: #1e40af;
+            padding: 10px 16px;
+            margin: 14px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px solid #e2e8f0;
+            margin: 20px 0;
+        }
+
+        a {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .katex-display {
+            margin: 14px 0 !important;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 4px 0;
+        }
+
+        @media print {
+            body {
+                max-width: 100%;
+                padding: 0;
+                font-size: 10pt;
+            }
+            h1 { font-size: 18pt; }
+            h2 { font-size: 14pt; }
+            h3 { font-size: 11pt; }
+            pre {
+                background-color: #1e293b !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+<h1 id="section-8-web-application-production-deployment">📘 Section 8: Web Application &amp; Production Deployment</h1>
+<hr />
+<h2 id="table-of-contents">📑 Table of Contents</h2>
+<ol>
+<li><a href="#1-overview--application-architecture">Overview &amp; Application Architecture</a></li>
+<li><a href="#2-streamlit-server-execution-model">Streamlit Server Execution Model</a></li>
+<li><a href="#21-the-streamlit-reactive-rerun-loop">2.1 The Streamlit Reactive Rerun Loop</a></li>
+<li><a href="#22-singleton-model-caching-with-stcache_resource">2.2 Singleton Model Caching with <code>@st.cache_resource</code></a></li>
+<li><a href="#23-cuda--jit-kernel-warm-up-execution">2.3 CUDA / JIT Kernel Warm-Up Execution</a></li>
+<li><a href="#3-file-io--windows-concurrency-safety">File I/O &amp; Windows Concurrency Safety</a></li>
+<li><a href="#31-temporary-file-allocation-tempfilenamedtemporaryfile">3.1 Temporary File Allocation (<code>tempfile.NamedTemporaryFile</code>)</a></li>
+<li><a href="#32-windows-file-lock-elimination-safe_remove_file">3.2 Windows File Lock Elimination (<code>safe_remove_file</code>)</a></li>
+<li><a href="#4-uiux-design-system--dark-glassmorphism">UI/UX Design System &amp; Dark Glassmorphism</a></li>
+<li><a href="#41-color-palette--typography-inter">4.1 Color Palette &amp; Typography (<code>Inter</code>)</a></li>
+<li><a href="#42-glassmorphism-container-styling">4.2 Glassmorphism Container Styling</a></li>
+<li><a href="#43-dynamic-verdict-cards-fake-vs-real">4.3 Dynamic Verdict Cards (Fake vs. Real)</a></li>
+<li><a href="#44-mobile-responsive-media-breakpoints">4.4 Mobile Responsive Media Breakpoints</a></li>
+<li><a href="#5-interactive-sidebar--forensic-control-panel">Interactive Sidebar &amp; Forensic Control Panel</a></li>
+<li><a href="#51-decision-threshold-slider-theta-in-000-100">5.1 Decision Threshold Slider ($\theta \in [0.00, 1.00]$)</a></li>
+<li><a href="#52-temporal-aggregation-policy-selector">5.2 Temporal Aggregation Policy Selector</a></li>
+<li><a href="#53-frame-sampling-density-slider-5-dots-50">5.3 Frame Sampling Density Slider ($5 \dots 50$)</a></li>
+<li><a href="#6-temporal-anomaly-sequence-visualization">Temporal Anomaly Sequence Visualization</a></li>
+<li><a href="#61-matplotlib-dark-canvas-architecture">6.1 Matplotlib Dark Canvas Architecture</a></li>
+<li><a href="#62-anomaly-area-shading-red-vs-green">6.2 Anomaly Area Shading (Red vs. Green)</a></li>
+<li><a href="#63-timestamped-scatter-points--threshold-intersections">6.3 Timestamped Scatter Points &amp; Threshold Intersections</a></li>
+<li><a href="#7-top-4-suspicious-face-gallery--diagnostic-inspector">Top-4 Suspicious Face Gallery &amp; Diagnostic Inspector</a></li>
+<li><a href="#71-ranked-anomaly-extraction">7.1 Ranked Anomaly Extraction</a></li>
+<li><a href="#72-interactive-4-panel-forensic-diagnostics-tab">7.2 Interactive 4-Panel Forensic Diagnostics Tab</a></li>
+<li><a href="#8-production-serving--deployment-options">Production Serving &amp; Deployment Options</a></li>
+<li><a href="#81-hugging-face-spaces-cloud-deployment">8.1 Hugging Face Spaces Cloud Deployment</a></li>
+<li><a href="#82-docker-containerization-dockerfile">8.2 Docker Containerization (<code>Dockerfile</code>)</a></li>
+<li><a href="#83-onnx-runtime-export-pipeline-export_onnxpy">8.3 ONNX Runtime Export Pipeline (<code>export_onnx.py</code>)</a></li>
+<li><a href="#9-code-walkthrough--reference">Code Walkthrough &amp; Reference</a></li>
+</ol>
+<hr />
+<h1 id="1-overview-application-architecture">1. Overview &amp; Application Architecture</h1>
+<p>The user-facing deployment interface is implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py"><code>app.py</code></a>.</p>
+<p>Built using <strong>Streamlit</strong>, the application provides a dark glassmorphism forensic dashboard where non-technical users, forensic analysts, and journalists can upload video files (<code>.mp4</code>, <code>.avi</code>, <code>.mov</code>) or static images (<code>.jpg</code>, <code>.png</code>) to receive real-time detection results, temporal timeline graphs, and 4-panel explainability diagnostics.</p>
+<pre><code>┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               STREAMLIT WEB APPLICATION                                │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. Sidebar Control Panel: Threshold, Aggregation Method, Frame Sampling Slider         │
+│ 2. Video Player &amp; Upload Zone: Supports MP4, AVI, MOV, JPG, PNG                        │
+│ 3. Calibrated Classification Card: Dynamic Red (Fake) / Green (Real) Card              │
+│ 4. Temporal Anomaly Sequence Graph: Frame-by-Frame Matplotlib Confidence Timeline      │
+│ 5. Suspicious Faces Gallery: Top 4 Highest-Anomaly Face Crops                          │
+│ 6. Explainability Inspector: On-Demand 4-Panel Diagnostics (RGB, SRM, FFT, Grad-CAM)   │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<hr />
+<h1 id="2-streamlit-server-execution-model">2. Streamlit Server Execution Model</h1>
+<h3 id="21-the-streamlit-reactive-rerun-loop">2.1 The Streamlit Reactive Rerun Loop</h3>
+<p>Unlike traditional web frameworks (Flask, FastAPI, Django) that use explicit route handlers, Streamlit executes the entire Python script from top to bottom whenever a user interacts with a widget (e.g., dragging a slider or uploading a file).</p>
+<h3 id="22-singleton-model-caching-with-stcache_resource">2.2 Singleton Model Caching with <code>@st.cache_resource</code></h3>
+<p>Instantiating the <code>HybridDeepfakeDetector</code> and downloading/loading 200 MB of checkpoint weights on every slider interaction would introduce severe latency.
+In <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L58-L70"><code>app.py#L58-L70</code></a>, the model is loaded as a global singleton:</p>
+<pre><code class="language-python">@st.cache_resource
+def _cached_model_loader() -&gt; tuple[Any, Any, bool, float, float]:
+    engine = load_prediction_engine()
+    model, cropper, has_weights, threshold, temp = engine
+    # Prime PyTorch CUDA / JIT kernels with a dummy forward pass
+    try:
+        dummy_tensor = torch.zeros(1, 3, 256, 256, device=DEVICE)
+        with torch.inference_mode():
+            model(dummy_tensor)
+    except Exception as e:
+        logger.debug(&quot;Model warm-up pass skipped: %s&quot;, e)
+    return engine
+</code></pre>
+<ul>
+<li>The <code>@st.cache_resource</code> decorator ensures the PyTorch model, weights, and YuNet cropper are initialized <strong>only once</strong> in server memory and shared across all user sessions.</li>
+</ul>
+<h3 id="23-cuda-jit-kernel-warm-up-execution">2.3 CUDA / JIT Kernel Warm-Up Execution</h3>
+<p>The first time PyTorch executes a convolution or 2D FFT on a GPU, it invokes the CUDA driver to allocate memory and compile JIT kernels, causing a $2\text{–}3\text{ second}$ cold-start delay.
+- The dummy forward pass (<code>model(dummy_tensor)</code>) inside <code>_cached_model_loader</code> warms up CUDA kernels during application startup, ensuring subsequent user uploads execute at full inference speed ($18\text{ ms/crop}$).</p>
+<hr />
+<h1 id="3-file-io-windows-concurrency-safety">3. File I/O &amp; Windows Concurrency Safety</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L43-L56"><code>app.py#L43-L56</code></a>.</p>
+<h3 id="31-temporary-file-allocation-tempfilenamedtemporaryfile">3.1 Temporary File Allocation (<code>tempfile.NamedTemporaryFile</code>)</h3>
+<p>When a user uploads a video file, Streamlit provides an in-memory <code>BytesIO</code> buffer. Because OpenCV's <code>cv2.VideoCapture</code> requires a physical filesystem path to stream compressed video codecs, the upload is written to a temporary file:</p>
+<pre><code class="language-python">with tempfile.NamedTemporaryFile(delete=False, suffix=&quot;.mp4&quot;) as tfile:
+    tfile.write(uploaded_file.read())
+    temp_video_path = tfile.name
+</code></pre>
+<h3 id="32-windows-file-lock-elimination-safe_remove_file">3.2 Windows File Lock Elimination (<code>safe_remove_file</code>)</h3>
+<p>On Windows operating systems, calling <code>os.unlink()</code> on a temporary file while OpenCV or background threads still hold a file handle raises a <code>PermissionError: [WinError 32] The process cannot access the file because it is being used by another process</code>.</p>
+<p><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L43-L56"><code>safe_remove_file</code></a> implements an exponential-backoff retry loop:</p>
+<pre><code class="language-python">def safe_remove_file(file_path: str, max_retries: int = 3, delay: float = 0.5) -&gt; None:
+    if not file_path or not os.path.exists(file_path):
+        return
+    for attempt in range(max_retries):
+        try:
+            os.unlink(file_path)
+            return
+        except PermissionError:
+            if attempt &lt; max_retries - 1:
+                time.sleep(delay)
+        except OSError:
+            return
+</code></pre>
+<hr />
+<h1 id="4-uiux-design-system-dark-glassmorphism">4. UI/UX Design System &amp; Dark Glassmorphism</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L82-L148"><code>app.py#L82-L148</code></a>.</p>
+<h3 id="41-color-palette-typography-inter">4.1 Color Palette &amp; Typography (<code>Inter</code>)</h3>
+<p>The frontend is styled using raw CSS injected via <code>st.markdown(..., unsafe_allow_html=True)</code>:
+- <strong>Background</strong>: Deep Navy <code>#0b0f19</code>
+- <strong>Surface Panels</strong>: Slate Dark <code>#0f172a</code>
+- <strong>Typography</strong>: Modern Google Font <code>'Inter', -apple-system, BlinkMacSystemFont, sans-serif</code>
+- <strong>Accent Primary</strong>: Deep Blue <code>rgba(37, 99, 235, 0.15)</code>
+- <strong>Accent Secondary</strong>: Purple <code>rgba(147, 51, 234, 0.15)</code></p>
+<h3 id="42-glassmorphism-container-styling">4.2 Glassmorphism Container Styling</h3>
+<p>Containers use CSS backdrop filters for a translucent frosted-glass aesthetic:</p>
+<pre><code class="language-css">.card-workflow {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 18px;
+    backdrop-filter: blur(12px);
+}
+</code></pre>
+<h3 id="43-dynamic-verdict-cards-fake-vs-real">4.3 Dynamic Verdict Cards (Fake vs. Real)</h3>
+<p>Depending on whether the video prediction score exceeds the threshold ($p \ge \theta$), the verdict card updates dynamically:
+- <strong>Fake Detection Card</strong>:
+  <code>css
+  .result-card-fake {
+      background: rgba(220, 38, 38, 0.12);
+      border: 2px solid #ef4444;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.2);
+  }</code>
+- <strong>Real Detection Card</strong>:
+  <code>css
+  .result-card-real {
+      background: rgba(34, 197, 94, 0.12);
+      border: 2px solid #22c55e;
+      box-shadow: 0 8px 24px rgba(34, 197, 94, 0.2);
+  }</code></p>
+<h3 id="44-mobile-responsive-media-breakpoints">4.4 Mobile Responsive Media Breakpoints</h3>
+<pre><code class="language-css">@media (max-width: 640px) {
+    [data-testid=&quot;column&quot;] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+    }
+}
+</code></pre>
+<p>Ensures columns collapse gracefully to single-column vertical stacks on mobile devices.</p>
+<hr />
+<h1 id="5-interactive-sidebar-forensic-control-panel">5. Interactive Sidebar &amp; Forensic Control Panel</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L150-L210"><code>app.py#L150-L210</code></a>.</p>
+<p>The Streamlit sidebar provides interactive forensic controls:</p>
+<h3 id="51-decision-threshold-slider-theta-in-000-100">5.1 Decision Threshold Slider ($\theta \in [0.00, 1.00]$)</h3>
+<p>Allows analysts to adjust the decision boundary:
+- <strong>Default</strong>: $\theta = 0.01$ (calibrated operating point for $99.8\%$ Fake Recall).
+- <strong>Conservative Setting ($\theta = 0.50$)</strong>: Balanced operating point.
+- <strong>Strict Setting ($\theta = 0.80$)</strong>: High-precision mode requiring overwhelming synthetic evidence before flagging.</p>
+<h3 id="52-temporal-aggregation-policy-selector">5.2 Temporal Aggregation Policy Selector</h3>
+<p>Allows toggling between multi-frame pooling algorithms:
+- <code>Softmax-Weighted (tau=0.10)</code> (Default recommended)
+- <code>Top-k Anomaly Average</code>
+- <code>Exponential Moving Average (EMA)</code>
+- <code>Arithmetic Mean</code></p>
+<h3 id="53-frame-sampling-density-slider-5-dots-50">5.3 Frame Sampling Density Slider ($5 \dots 50$)</h3>
+<p>Controls how many uniformly spaced frames are extracted from the uploaded video (default: 16 frames).</p>
+<hr />
+<h1 id="6-temporal-anomaly-sequence-visualization">6. Temporal Anomaly Sequence Visualization</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/utils/visualization.py#L10-L100"><code>render_temporal_anomaly_timeline</code></a>.</p>
+<pre><code>  Probability
+  1.0 ┌─────────────────────────────────────────────────────────────
+      │                    /\       /\  &lt;-- Frame Confidence Curve
+      │                   /  \     /  \
+  0.5 │──────────────────/────\───/────\────────────────────────────
+      │ - - - - - - - - - - - - - - - - - - - - Threshold Line (theta = 0.01)
+  0.0 └─────────────────┴────────┴──────┴──────────────────────────► Time (s)
+                       0.5s     1.2s   2.0s
+</code></pre>
+<h3 id="61-matplotlib-dark-canvas-architecture">6.1 Matplotlib Dark Canvas Architecture</h3>
+<ul>
+<li>Figure Face Color: <code>#0b0f19</code></li>
+<li>Axes Face Color: <code>#0f172a</code></li>
+<li>Grid Lines: <code>#1e293b</code> dotted grid</li>
+</ul>
+<h3 id="62-anomaly-area-shading-red-vs-green">6.2 Anomaly Area Shading (Red vs. Green)</h3>
+<p>Using Matplotlib's <code>fill_between</code>:
+- Regions where $p(t) \ge \theta$ are shaded in <strong>translucent red</strong> (<code>#ef4444</code>, $\alpha = 0.22$).
+- Regions where $p(t) &lt; \theta$ are shaded in <strong>translucent green</strong> (<code>#22c55e</code>, $\alpha = 0.12$).</p>
+<h3 id="63-timestamped-scatter-points-threshold-intersections">6.3 Timestamped Scatter Points &amp; Threshold Intersections</h3>
+<p>Scatter points mark individual frame evaluations:
+- Red markers indicate anomalous frames.
+- Green markers indicate authentic frames.
+- The red dashed horizontal line marks the active decision threshold.</p>
+<hr />
+<h1 id="7-top-4-suspicious-face-gallery-diagnostic-inspector">7. Top-4 Suspicious Face Gallery &amp; Diagnostic Inspector</h1>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L380-L460"><code>app.py#L380-L460</code></a>.</p>
+<h3 id="71-ranked-anomaly-extraction">7.1 Ranked Anomaly Extraction</h3>
+<p>The inference engine sorts all extracted faces in descending order of fake probability:</p>
+<pre><code class="language-python">zipped_data = list(zip(all_faces, all_probs))
+zipped_data.sort(key=lambda x: x[1], reverse=True)
+top_4 = zipped_data[:4]
+</code></pre>
+<p>The 4 highest-scoring crops are displayed in a 4-column gallery with their individual frame confidence percentages.</p>
+<h3 id="72-interactive-4-panel-forensic-diagnostics-tab">7.2 Interactive 4-Panel Forensic Diagnostics Tab</h3>
+<p>Clicking on any suspicious face generates the full 4-panel explainability visualization:
+- Panel (a): RGB Crop
+- Panel (b): SRM Noise Residual Map (Viridis)
+- Panel (c): 2D FFT Centered Log-Magnitude Spectrum (Magma)
+- Panel (d): ConvNeXt Grad-CAM Attention Overlay</p>
+<hr />
+<h1 id="8-production-serving-deployment-options">8. Production Serving &amp; Deployment Options</h1>
+<h3 id="81-hugging-face-spaces-cloud-deployment">8.1 Hugging Face Spaces Cloud Deployment</h3>
+<p>Configured via YAML frontmatter in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/README.md#L1-L10"><code>README.md</code></a>:</p>
+<pre><code class="language-yaml">---
+title: Deepfake Detection Engine
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: 1.32.0
+app_file: app.py
+pinned: false
+license: mit
+---
+</code></pre>
+<ul>
+<li><strong>Live Space URL</strong>: <a href="https://huggingface.co/spaces/yyouretoast/deepfake-detector">https://huggingface.co/spaces/yyouretoast/deepfake-detector</a></li>
+</ul>
+<h3 id="82-docker-containerization-dockerfile">8.2 Docker Containerization (<code>Dockerfile</code>)</h3>
+<p>The repository includes a standalone <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/Dockerfile"><code>Dockerfile</code></a> for containerized deployment:</p>
+<pre><code class="language-dockerfile">FROM python:3.10-slim
+WORKDIR /app
+RUN apt-get update &amp;&amp; apt-get install -y libgl1 libglib2.0-0 &amp;&amp; rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8501
+CMD [&quot;streamlit&quot;, &quot;run&quot;, &quot;app.py&quot;, &quot;--server.port=8501&quot;, &quot;--server.address=0.0.0.0&quot;]
+</code></pre>
+<h3 id="83-onnx-runtime-export-pipeline-export_onnxpy">8.3 ONNX Runtime Export Pipeline (<code>export_onnx.py</code>)</h3>
+<p>Implemented in <a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/scripts/export_onnx.py"><code>scripts/export_onnx.py</code></a>:
+- Exports the PyTorch <code>HybridDeepfakeDetector</code> to ONNX format (<code>models/deepfake_detector.onnx</code>) for cross-platform deployment via C++, Rust, or TensorRT.</p>
+<hr />
+<h1 id="9-code-walkthrough-reference">9. Code Walkthrough &amp; Reference</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Component / Function</th>
+<th style="text-align: left;">File Reference</th>
+<th style="text-align: left;">Primary Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>render_ui</code></td>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L73-L597"><code>app.py#L73-L597</code></a></td>
+<td style="text-align: left;">Master Streamlit layout, reactive event loop, upload handler, and UI rendering.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>_cached_model_loader</code></td>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L58-L70"><code>app.py#L58-L70</code></a></td>
+<td style="text-align: left;">Singleton model loader with CUDA kernel warmup pass.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>safe_remove_file</code></td>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/app.py#L43-L56"><code>app.py#L43-L56</code></a></td>
+<td style="text-align: left;">Retry handler for Windows file locks.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>render_temporal_anomaly_timeline</code></td>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/src/utils/visualization.py#L10-L100"><code>src/utils/visualization.py#L10-L100</code></a></td>
+<td style="text-align: left;">Dark-themed Matplotlib temporal anomaly graph generator.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Dockerfile</code></td>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/Dockerfile"><code>Dockerfile</code></a></td>
+<td style="text-align: left;">Production Docker container specification.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>export_onnx.py</code></td>
+<td style="text-align: left;"><a href="file:///c:/Users/Yassin/Desktop/code/deepfake-detection-main/scripts/export_onnx.py"><code>scripts/export_onnx.py</code></a></td>
+<td style="text-align: left;">ONNX model exporter for high-performance edge deployment.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>This document serves as the permanent reference for Section 8 (Web Application &amp; Production Deployment) of the Deepfake Detection Engine.</em></p>
+</body>
+</html>
