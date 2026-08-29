@@ -173,40 +173,64 @@ def perform_graph_split(
         G.add_edge(id1, id2)
 
     components = [sorted(list(c)) for c in nx.connected_components(G)]
-    comp_stats = []
+
+    # Stratify components by dominant label to prevent class skew
+    comp_real_stats = []
+    comp_fake_stats = []
+
     for comp in components:
         comp_set = set(comp)
-        n_samples = sum(
-            1 for s in parsed_samples if s[2] in comp_set or s[3] in comp_set
-        )
-        comp_stats.append((comp, n_samples))
+        comp_samples = [s for s in parsed_samples if s[2] in comp_set or s[3] in comp_set]
+        n_real = sum(1 for s in comp_samples if s[1] == 0)
+        n_fake = sum(1 for s in comp_samples if s[1] == 1)
+        total_comp = len(comp_samples)
 
-    comp_stats.sort(key=lambda x: x[1], reverse=True)
-    total_samples = len(parsed_samples)
-    target_val = max(1, int(total_samples * val_ratio))
-    target_test = max(1, int(total_samples * test_ratio))
-
-    val_comps, test_comps, train_comps = set(), set(), set()
-    curr_val, curr_test = 0, 0
-
-    for comp, n_s in comp_stats:
-        if curr_val + n_s <= target_val or (curr_val == 0 and len(comp_stats) > 2):
-            val_comps.update(comp)
-            curr_val += n_s
-        elif curr_test + n_s <= target_test or (curr_test == 0 and len(comp_stats) > 2):
-            test_comps.update(comp)
-            curr_test += n_s
+        if n_fake > 0:
+            comp_fake_stats.append((comp, total_comp, n_fake, n_real))
         else:
-            train_comps.update(comp)
+            comp_real_stats.append((comp, total_comp, n_fake, n_real))
+
+    def partition_component_list(comp_list: list[tuple[Any, int, int, int]]) -> tuple[set[str], set[str], set[str]]:
+        rng = random.Random(seed)
+        # Deterministically shuffle before greedy packing
+        shuffled = list(comp_list)
+        rng.shuffle(shuffled)
+        shuffled.sort(key=lambda x: x[1], reverse=True)
+
+        tot_samples = sum(x[1] for x in shuffled)
+        tgt_val = max(1, int(tot_samples * val_ratio))
+        tgt_test = max(1, int(tot_samples * test_ratio))
+
+        val_c, test_c, train_c = set(), set(), set()
+        c_val, c_test = 0, 0
+
+        for comp, n_s, _, _ in shuffled:
+            if c_val + n_s <= tgt_val or (c_val == 0 and len(shuffled) > 2):
+                val_c.update(comp)
+                c_val += n_s
+            elif c_test + n_s <= tgt_test or (c_test == 0 and len(shuffled) > 2):
+                test_c.update(comp)
+                c_test += n_s
+            else:
+                train_c.update(comp)
+
+        return train_c, val_c, test_c
+
+    train_fake_c, val_fake_c, test_fake_c = partition_component_list(comp_fake_stats)
+    train_real_c, val_real_c, test_real_c = partition_component_list(comp_real_stats)
+
+    train_comps = train_fake_c | train_real_c
+    val_comps = val_fake_c | val_real_c
+    test_comps = test_fake_c | test_real_c
 
     train_samples, val_samples, test_samples = [], [], []
     for path, label, id1, id2 in parsed_samples:
-        if id1 in train_comps or id2 in train_comps:
-            train_samples.append((path, label))
-        elif id1 in val_comps or id2 in val_comps:
+        if id1 in val_comps or id2 in val_comps:
             val_samples.append((path, label))
-        else:
+        elif id1 in test_comps or id2 in test_comps:
             test_samples.append((path, label))
+        else:
+            train_samples.append((path, label))
 
     if is_string_list:
         return (

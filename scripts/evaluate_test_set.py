@@ -51,6 +51,12 @@ def find_weights_path(custom_path: Optional[str] = None, data_root: Optional[str
 def evaluate(data_dir: Optional[str] = None, weights_path: Optional[str] = None) -> None:
     data_root = find_dataset_root(data_dir)
     splits_path = os.path.join(data_root, "splits.json")
+    if os.path.exists("/kaggle/working/splits.json"):
+        splits_path = "/kaggle/working/splits.json"
+    elif os.path.exists("./splits.json"):
+        splits_path = "./splits.json"
+
+    print(f"Loading evaluation splits from: {splits_path}")
     with open(splits_path, "r") as f:
         splits = json.load(f)
 

@@ -222,6 +222,14 @@ def main():
         logger.info(f"Verified Dataset Root: {data_root}")
 
     splits_path = os.path.join(data_root, 'splits.json')
+    if os.path.exists('/kaggle/working/splits.json'):
+        splits_path = '/kaggle/working/splits.json'
+    elif os.path.exists('./splits.json'):
+        splits_path = './splits.json'
+
+    if accelerator.is_main_process:
+        logger.info(f"Loading splits from: {splits_path}")
+
     with open(splits_path, 'r') as f:
         splits = json.load(f)
 
