@@ -458,14 +458,10 @@ class DynamicFaceCropper:
 def preprocess_tensors_batch(
     faces_rgb_list: list[np.ndarray], device: torch.device = torch.device("cpu")
 ) -> tuple[np.ndarray, torch.Tensor]:
-    """Apply ImageNet normalization to list of uint8 RGB face crop arrays [H, W, 3]. Return (numpy_batch, torch_tensor_batch) [B, 3, 256, 256]."""
+    """Convert list of uint8 RGB face crop arrays [H, W, 3] to [B, 3, H, W] in [0, 1] range. Return (numpy_batch, torch_tensor_batch)."""
     batch_arr = np.stack(faces_rgb_list)
     batch_nchw = batch_arr.transpose(0, 3, 1, 2)
 
     tensor = torch.from_numpy(batch_nchw).float().to(device) / 255.0
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
-    tensor = (tensor - mean) / std
-
     norm_nchw = tensor.cpu().numpy()
     return norm_nchw, tensor

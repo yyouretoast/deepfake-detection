@@ -58,6 +58,7 @@ class TestPreprocessTensorsBatch:
         assert norm_np.shape == (3, 3, 256, 256)
         assert norm_torch.shape == (3, 3, 256, 256)
         assert norm_torch.dtype == torch.float32
+        assert 0.0 <= norm_torch.min().item() <= norm_torch.max().item() <= 1.0, "Preprocessed tensor not in [0, 1] range"
 
 
 class TestCheckpointRoundtrip:

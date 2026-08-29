@@ -226,22 +226,16 @@ def get_transforms(img_size: int = 256) -> tuple[Optional[Any], Optional[Any]]:
     train_transform = A.Compose([
         A.Resize(img_size, img_size),
         A.HorizontalFlip(p=0.5),
-        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.3),
-        A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.3),
-        # NOTE: ImageCompression and GaussianBlur were intentionally removed.
-        # Both low-pass filtering (blur) and re-encoding artifacts (JPEG) destroy the
-        # high-frequency residual noise that the SRM + Bayar + 2D FFT frequency branch
-        # is specifically designed to extract. Augmenting with them during training
-        # starves the frequency stream of its primary signal, which contradicts the
-        # architectural premise. Robustness to these degradations is evaluated separately
-        # via scripts/evaluate_robustness.py without contaminating the training signal.
-        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.2),
+        A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.2),
+        # Conservative spatial augmentations to provide degradation resilience without wiping out SRM noise residuals
+        A.ImageCompression(quality_range=(85, 100), p=0.15),
+        A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.2, 0.6), p=0.15),
         ToTensorV2(),
     ])
 
     eval_transform = A.Compose([
         A.Resize(img_size, img_size),
-        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
     ])
 
@@ -258,7 +252,7 @@ def load_image_rgb(path: str) -> np.ndarray:
 
 
 class DeepfakeDataset(Dataset):
-    """Dataset for single-frame face crops returning normalized tensor [3, H, W] and integer label."""
+    """Dataset for single-frame face crops returning [3, H, W] tensor in [0, 1] and integer label."""
 
     def __init__(
         self,
@@ -267,8 +261,6 @@ class DeepfakeDataset(Dataset):
     ) -> None:
         self.samples = samples
         self.transform = transform
-        self.mean_tensor = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
-        self.std_tensor = torch.tensor(IMAGENET_STD).view(3, 1, 1)
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -280,18 +272,18 @@ class DeepfakeDataset(Dataset):
         if self.transform is not None:
             if HAS_ALBUMENTATIONS and isinstance(self.transform, A.Compose):
                 augmented = self.transform(image=img_rgb)
-                return augmented["image"], label
+                tensor = augmented["image"].float() / 255.0 if augmented["image"].dtype == torch.uint8 else augmented["image"].float()
+                return tensor, label
             else:
                 img_pil = Image.fromarray(img_rgb)
                 return self.transform(img_pil), label
 
         tensor_img = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
-        norm_img = (tensor_img - self.mean_tensor) / self.std_tensor
-        return norm_img, label
+        return tensor_img, label
 
 
 class SequenceVideoDataset(Dataset):
-    """Dataset for temporal video sequences returning frame batch [T, 3, H, W], label, and padding mask [T]."""
+    """Dataset for temporal video sequences returning frame batch [T, 3, H, W] in [0, 1], label, and padding mask [T]."""
 
     def __init__(
         self,
@@ -314,8 +306,6 @@ class SequenceVideoDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         frame_paths, label = self.video_samples[idx]
         n_frames = len(frame_paths)
-        mean_t = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
-        std_t = torch.tensor(IMAGENET_STD).view(3, 1, 1)
 
         if n_frames >= self.seq_len:
             start_idx = max(0, (n_frames - self.seq_len) // 2)
@@ -339,12 +329,14 @@ class SequenceVideoDataset(Dataset):
         if self.transform is not None and len(img_rgb_list) > 0:
             if HAS_ALBUMENTATIONS and isinstance(self.transform, A.ReplayCompose):
                 first_res = self.transform(image=img_rgb_list[0])
-                frames.append(first_res["image"])
+                first_tensor = first_res["image"].float() / 255.0 if first_res["image"].dtype == torch.uint8 else first_res["image"].float()
+                frames.append(first_tensor)
                 if "replay" in first_res:
                     replay_saved = first_res["replay"]
                     for img_rgb in img_rgb_list[1:]:
-                        aug_img = A.ReplayCompose.replay(replay_saved, image=img_rgb)["image"]
-                        frames.append(aug_img)
+                        aug_res = A.ReplayCompose.replay(replay_saved, image=img_rgb)
+                        aug_tensor = aug_res["image"].float() / 255.0 if aug_res["image"].dtype == torch.uint8 else aug_res["image"].float()
+                        frames.append(aug_tensor)
             else:
                 for img_rgb in img_rgb_list:
                     if hasattr(self.transform, "__call__"):
@@ -352,13 +344,12 @@ class SequenceVideoDataset(Dataset):
         else:
             for img_rgb in img_rgb_list:
                 img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
-                img_tensor = (img_tensor - mean_t) / std_t
                 frames.append(img_tensor)
 
         if n_pad > 0:
             h = frames[0].shape[1] if frames else 256
             w = frames[0].shape[2] if frames else 256
-            pad_frame = (torch.zeros(3, h, w) - mean_t) / std_t
+            pad_frame = torch.zeros(3, h, w, dtype=torch.float32)
             frames.extend([pad_frame] * n_pad)
 
         seq_tensor = torch.stack(frames, dim=0) if frames else torch.zeros(self.seq_len, 3, 256, 256)

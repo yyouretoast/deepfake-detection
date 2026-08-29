@@ -201,9 +201,6 @@ def process_video_frames(
 
     finally:
         cap.release()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
     if not all_faces:
         return None
@@ -224,13 +221,12 @@ def process_video_frames(
                 unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
                 all_probs.extend([float(val) for val in p_avg.cpu().numpy().tolist()])
 
-    video_prob = float(np.mean(unflipped_probs)) if unflipped_probs else 0.5
     _agg = aggregate_video_predictions(
         scores=all_probs,
         method=aggregation_method,
         threshold=classification_threshold,
     )
-    raw_video_prob = (video_prob + _agg["video_score"]) / 2.0
+    raw_video_prob = float(_agg["video_score"])
 
     zipped_data = list(zip(all_faces, all_probs))
     zipped_data.sort(key=lambda x: x[1], reverse=True)
@@ -238,10 +234,6 @@ def process_video_frames(
     top_4 = zipped_data[:4]
     sample_faces = [item[0] for item in top_4]
     sample_probs = [item[1] for item in top_4]
-
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
 
     return {
         "raw_video_prob": raw_video_prob,

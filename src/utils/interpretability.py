@@ -1,6 +1,7 @@
 """Model interpretability utilities including ConvNeXtGradCAM and 4-panel face diagnostic generator."""
 
 import logging
+import threading
 from typing import Any, Optional
 
 import cv2
@@ -12,6 +13,8 @@ import torch.nn.functional as F
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
 logger = logging.getLogger(__name__)
+
+_GRADCAM_LOCK = threading.Lock()
 
 
 class ConvNeXtGradCAM:
@@ -32,29 +35,30 @@ class ConvNeXtGradCAM:
         self.gradients = grad_output[0]
 
     def generate_heatmap(self, input_tensor: torch.Tensor, img_size: int = 512) -> np.ndarray:
-        self.model.zero_grad(set_to_none=True)
-        with torch.enable_grad():
-            input_tensor.requires_grad_(True)
-            logits = self.model(input_tensor)
-            scalar_logit = logits[0, 0] if logits.ndim >= 2 else logits[0]
-            scalar_logit.backward()
+        with _GRADCAM_LOCK:
+            self.model.zero_grad(set_to_none=True)
+            with torch.enable_grad():
+                input_tensor.requires_grad_(True)
+                logits = self.model(input_tensor)
+                scalar_logit = logits[0, 0] if logits.ndim >= 2 else logits[0]
+                scalar_logit.backward()
 
-        if self.feature_maps is None or self.gradients is None:
-            return np.zeros((img_size, img_size), dtype=np.float32)
+            if self.feature_maps is None or self.gradients is None:
+                return np.zeros((img_size, img_size), dtype=np.float32)
 
-        weights = torch.mean(self.gradients[0], dim=(1, 2))
-        cam = torch.zeros(self.feature_maps.shape[2:], dtype=torch.float32, device=input_tensor.device)
-        for i, w in enumerate(weights):
-            cam += w * self.feature_maps[0, i]
+            weights = torch.mean(self.gradients[0], dim=(1, 2))
+            cam = torch.zeros(self.feature_maps.shape[2:], dtype=torch.float32, device=input_tensor.device)
+            for i, w in enumerate(weights):
+                cam += w * self.feature_maps[0, i]
 
-        cam = F.relu(cam).detach().cpu().numpy()
-        denom = float(cam.max() - cam.min())
-        if denom > 1e-6:
-            cam = (cam - cam.min()) / denom
-        else:
-            cam = np.zeros_like(cam)
+            cam = F.relu(cam).detach().cpu().numpy()
+            denom = float(cam.max() - cam.min())
+            if denom > 1e-6:
+                cam = (cam - cam.min()) / denom
+            else:
+                cam = np.zeros_like(cam)
 
-        return cv2.resize(cam, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
+            return cv2.resize(cam, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
 
     def remove_hooks(self) -> None:
         try:
@@ -90,9 +94,10 @@ def generate_face_diagnostics(
     srm_rgb = cv2.cvtColor(srm_colored, cv2.COLOR_BGR2RGB)
 
     # Panel C: Centered 2D Real FFT Log-Magnitude Spectrum
+    # RealFFT2DModule already shifted the DC component to center; do NOT call np.fft.fftshift again.
     mag_maps = freq_maps[0, :10].cpu().numpy()
     mean_mag = np.mean(mag_maps, axis=0)
-    fft_centered = np.fft.fftshift(mean_mag)
+    fft_centered = mean_mag
     fft_denom = max(float(fft_centered.max() - fft_centered.min()), 1e-6)
     fft_norm = (fft_centered - fft_centered.min()) / fft_denom
     fft_uint8 = (fft_norm * 255.0).astype(np.uint8)

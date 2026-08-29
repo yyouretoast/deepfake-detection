@@ -30,7 +30,7 @@ from sklearn.metrics import roc_auc_score  # noqa: E402
 from torch.utils.data import DataLoader, Dataset  # noqa: E402
 from tqdm import tqdm  # noqa: E402
 
-from src.dataset.loader import dedupe_split  # noqa: E402
+from src.dataset.loader import dedupe_split, get_transforms  # noqa: E402
 from src.models.hybrid_detector import HybridDeepfakeDetector  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -120,10 +120,11 @@ seed_everything(42)
 
 
 class KaggleFastDataset(Dataset):
-    def __init__(self, samples, root_dir, is_train=True):
+    def __init__(self, samples, root_dir, is_train=True, transform=None):
         self.samples = samples
         self.root_dir = root_dir
         self.is_train = is_train
+        self.transform = transform
 
     def __len__(self):
         return len(self.samples)
@@ -139,14 +140,19 @@ class KaggleFastDataset(Dataset):
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             if rgb.shape[0] != IMG_SIZE or rgb.shape[1] != IMG_SIZE:
                 rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
+
+            if self.transform is not None:
+                augmented = self.transform(image=rgb)
+                aug_tensor = augmented["image"]
+                tensor = aug_tensor.float() / 255.0 if aug_tensor.dtype == torch.uint8 else aug_tensor.float()
+            else:
+                if self.is_train and random.random() > 0.5:
+                    rgb = np.ascontiguousarray(np.fliplr(rgb))
+                tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
         except (OSError, ValueError, cv2.error):
             valid_flag = 0.0
-            rgb = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
+            tensor = torch.zeros((3, IMG_SIZE, IMG_SIZE), dtype=torch.float32)
 
-        if self.is_train and random.random() > 0.5:
-            rgb = np.ascontiguousarray(np.fliplr(rgb))
-
-        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
         return tensor, torch.tensor(label, dtype=torch.float32), torch.tensor(valid_flag, dtype=torch.float32)
 
 
@@ -225,8 +231,9 @@ def main():
     if accelerator.is_main_process:
         logger.info(f"Deduplicated Splits Loaded — Train: {len(train_samples):,}, Val: {len(val_samples):,}")
 
-    train_ds = KaggleFastDataset(train_samples, data_root, is_train=True)
-    val_ds = KaggleFastDataset(val_samples, data_root, is_train=False)
+    train_transform, eval_transform = get_transforms(img_size=IMG_SIZE)
+    train_ds = KaggleFastDataset(train_samples, data_root, is_train=True, transform=train_transform)
+    val_ds = KaggleFastDataset(val_samples, data_root, is_train=False, transform=eval_transform)
 
     g = torch.Generator()
     g.manual_seed(42)

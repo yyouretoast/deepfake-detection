@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 from scipy.optimize import minimize
 
-DEFAULT_THRESHOLD: float = 0.01
+DEFAULT_THRESHOLD: float = 0.50
 DEFAULT_TEMPERATURE: float = 1.4788
 
 
@@ -26,9 +26,11 @@ def clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
 
 def normalize_confidence(prob: float, threshold: float = DEFAULT_THRESHOLD) -> float:
     """Maps prediction probability to a 50.0% - 100.0% confidence scale relative to decision threshold."""
-    if prob > threshold:
-        return 50.0 + 50.0 * ((prob - threshold) / (1.0 - threshold)) if threshold < 1.0 else 100.0
-    return 50.0 + 50.0 * ((threshold - prob) / threshold) if threshold > 0.0 else 100.0
+    prob_val = float(np.clip(prob, 0.0, 1.0))
+    thresh = float(np.clip(threshold, 1e-4, 1.0 - 1e-4))
+    if prob_val >= thresh:
+        return 50.0 + 50.0 * ((prob_val - thresh) / (1.0 - thresh))
+    return 50.0 + 50.0 * ((thresh - prob_val) / thresh)
 
 
 def fit_temperature_log(logits: Any, labels: Any) -> float:
