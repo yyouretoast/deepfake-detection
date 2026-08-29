@@ -303,7 +303,8 @@ def main():
         running_loss = torch.tensor(0.0, device=accelerator.device)
         failed_reads_tensor = torch.tensor(0.0, device=accelerator.device)
 
-        for images, labels, valid_flags in tqdm(train_loader, disable=not accelerator.is_main_process, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}"):
+        train_pbar = tqdm(enumerate(train_loader), total=len(train_loader), disable=not accelerator.is_main_process, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}")
+        for step, (images, labels, valid_flags) in train_pbar:
             labels = labels.unsqueeze(1)
             valid_flags = valid_flags.unsqueeze(1)
             failed_reads_tensor += (1.0 - valid_flags).sum()
@@ -324,6 +325,11 @@ def main():
                 optimizer.step()
 
             running_loss += loss.detach() * images.size(0)
+
+            if accelerator.is_main_process and (step + 1) % 200 == 0:
+                current_avg_loss = (running_loss / ((step + 1) * images.size(0) * accelerator.num_processes)).item()
+                logger.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] Step [{step+1}/{len(train_loader)}] - Current Loss: {current_avg_loss:.4f}")
+                sys.stdout.flush()
 
         scheduler.step()
 
