@@ -18,8 +18,38 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import compute_ece, fit_temperature_log
 
 
-def evaluate() -> None:
-    data_root = find_dataset_root()
+import argparse
+from typing import Optional
+
+
+def find_weights_path(custom_path: Optional[str] = None, data_root: Optional[str] = None) -> str:
+    candidates = []
+    if custom_path:
+        candidates.append(custom_path)
+    env_path = os.getenv("BEST_MODEL_WEIGHTS_PATH")
+    if env_path:
+        candidates.append(env_path)
+    candidates.extend([
+        "./models/dual_stream_best.pth",
+        "models/dual_stream_best.pth",
+        "/kaggle/working/repo/models/dual_stream_best.pth",
+        "/kaggle/working/models/dual_stream_best.pth",
+        "/kaggle/working/dual_stream_best.pth",
+    ])
+    if data_root:
+        candidates.append(os.path.join(data_root, "dual_stream_best.pth"))
+    for p in candidates:
+        if p and os.path.exists(p):
+            return p
+    if os.path.exists("/kaggle/working"):
+        for root, dirs, files in os.walk("/kaggle/working"):
+            if "dual_stream_best.pth" in files:
+                return os.path.join(root, "dual_stream_best.pth")
+    raise FileNotFoundError(f"Could not locate dual_stream_best.pth. Checked: {candidates}")
+
+
+def evaluate(data_dir: Optional[str] = None, weights_path: Optional[str] = None) -> None:
+    data_root = find_dataset_root(data_dir)
     splits_path = os.path.join(data_root, "splits.json")
     with open(splits_path, "r") as f:
         splits = json.load(f)
@@ -33,11 +63,9 @@ def evaluate() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = HybridDeepfakeDetector().to(device)
 
-    weights_path = "/kaggle/working/dual_stream_best.pth"
-    if not os.path.exists(weights_path):
-        weights_path = os.path.join(data_root, "dual_stream_best.pth")
-
-    model.load_state_dict(torch.load(weights_path, map_location=device, weights_only=False))
+    resolved_weights_path = find_weights_path(weights_path, data_root)
+    print(f"Loading best model weights from: {resolved_weights_path}")
+    model.load_state_dict(torch.load(resolved_weights_path, map_location=device, weights_only=False))
     model.eval()
 
     val_logits, val_targets = [], []
@@ -143,7 +171,8 @@ def evaluate() -> None:
     print(f"  Test ECE:          {test_ece_before:.4f} (Raw) -> {test_ece_after:.4f} (Calibrated)")
     print("\nClassification Report:\n", classification_report(test_targets_arr, test_binary, target_names=["Real", "Fake"]))
 
-    calibrated_ckpt_path = "/kaggle/working/dual_stream_calibrated.pth"
+    os.makedirs("./models", exist_ok=True)
+    calibrated_ckpt_path = "./models/dual_stream_calibrated.pth"
     torch.save(
         {
             "model_state_dict": model.state_dict(),
@@ -152,8 +181,24 @@ def evaluate() -> None:
         },
         calibrated_ckpt_path,
     )
+    if os.path.exists("/kaggle/working"):
+        try:
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "optimal_threshold": float(best_thresh),
+                    "temperature": float(optimal_temp),
+                },
+                "/kaggle/working/dual_stream_calibrated.pth",
+            )
+        except OSError:
+            pass
     print(f"\nSaved Calibrated Model Checkpoint contract to {calibrated_ckpt_path}")
 
 
 if __name__ == "__main__":
-    evaluate()
+    parser = argparse.ArgumentParser(description="Evaluate Dual-Stream Deepfake Detector")
+    parser.add_argument("--data_dir", type=str, default=None, help="Directory containing splits.json and dataset")
+    parser.add_argument("--weights_path", type=str, default=None, help="Path to dual_stream_best.pth")
+    args = parser.parse_args()
+    evaluate(data_dir=args.data_dir, weights_path=args.weights_path)
