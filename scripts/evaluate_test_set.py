@@ -19,7 +19,7 @@ from src.utils.checkpoint import compute_ece, fit_temperature_log
 
 
 import argparse
-from typing import Optional
+from typing import Any, Callable, Optional
 
 
 def find_weights_path(custom_path: Optional[str] = None, data_root: Optional[str] = None) -> str:
