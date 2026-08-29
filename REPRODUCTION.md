@@ -30,7 +30,7 @@ Run the full pytest suite before training or evaluation:
 pytest tests/ -v
 ```
 
-Expected output: `54/54 passed`.
+Expected output: `66/66 passed`.
 
 ## 3. Distributed Training (DDP via Accelerate)
 

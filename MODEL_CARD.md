@@ -5,7 +5,7 @@
 - **Model Name**: Dual-Stream Deepfake Detection Engine
 - **Model Type**: Hybrid Spatial-Spectral Binary Classifier
 - **Architecture**: ConvNeXt-Small (Spatial Stream) + SRM/Bayar-Stamm 2D Real FFT (Spectral Stream) fused via Symmetric Gated Residual Fusion.
-- **Model Version**: 2.0.0
+- **Model Version**: 2.1.0
 - **License**: MIT
 - **Framework**: PyTorch 2.1+, Accelerate, ONNX Runtime
 - **Repository**: [https://github.com/yyouretoast/deepfake-detection](https://github.com/yyouretoast/deepfake-detection)
@@ -14,7 +14,7 @@
 ## Intended Use & Confidence Score Interpretation
 
 - **Primary Intended Use**: Detection of facial manipulation, deepfakes, and synthetic face swapping in digital images and video frames.
-- **Confidence Score Meaning**: The application maps calibrated probability $p = \sigma(z / T^*)$ to a confidence scale [50.0%, 100.0%] relative to the optimal decision threshold ($T^* = 1.4788$, threshold = 0.01). A confidence score of 95% Fake indicates a high-probability forensic detection relative to the calibrated operating boundary.
+- **Confidence Score Meaning**: The application maps calibrated probability $p = \sigma(z / T^*)$ to a symmetric confidence scale [50.0%, 100.0%] relative to the decision threshold ($T^* = 1.4788$, threshold = 0.50). A confidence score of 95% Fake indicates a high-probability forensic detection relative to the calibrated operating boundary.
 - **Out-of-Scope Use Cases**:
   - Full-body deepfake synthesis detection without visible faces.
   - Audio-only deepfake or voice clone detection.
@@ -24,7 +24,7 @@
 
 - **Datasets**: FaceForensics++ (1,000 original videos across Deepfakes, Face2Face, FaceSwap, NeuralTextures) and Celeb-DF v2 (590 real + 5,639 fake videos).
 - **Data Partitioning**: 100% identity-disjoint graph-component partitioning (`networkx.Graph`) to eliminate actor identity leakage across train, validation, and test splits.
-- **Augmentation Policy**: Geometric (flipping, shift/scale/rotate) and color jitter augmentations are enabled. Low-pass spatial filtering (blur and compression) is intentionally excluded during training to preserve high-frequency SRM/FFT forensic signals.
+- **Augmentation Policy**: Geometric (flipping, shift/scale/rotate), color jitter, and conservative degradation augmentations (JPEG compression $Q \in [85, 100], p=0.15$ and Gaussian blur $\sigma \in [0.2, 0.6], p=0.15$) to provide robustness without attenuating high-frequency SRM/FFT forensic signals.
 
 ## Quantitative Metrics
 

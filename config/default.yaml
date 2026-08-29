@@ -45,8 +45,8 @@ labels:
   fake: 1  # Fake faces mapped to label 1
 
 manipulation_types:
-  all: ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter"]
-  held_out_loto: "FaceShifter"  # Target type for Leave-One-Type-Out generalization test
+  all: ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "Celeb-DF"]
+  held_out_loto: "Deepfakes"  # Default target domain for Leave-One-Target-Out generalization test
 
 app:
   frames_to_sample: 16
