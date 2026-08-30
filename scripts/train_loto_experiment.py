@@ -305,5 +305,11 @@ def main():
             except OSError:
                 pass
 
+    accelerator.end_training()
+    if torch.distributed.is_initialized():
+        torch.distributed.destroy_process_group()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
 if __name__ == '__main__':
     main()
