@@ -159,9 +159,13 @@ def main():
     g = torch.Generator()
     g.manual_seed(fold_seed)
 
+    import cv2
+    cv2.setNumThreads(0)
+    cv2.ocl.setUseOpenCL(False)
+
     train_loader = DataLoader(
-        train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2,
-        pin_memory=True, persistent_workers=True, drop_last=True,
+        train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=0,
+        pin_memory=True, drop_last=True,
         worker_init_fn=seed_worker, generator=g
     )
     val_loader = DataLoader(
