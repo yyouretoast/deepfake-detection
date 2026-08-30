@@ -71,13 +71,13 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     folder = sub_path.split("/")[1] if len(sub_path.split("/")) > 1 else ""
     if re.match(r"^\d{3}_\d{3}$", folder):
         pair_num = int(folder.split("_")[0])
-        if kw in ("deepfakes", "df") and (0 <= pair_num <= 99 or (pair_num < 200 and kw in ("df", "deepfakes"))):
+        if kw in ("deepfakes", "df") and (0 <= pair_num <= 99):
             return True
-        elif kw in ("face2face", "f2f") and (100 <= pair_num <= 199 or (200 <= pair_num <= 399 and kw in ("f2f", "face2face"))):
+        elif kw in ("face2face", "f2f") and (100 <= pair_num <= 199):
             return True
-        elif kw in ("faceswap", "fs") and (200 <= pair_num <= 299 or (400 <= pair_num <= 599 and kw in ("fs", "faceswap"))):
+        elif kw in ("faceswap", "fs") and (200 <= pair_num <= 299):
             return True
-        elif kw in ("neuraltextures", "nt") and (300 <= pair_num <= 399 or (600 <= pair_num <= 799 and kw in ("nt", "neuraltextures"))):
+        elif kw in ("neuraltextures", "nt") and (300 <= pair_num <= 399):
             return True
 
     return kw in sub_path
