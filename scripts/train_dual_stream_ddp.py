@@ -168,6 +168,8 @@ def find_dataset_root(custom_dir: Optional[str] = None) -> str:
         "./data/cropped",
         "./data",
         "/kaggle/working/local_crops",
+        "/kaggle/input/datasets/yassinyasserr/deepfake-dataset/deepfake_crops_512",
+        "/kaggle/input/deepfake-dataset/deepfake_crops_512",
         "/kaggle/input/datasets/yassinyasserr/deepfake-crops-512/deepfake_crops_512",
         "/kaggle/input/deepfake-crops-512/deepfake_crops_512",
         "/kaggle/input/deepfake_crops_512",

@@ -142,6 +142,10 @@ def main():
         logger.info("  Zero-shot test set:     %d samples (%d zero-shot fakes vs %d reals)",
                      len(eval_target_samples), len(all_heldout_fakes), len(test_reals))
 
+    import gc
+    del splits, raw_train, raw_val, raw_test
+    gc.collect()
+
     if len(all_heldout_fakes) < 5:
         raise ValueError(f"Held-out fake sample count for keyword '{args.holdout}' is too small ({len(all_heldout_fakes)} < 5)!")
 
@@ -155,9 +159,21 @@ def main():
     g = torch.Generator()
     g.manual_seed(fold_seed)
 
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True, drop_last=True, worker_init_fn=seed_worker, generator=g)
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
-    target_loader = DataLoader(target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True, worker_init_fn=seed_worker, generator=g)
+    train_loader = DataLoader(
+        train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2,
+        pin_memory=True, persistent_workers=True, drop_last=True,
+        worker_init_fn=seed_worker, generator=g
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2,
+        pin_memory=True, persistent_workers=True,
+        worker_init_fn=seed_worker, generator=g
+    )
+    target_loader = DataLoader(
+        target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2,
+        pin_memory=True, persistent_workers=True,
+        worker_init_fn=seed_worker, generator=g
+    )
 
     num_fake = sum(1 for s in train_samples if s[1] == 1)
     num_real = len(train_samples) - num_fake
@@ -165,6 +181,9 @@ def main():
     pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
 
     model = HybridDeepfakeDetector()
+    if accelerator.num_processes > 1:
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
 
