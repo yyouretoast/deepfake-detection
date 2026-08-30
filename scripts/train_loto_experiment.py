@@ -71,13 +71,13 @@ def matches_holdout_domain(rel_path: str, holdout_keyword: str) -> bool:
     folder = sub_path.split("/")[1] if len(sub_path.split("/")) > 1 else ""
     if re.match(r"^\d{3}_\d{3}$", folder):
         pair_num = int(folder.split("_")[0])
-        if kw in ("neuraltextures", "nt") and (600 <= pair_num <= 799):
+        if kw in ("deepfakes", "df") and (0 <= pair_num <= 99 or (pair_num < 200 and kw in ("df", "deepfakes"))):
             return True
-        elif kw in ("deepfakes", "df") and (0 <= pair_num <= 199):
+        elif kw in ("face2face", "f2f") and (100 <= pair_num <= 199 or (200 <= pair_num <= 399 and kw in ("f2f", "face2face"))):
             return True
-        elif kw in ("face2face", "f2f") and (200 <= pair_num <= 399):
+        elif kw in ("faceswap", "fs") and (200 <= pair_num <= 299 or (400 <= pair_num <= 599 and kw in ("fs", "faceswap"))):
             return True
-        elif kw in ("faceswap", "fs") and (400 <= pair_num <= 599):
+        elif kw in ("neuraltextures", "nt") and (300 <= pair_num <= 399 or (600 <= pair_num <= 799 and kw in ("nt", "neuraltextures"))):
             return True
 
     return kw in sub_path
@@ -165,14 +165,12 @@ def main():
         worker_init_fn=seed_worker, generator=g
     )
     val_loader = DataLoader(
-        val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2,
-        pin_memory=True, persistent_workers=True,
-        worker_init_fn=seed_worker, generator=g
+        val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0,
+        pin_memory=True, worker_init_fn=seed_worker, generator=g
     )
     target_loader = DataLoader(
-        target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2,
-        pin_memory=True, persistent_workers=True,
-        worker_init_fn=seed_worker, generator=g
+        target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0,
+        pin_memory=True, worker_init_fn=seed_worker, generator=g
     )
 
     num_fake = sum(1 for s in train_samples if s[1] == 1)
