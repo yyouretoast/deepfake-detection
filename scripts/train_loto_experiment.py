@@ -153,7 +153,7 @@ def main():
     val_ds = KaggleFastDataset(val_samples, data_root, is_train=False)
     target_ds = KaggleFastDataset(eval_target_samples, data_root, is_train=False)
 
-    fold_seed = 42 + (abs(hash(args.holdout)) % 1000)
+    fold_seed = 42 + sum(ord(c) for c in args.holdout)
     seed_everything(fold_seed)
 
     g = torch.Generator()
@@ -172,10 +172,6 @@ def main():
         val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0,
         pin_memory=True, worker_init_fn=seed_worker, generator=g
     )
-    target_loader = DataLoader(
-        target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0,
-        pin_memory=True, worker_init_fn=seed_worker, generator=g
-    )
 
     num_fake = sum(1 for s in train_samples if s[1] == 1)
     num_real = len(train_samples) - num_fake
@@ -183,14 +179,14 @@ def main():
     pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
 
     model = HybridDeepfakeDetector()
-    if accelerator.num_processes > 1:
-        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
 
-    model, optimizer, train_loader, val_loader, target_loader, scheduler = accelerator.prepare(
-        model, optimizer, train_loader, val_loader, target_loader, scheduler
+    if accelerator.num_processes > 1:
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+
+    model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
+        model, optimizer, train_loader, val_loader, scheduler
     )
 
     from tqdm import tqdm
@@ -262,6 +258,12 @@ def main():
                 best_thresh = thresh
 
     # Final Zero-Shot Evaluation on Held-Out Generator Set
+    target_loader = DataLoader(
+        target_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0,
+        pin_memory=True, worker_init_fn=seed_worker, generator=g
+    )
+    target_loader = accelerator.prepare(target_loader)
+
     model.eval()
     target_logits, target_targets = [], []
     with torch.no_grad():
