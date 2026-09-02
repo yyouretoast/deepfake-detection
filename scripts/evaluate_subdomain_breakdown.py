@@ -1,168 +1,132 @@
-"""Per-Generator Sub-Domain Evaluation Script for Dual-Stream Deepfake Detector."""
+"""Fine-grained subdomain breakdown evaluation across manipulation techniques and source generators."""
 
+import argparse
 import json
 import logging
 import os
-import re
 import sys
+from typing import Optional
+
+import numpy as np
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+import torch
+from torch.utils.data import DataLoader
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from src.dataset.datasets import FaceCropDataset
+from src.dataset.domains import DomainClassifier, ManipulationDomain
+from src.dataset.loader import dedupe_split
+from src.dataset.resolver import find_dataset_root, find_weights_path, resolve_splits_path
+from src.evaluation.evaluator import ModelEvaluator
+from src.evaluation.metrics import fit_temperature_log
+from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.utils.checkpoint import clean_state_dict
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-import numpy as np
-import torch
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
-from torch.utils.data import DataLoader
 
-from scripts.train_dual_stream_ddp import KaggleFastDataset, dedupe_split, find_dataset_root
-from src.config import load_config
-from src.models.hybrid_detector import HybridDeepfakeDetector
+def run_subdomain_evaluation(data_dir: Optional[str] = None, weights_path: Optional[str] = None) -> None:
+    data_root = find_dataset_root(data_dir)
+    splits_path = resolve_splits_path(data_root=data_root)
 
-CONFIG = load_config()
-BATCH_SIZE = CONFIG.get("training", {}).get("batch_size", 32) * 2
-
-
-def categorize_sample_path(rel_path: str) -> str:
-    path_norm = rel_path.replace("\\", "/").lower()
-
-    if "real" in path_norm:
-        return "Original Real Faces"
-    elif "id" in path_norm or "__" in path_norm or "celeb" in path_norm:
-        return "Celeb-DF v2 Synthesis"
-    else:
-        pair_match = re.search(r"(?:^|/)(\d{3})_\d{3}(?:/|$)", path_norm)
-        if pair_match:
-            pair_num = int(pair_match.group(1))
-            if 0 <= pair_num <= 199:
-                return "FF++ Deepfakes (Pairs 0-199)"
-            elif 200 <= pair_num <= 399:
-                return "FF++ Face2Face (Pairs 200-399)"
-            elif 400 <= pair_num <= 599:
-                return "FF++ FaceSwap (Pairs 400-599)"
-            elif 600 <= pair_num <= 799:
-                return "FF++ NeuralTextures (Pairs 600-799)"
-            return "FF++ Numeric Manipulation Pairs"
-        return "FF++ Deepfakes / Mixed"
-
-
-def run_subdomain_evaluation() -> None:
-    data_root = find_dataset_root()
-    splits_path = os.path.join(data_root, "splits.json")
-    if os.path.exists("/kaggle/working/splits.json"):
-        splits_path = "/kaggle/working/splits.json"
-    elif os.path.exists("./splits.json"):
-        splits_path = "./splits.json"
+    print(f"Loading test split from: {splits_path}")
     with open(splits_path, "r") as f:
         splits = json.load(f)
 
-    test_samples = dedupe_split(splits["test"])
-
-    grouped_samples: dict[str, list] = {}
-    for sample in test_samples:
-        path = sample[0]
-        group = categorize_sample_path(path)
-        if group not in grouped_samples:
-            grouped_samples[group] = []
-        grouped_samples[group].append(sample)
+    test_samples = dedupe_split(splits.get("test", []))
+    val_samples = dedupe_split(splits.get("val", []))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = HybridDeepfakeDetector().to(device)
 
-    calibrated_ckpt_path = "/kaggle/working/dual_stream_calibrated.pth"
-    if not os.path.exists(calibrated_ckpt_path):
-        calibrated_ckpt_path = os.path.join(data_root, "dual_stream_calibrated.pth")
-    if not os.path.exists(calibrated_ckpt_path):
-        calibrated_ckpt_path = os.path.join(REPO_ROOT, "dual_stream_calibrated.pth")
+    resolved_weights = find_weights_path(weights_path, data_root)
+    print(f"Loading weights from: {resolved_weights}")
 
-    if os.path.exists(calibrated_ckpt_path):
-        try:
-            ckpt = torch.load(calibrated_ckpt_path, map_location=device, weights_only=True)
-        except Exception as e:
-            logger.warning("weights_only=True failed, falling back safely: %s", e)
-            ckpt = torch.load(calibrated_ckpt_path, map_location=device, weights_only=False)
-        model.load_state_dict(ckpt["model_state_dict"])
-        threshold = float(ckpt["optimal_threshold"])
-        temp = float(ckpt["temperature"])
-        print(f"Loaded Calibrated Checkpoint from {calibrated_ckpt_path} (Threshold={threshold:.2f}, Temp={temp:.4f})")
-    else:
-        raise FileNotFoundError(
-            f"Calibrated checkpoint file not found at {calibrated_ckpt_path}! Please run scripts/evaluate_test_set.py first."
-        )
-
+    checkpoint = torch.load(resolved_weights, map_location=device, weights_only=False)
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    model.load_state_dict(clean_state_dict(state_dict), strict=False)
     model.eval()
 
-    print("\nPER-GENERATOR SUB-DOMAIN EVALUATION (2-Class AUC vs Real Faces)")
+    evaluator = ModelEvaluator(model, device=device)
 
-    real_samples = grouped_samples.get("Original Real Faces", [])
-    real_logits_list, real_targets_list = [], []
+    # Calibration parameters from val split
+    val_loader = DataLoader(FaceCropDataset(val_samples, data_root, is_train=False), batch_size=32, shuffle=False)
+    val_logits, val_targets, val_valid = evaluator.predict_loader(val_loader)
+    val_mask = val_valid > 0.0
+    val_logits, val_targets = val_logits[val_mask], val_targets[val_mask]
 
-    if real_samples:
-        real_loader = DataLoader(
-            KaggleFastDataset(real_samples, data_root, is_train=False),
-            batch_size=BATCH_SIZE,
-            shuffle=False,
-            num_workers=2,
-        )
-        with torch.no_grad():
-            for images, labels, valid_flags in real_loader:
-                mask = valid_flags.bool()
-                if not mask.any():
-                    continue
-                images, labels = images[mask].to(device), labels[mask]
-                logits = model(images).squeeze(-1).cpu().numpy()
-                if logits.ndim == 0:
-                    logits = np.array([logits])
-                real_logits_list.extend(logits)
-                real_targets_list.extend(labels.numpy())
+    temp = fit_temperature_log(val_logits, val_targets) if len(np.unique(val_targets)) > 1 else 1.0
+    val_probs = 1.0 / (1.0 + np.exp(-(val_logits / temp)))
 
-    real_logits = np.array(real_logits_list)
-    real_targets = np.array(real_targets_list)
+    thresholds = np.linspace(0.1, 0.9, 81)
+    best_thresh = 0.5
+    best_f1 = 0.0
+    for t in thresholds:
+        f1 = f1_score(val_targets, (val_probs >= t).astype(int), zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thresh = t
 
-    for group_name in sorted(grouped_samples.keys()):
-        if group_name == "Original Real Faces":
+    # Group test samples by domain using canonical DomainClassifier
+    domain_buckets: dict[ManipulationDomain, list] = {d: [] for d in ManipulationDomain}
+    real_samples = []
+
+    for item in test_samples:
+        path = item[0]
+        if item[1] == 0:
+            real_samples.append(item)
+        else:
+            info = DomainClassifier.classify(path)
+            domain_buckets[info.domain].append(item)
+
+    print("\n" + "=" * 80)
+    print("        SUB-DOMAIN MANIPULATION BREAKDOWN EVALUATION RESULTS")
+    print("=" * 80)
+    print(f"  Total Real Test Samples:      {len(real_samples)}")
+    for domain, bucket in domain_buckets.items():
+        if bucket:
+            print(f"  {domain.value.upper():<20} Test Samples: {len(bucket)}")
+    print("-" * 80)
+
+    for domain, fake_items in domain_buckets.items():
+        if not fake_items:
             continue
+        eval_group = fake_items + real_samples
+        loader = DataLoader(FaceCropDataset(eval_group, data_root, is_train=False), batch_size=32, shuffle=False)
+        logits, targets, valid = evaluator.predict_loader(loader)
+        mask = valid > 0.0
+        logits, targets = logits[mask], targets[mask]
 
-        fake_samples = grouped_samples[group_name]
-        if len(fake_samples) < 5:
-            continue
+        probs = 1.0 / (1.0 + np.exp(-(logits / temp)))
+        preds = (probs >= best_thresh).astype(int)
 
-        loader = DataLoader(
-            KaggleFastDataset(fake_samples, data_root, is_train=False),
-            batch_size=BATCH_SIZE,
-            shuffle=False,
-            num_workers=2,
-        )
-        fake_logits_list, fake_targets_list = [], []
+        try:
+            auc_val = float(roc_auc_score(targets, probs)) if len(np.unique(targets)) > 1 else 0.5
+        except (ValueError, TypeError, RuntimeError):
+            auc_val = 0.5
 
-        with torch.no_grad():
-            for images, labels, valid_flags in loader:
-                mask = valid_flags.bool()
-                if not mask.any():
-                    continue
-                images, labels = images[mask].to(device), labels[mask]
-                logits = model(images).squeeze(-1).cpu().numpy()
-                if logits.ndim == 0:
-                    logits = np.array([logits])
-                fake_logits_list.extend(logits)
-                fake_targets_list.extend(labels.numpy())
+        f1 = f1_score(targets, preds, zero_division=0)
+        prec = precision_score(targets, preds, zero_division=0)
+        rec = recall_score(targets, preds, zero_division=0)
 
-        group_logits = np.concatenate([np.array(fake_logits_list), real_logits])
-        group_targets = np.concatenate([np.array(fake_targets_list), real_targets])
+        domain_display = domain.value.upper()
+        print(f"  {domain_display:<20} | Fakes: {len(fake_items):<5} | AUC: {auc_val:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
 
-        probs = 1.0 / (1.0 + np.exp(-(group_logits / temp)))
-        preds = (probs > threshold).astype(int)
+    print("=" * 80 + "\n")
 
-        auc_val = roc_auc_score(group_targets, probs)
-        f1 = f1_score(group_targets, preds, zero_division=0)
-        prec = precision_score(group_targets, preds, zero_division=0)
-        rec = recall_score(group_targets, preds, zero_division=0)
-        print(f"  {group_name:<36} | Fakes: {len(fake_samples):<5} | AUC: {auc_val:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
 
-    print("\nPer-generator sub-domain evaluation complete.")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Evaluate fine-grained subdomain breakdown performance.")
+    parser.add_argument("--data_dir", type=str, default=None, help="Directory containing dataset and splits.json")
+    parser.add_argument("--weights_path", type=str, default=None, help="Path to dual_stream_best.pth")
+    args = parser.parse_args()
+
+    run_subdomain_evaluation(data_dir=args.data_dir, weights_path=args.weights_path)
 
 
 if __name__ == "__main__":
-    run_subdomain_evaluation()
+    main()

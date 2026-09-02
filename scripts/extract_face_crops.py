@@ -14,6 +14,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+from src.dataset.domains import DomainClassifier
 from src.dataset.preprocess import DynamicFaceCropper
 from src.dataset.loader import perform_graph_split
 
@@ -57,29 +58,8 @@ def process_single_video_worker(
     vid_path: str, cropper: DynamicFaceCropper
 ) -> tuple[list[dict[str, Any]], Optional[str]]:
     """Worker task processing a single video file."""
-    path_lower = vid_path.lower().replace("\\", "/")
-    fake_keywords = [
-        "manipulated_sequences",
-        "deepfakes",
-        "face2face",
-        "faceswap",
-        "neuraltextures",
-        "faceshifter",
-        "shifter",
-        "deepfakedetection",
-        "celeb-synthesis",
-        "spliced",
-        "fake",
-        "swap",
-    ]
-    real_keywords = ["original_sequences", "youtube-real", "celeb-real", "real", "original"]
-
-    if any(kw in path_lower for kw in fake_keywords):
-        is_fake = 1
-    elif any(kw in path_lower for kw in real_keywords):
-        is_fake = 0
-    else:
-        is_fake = 0
+    domain_info = DomainClassifier.classify(vid_path)
+    is_fake = 1 if domain_info.is_fake else 0
 
     vid_id = os.path.splitext(os.path.basename(vid_path))[0]
     out_sub_dir = os.path.join(OUTPUT_DIR, "fake" if is_fake else "real", vid_id)

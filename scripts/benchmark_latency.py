@@ -1,10 +1,11 @@
 """Inference Latency & Throughput Benchmark Script for Dual-Stream Deepfake Detector Engine."""
 
+import argparse
 import gc
 import os
 import sys
 import time
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
@@ -12,39 +13,48 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from src.config import load_config
+from src.dataset.resolver import find_weights_path
 from src.models.hybrid_detector import HybridDeepfakeDetector
-
-CONFIG = load_config()
-IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
+from src.utils.checkpoint import clean_state_dict
 
 
-def benchmark_inference() -> dict[str, Any]:
-    """Benchmark model inference latency and throughput for batch sizes 1 and 32."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU Multi-thread"
-    print(f"[1/2] Instantiating PyTorch Model on {device_name} (Resolution: {IMG_SIZE}x{IMG_SIZE})...")
+def benchmark_inference(
+    weights_path: Optional[str] = None,
+    img_size: int = 256,
+    batch_size: int = 32,
+    device_str: Optional[str] = None,
+) -> dict[str, Any]:
+    """Benchmark model inference latency and throughput for batch sizes 1 and batch_size."""
+    if device_str:
+        device = torch.device(device_str)
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = HybridDeepfakeDetector().to(device)
+    device_name = torch.cuda.get_device_name(0) if device.type == "cuda" else "CPU Multi-thread"
+    print(f"[1/2] Instantiating PyTorch Model on {device_name} (Resolution: {img_size}x{img_size})...")
+
+    model = HybridDeepfakeDetector(pretrained=False).to(device)
     model.eval()
 
-    weights_path = os.path.join(REPO_ROOT, "dual_stream_calibrated.pth")
-    if os.path.exists(weights_path):
-        ckpt = torch.load(weights_path, map_location=device, weights_only=True)
+    try:
+        resolved_weights = find_weights_path(weights_path)
+        ckpt = torch.load(resolved_weights, map_location=device, weights_only=False)
         state_dict = ckpt.get("model_state_dict", ckpt)
-        model.load_state_dict(state_dict, strict=False)
-        print(f" Loaded weights from {weights_path}")
+        model.load_state_dict(clean_state_dict(state_dict), strict=False)
+        print(f" Loaded weights from {resolved_weights}")
+    except FileNotFoundError:
+        print(" Running with uninitialized random weights (dry-run mode).")
 
     use_amp = device.type == "cuda"
     autocast_dtype = torch.float16 if use_amp else torch.float32
 
     # Benchmark Batch Size 1 (Real-time Single-Frame Latency)
     if device.type == "cuda":
-        bs1_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE).pin_memory().to(device, non_blocking=True)
+        bs1_input = torch.randn(1, 3, img_size, img_size).pin_memory().to(device, non_blocking=True)
     else:
-        bs1_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE, device=device)
+        bs1_input = torch.randn(1, 3, img_size, img_size, device=device)
 
-    warmup_runs = 20 if device.type == "cuda" else 5
+    warmup_runs = 15 if device.type == "cuda" else 3
     for _ in range(warmup_runs):
         with torch.inference_mode():
             with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
@@ -52,87 +62,92 @@ def benchmark_inference() -> dict[str, Any]:
     if device.type == "cuda":
         torch.cuda.synchronize()
 
-    n_runs = 50 if device.type == "cuda" else 10
+    n_runs = 30 if device.type == "cuda" else 5
     if device.type == "cuda":
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         start_event.record()
         with torch.inference_mode():
-            with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+            with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
                 for _ in range(n_runs):
                     _ = model(bs1_input)
         end_event.record()
         torch.cuda.synchronize()
-        bs1_latency = float(start_event.elapsed_time(end_event) / n_runs)
+        total_time_s = start_event.elapsed_time(end_event) / 1000.0
     else:
-        start_time = time.perf_counter()
+        t0 = time.perf_counter()
         with torch.inference_mode():
             for _ in range(n_runs):
                 _ = model(bs1_input)
-        bs1_latency = float((time.perf_counter() - start_time) / n_runs * 1000.0)
+        total_time_s = time.perf_counter() - t0
 
-    bs1_fps = 1000.0 / bs1_latency
+    latency_bs1_ms = (total_time_s / n_runs) * 1000.0
+    fps_bs1 = n_runs / total_time_s
+    print(f"  Single-frame (BS=1):  {latency_bs1_ms:.2f} ms/frame  ({fps_bs1:.1f} FPS)")
 
-    del bs1_input
-    gc.collect()
+    # Benchmark Batch Size N (Batch Throughput)
     if device.type == "cuda":
-        torch.cuda.empty_cache()
-
-    # Benchmark Batch Size 32 (High-Throughput Batch Processing)
-    if device.type == "cuda":
-        bs32_input = torch.randn(32, 3, IMG_SIZE, IMG_SIZE).pin_memory().to(device, non_blocking=True)
+        bsN_input = torch.randn(batch_size, 3, img_size, img_size).pin_memory().to(device, non_blocking=True)
     else:
-        bs32_input = torch.randn(32, 3, IMG_SIZE, IMG_SIZE, device=device)
-    for _ in range(3):
+        bsN_input = torch.randn(batch_size, 3, img_size, img_size, device=device)
+
+    for _ in range(warmup_runs):
         with torch.inference_mode():
             with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
-                _ = model(bs32_input)
+                _ = model(bsN_input)
     if device.type == "cuda":
         torch.cuda.synchronize()
 
-    n_runs_batch = 20 if device.type == "cuda" else 5
     if device.type == "cuda":
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         start_event.record()
         with torch.inference_mode():
-            with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
-                for _ in range(n_runs_batch):
-                    _ = model(bs32_input)
+            with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
+                for _ in range(n_runs):
+                    _ = model(bsN_input)
         end_event.record()
         torch.cuda.synchronize()
-        bs32_total_time_ms = float(start_event.elapsed_time(end_event) / n_runs_batch)
+        total_time_s = start_event.elapsed_time(end_event) / 1000.0
     else:
-        start_time = time.perf_counter()
+        t0 = time.perf_counter()
         with torch.inference_mode():
-            for _ in range(n_runs_batch):
-                _ = model(bs32_input)
-        bs32_total_time_ms = float((time.perf_counter() - start_time) / n_runs_batch * 1000.0)
+            for _ in range(n_runs):
+                _ = model(bsN_input)
+        total_time_s = time.perf_counter() - t0
 
-    bs32_per_crop_ms = bs32_total_time_ms / 32.0
-    bs32_fps = 1000.0 / bs32_per_crop_ms
+    throughput_fps = (batch_size * n_runs) / total_time_s
+    latency_per_sample_ms = (total_time_s / (batch_size * n_runs)) * 1000.0
+    print(f"  Batched (BS={batch_size}):      {throughput_fps:.1f} FPS  ({latency_per_sample_ms:.2f} ms/frame)")
 
-    del bs32_input
     gc.collect()
     if device.type == "cuda":
         torch.cuda.empty_cache()
 
-    print("\n[2/2] Benchmark Performance Results:")
-    print(f"  Device Hardware:             {device_name}")
-    print(f"  Input Resolution:            {IMG_SIZE}x{IMG_SIZE}")
-    print(f"  Single-Crop Latency (BS=1):  {bs1_latency:.2f} ms/crop ({bs1_fps:.1f} FPS)")
-    print(f"  Batch Throughput (BS=32):    {bs32_per_crop_ms:.2f} ms/crop ({bs32_fps:.1f} FPS)")
-
     return {
         "device": device_name,
-        "img_size": IMG_SIZE,
-        "bs1_latency_ms": bs1_latency,
-        "bs1_fps": bs1_fps,
-        "bs32_per_crop_ms": bs32_per_crop_ms,
-        "bs32_fps": bs32_fps,
+        "latency_bs1_ms": latency_bs1_ms,
+        "fps_bs1": fps_bs1,
+        "throughput_fps": throughput_fps,
+        "latency_per_sample_ms": latency_per_sample_ms,
     }
 
 
-if __name__ == "__main__":
-    benchmark_inference()
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Benchmark Dual-Stream detector inference latency and throughput.")
+    parser.add_argument("--weights", type=str, default=None, help="Path to checkpoint weights")
+    parser.add_argument("--img_size", type=int, default=256, help="Input resolution (default: 256)")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for throughput testing")
+    parser.add_argument("--device", type=str, default=None, help="Device to use ('cuda', 'cpu')")
+    args = parser.parse_args()
 
+    benchmark_inference(
+        weights_path=args.weights,
+        img_size=args.img_size,
+        batch_size=args.batch_size,
+        device_str=args.device,
+    )
+
+
+if __name__ == "__main__":
+    main()

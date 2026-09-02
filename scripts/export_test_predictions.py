@@ -6,17 +6,18 @@ import logging
 import os
 import sys
 
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-import cv2
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, Dataset
-
-from src.config import load_config
+from src.dataset.datasets import FaceCropDataset
 from src.dataset.loader import dedupe_split
+from src.dataset.resolver import resolve_splits_path
+from src.evaluation.evaluator import ModelEvaluator
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
 
@@ -24,118 +25,70 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
-
-
-class TestDataset(Dataset):
-    def __init__(self, samples: list, root_dir: str) -> None:
-        self.samples = samples
-        self.root_dir = root_dir
-
-    def __len__(self) -> int:
-        return len(self.samples)
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        path_rel, label = self.samples[idx]
-        full_path = os.path.join(self.root_dir, path_rel)
-        valid_flag = 1.0
-        try:
-            bgr = cv2.imread(full_path, cv2.IMREAD_COLOR)
-            if bgr is None:
-                raise ValueError("Image read failed")
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            if rgb.shape[0] != IMG_SIZE or rgb.shape[1] != IMG_SIZE:
-                rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
-        except (OSError, ValueError, cv2.error):
-            valid_flag = 0.0
-            rgb = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
-
-        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
-        return (
-            tensor,
-            torch.tensor(label, dtype=torch.float32),
-            torch.tensor(valid_flag, dtype=torch.float32),
-        )
+TestDataset = FaceCropDataset
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Export per-sample test predictions for ROC/ECE plot generation."
-    )
+    parser = argparse.ArgumentParser(description="Export per-sample test predictions for ROC/ECE plot generation.")
     parser.add_argument("--checkpoint", required=True, help="Path to dual_stream_calibrated.pth")
     parser.add_argument("--data_root", required=True, help="Dataset root containing splits.json")
     parser.add_argument("--output_json", default="test_predictions.json", help="Output path for predictions JSON")
     parser.add_argument("--batch_size", type=int, default=32)
     args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info("Device: %s", device)
-
-    splits_path = os.path.join(args.data_root, "splits.json")
-    if os.path.exists("/kaggle/working/splits.json"):
-        splits_path = "/kaggle/working/splits.json"
-    elif os.path.exists("./splits.json"):
-        splits_path = "./splits.json"
-    if not os.path.exists(splits_path):
-        raise FileNotFoundError(f"splits.json not found at {splits_path}")
-    with open(splits_path) as f:
+    splits_path = resolve_splits_path(data_root=args.data_root)
+    with open(splits_path, "r") as f:
         splits = json.load(f)
     test_samples = dedupe_split(splits["test"])
-    logger.info("Test split: %d samples", len(test_samples))
+    logger.info("Loaded %d test samples from %s", len(test_samples), splits_path)
 
-    config = load_config()
-    backbone = config.get("model", {}).get("backbone", "convnext_small")
-    model = HybridDeepfakeDetector(
-        backbone_name=backbone, pretrained=False, use_fft_branch=True, config=config
-    )
-    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
-    state_dict = checkpoint.get("model_state_dict", checkpoint)
-    model.load_state_dict(clean_state_dict(state_dict), strict=False)
-    model.to(device).eval()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
 
-    threshold = float(checkpoint.get("optimal_threshold", 0.5))
-    temperature = float(checkpoint.get("temperature", 1.0))
-    logger.info("Checkpoint loaded. Threshold=%.4f, Temperature=%.4f", threshold, temperature)
+    temperature = float(ckpt.get("temperature", 1.0))
+    threshold = float(ckpt.get("optimal_threshold", 0.50))
+    logger.info("Using temperature=%.4f, threshold=%.4f from checkpoint", temperature, threshold)
 
-    dataset = TestDataset(test_samples, args.data_root)
-    loader = DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=(device.type == "cuda")
-    )
+    model = HybridDeepfakeDetector(pretrained=False).to(device)
+    state = ckpt.get("model_state_dict", ckpt)
+    model.load_state_dict(clean_state_dict(state), strict=False)
+    model.eval()
 
-    all_logits, all_labels = [], []
-    with torch.no_grad():
-        with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
-            for images, labels, valid_flags in loader:
-                mask = valid_flags.bool()
-                if not mask.any():
-                    continue
-                logits = model(images[mask].to(device)).squeeze(-1).float()
-                all_logits.extend(logits.cpu().numpy().tolist())
-                all_labels.extend(labels[mask].numpy().tolist())
+    dataset = FaceCropDataset(test_samples, args.data_root, is_train=False)
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    logits_arr = np.array(all_logits, dtype=np.float64)
-    labels_arr = np.array(all_labels, dtype=np.int32)
+    evaluator = ModelEvaluator(model, device=device)
+    all_logits, all_targets, all_valid = evaluator.predict_loader(loader)
 
-    probs_raw = (1.0 / (1.0 + np.exp(-logits_arr))).tolist()
-    probs_cal = (1.0 / (1.0 + np.exp(-logits_arr / temperature))).tolist()
+    probs_uncal = 1.0 / (1.0 + np.exp(-all_logits))
+    probs_cal = 1.0 / (1.0 + np.exp(-(all_logits / temperature)))
 
-    output = {
-        "probs_raw": probs_raw,
-        "probs_cal": probs_cal,
-        "labels": labels_arr.tolist(),
-        "temperature": temperature,
-        "threshold": threshold,
-        "n_samples": len(all_labels),
+    records = []
+    for i, (path, label) in enumerate(test_samples):
+        if all_valid[i] > 0.0:
+            records.append({
+                "path": path,
+                "label": int(label),
+                "prob_uncal": float(probs_uncal[i]),
+                "prob_cal": float(probs_cal[i]),
+                "logit": float(all_logits[i]),
+                "pred": int(probs_cal[i] >= threshold),
+            })
+
+    output_data = {
+        "metadata": {
+            "checkpoint": args.checkpoint,
+            "data_root": args.data_root,
+            "temperature": temperature,
+            "threshold": threshold,
+            "n_samples": len(records),
+        },
+        "predictions": records,
     }
 
     with open(args.output_json, "w") as f:
-        json.dump(output, f)
-
-    logger.info(
-        "Saved %d predictions to %s (%.1f MB)",
-        len(all_labels),
-        args.output_json,
-        os.path.getsize(args.output_json) / 1e6,
-    )
+        json.dump(output_data, f, indent=2)
+    logger.info("Exported %d predictions to %s", len(records), args.output_json)
 
 
 if __name__ == "__main__":

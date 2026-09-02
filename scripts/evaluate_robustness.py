@@ -1,25 +1,28 @@
-"""Robustness evaluation script for Dual-Stream Deepfake Detector."""
+"""Robustness evaluation script for Dual-Stream Deepfake Detector under real-world distortions."""
 
 import argparse
+from collections.abc import Callable
 import json
 import logging
 import os
 import sys
-from collections.abc import Callable
-from typing import Any, Optional
+from typing import Optional
 
 import cv2
 import numpy as np
-from sklearn.metrics import f1_score, roc_auc_score
+from sklearn.metrics import f1_score
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from src.config import load_config
+from src.dataset.datasets import FaceCropDataset
 from src.dataset.loader import dedupe_split
+from src.dataset.resolver import resolve_splits_path
+from src.evaluation.evaluator import ModelEvaluator
+from src.evaluation.metrics import compute_roc_auc_safe
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
 
@@ -27,47 +30,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
-
-
-class RobustnessDataset(Dataset):
-    """Dataset loader applying optional image degradation prior to normalization."""
-
-    def __init__(
-        self,
-        samples: list[tuple[str, float]],
-        root_dir: str,
-        degradation_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-    ) -> None:
-        self.samples = samples
-        self.root_dir = root_dir
-        self.degradation_fn = degradation_fn
-
-    def __len__(self) -> int:
-        return len(self.samples)
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        path_rel, label = self.samples[idx]
-        full_path = os.path.join(self.root_dir, path_rel)
-        valid_flag = 1.0
-        try:
-            bgr = cv2.imread(full_path, cv2.IMREAD_COLOR)
-            if bgr is None:
-                raise ValueError("Image read failed")
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            if rgb.shape[0] != IMG_SIZE or rgb.shape[1] != IMG_SIZE:
-                rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
-            if self.degradation_fn is not None:
-                rgb = self.degradation_fn(rgb)
-        except (OSError, ValueError, cv2.error):
-            valid_flag = 0.0
-            rgb = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.uint8)
-
-        tensor = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
-        return (
-            tensor,
-            torch.tensor(label, dtype=torch.float32),
-            torch.tensor(valid_flag, dtype=torch.float32),
-        )
+RobustnessDataset = FaceCropDataset
 
 
 def jpeg_fn(quality: int) -> Callable[[np.ndarray], np.ndarray]:
@@ -134,37 +97,26 @@ def run_eval(
     else:
         capped = samples
 
-    dataset = RobustnessDataset(capped, root_dir, degradation_fn)
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=(device.type == "cuda"),
-    )
+    dataset = FaceCropDataset(capped, root_dir, is_train=False, degradation_fn=degradation_fn)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
-    all_probs: list[float] = []
-    all_labels: list[float] = []
-    model.eval()
-    with torch.no_grad():
-        with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
-            for images, labels, valid_flags in loader:
-                mask = valid_flags.bool()
-                if not mask.any():
-                    continue
-                logits = model(images[mask].to(device)).squeeze(-1).float()
-                probs = torch.sigmoid(logits / temperature).cpu().numpy()
-                all_probs.extend(probs.tolist())
-                all_labels.extend(labels[mask].numpy().tolist())
+    evaluator = ModelEvaluator(model, device=device)
+    logits, targets, valid = evaluator.predict_loader(loader)
 
-    if len(set(all_labels)) < 2:
-        logger.warning("Only one class present in evaluated samples — AUC undefined.")
-        return float("nan"), float("nan"), len(all_labels)
+    mask = valid > 0.0
+    logits = logits[mask]
+    targets = targets[mask]
 
-    auc = float(roc_auc_score(all_labels, all_probs))
-    preds = (np.array(all_probs) > threshold).astype(int)
-    f1 = float(f1_score(all_labels, preds, zero_division=0))
-    return auc, f1, len(all_labels)
+    if len(np.unique(targets)) < 2:
+        logger.warning("Only one class present in evaluated samples - AUC undefined.")
+        return float("nan"), float("nan"), len(targets)
+
+    probs = 1.0 / (1.0 + np.exp(-(logits / temperature)))
+    preds = (probs >= threshold).astype(int)
+
+    auc = compute_roc_auc_safe(targets, probs)
+    f1 = float(f1_score(targets, preds, zero_division=0))
+    return auc, f1, len(targets)
 
 
 def main() -> None:
@@ -173,118 +125,71 @@ def main() -> None:
     parser.add_argument("--data_root", required=True, help="Dataset root containing splits.json")
     parser.add_argument("--output_json", default="robustness_results.json", help="Output path for JSON results")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument(
-        "--max_samples",
-        type=int,
-        default=None,
-        help="Cap test samples for fast local runs (e.g. 500)",
-    )
+    parser.add_argument("--max_samples", type=int, default=None, help="Cap test samples for fast local runs (e.g. 500)")
     args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"Device: {device}")
-
-    splits_path = os.path.join(args.data_root, "splits.json")
-    if os.path.exists("/kaggle/working/splits.json"):
-        splits_path = "/kaggle/working/splits.json"
-    elif os.path.exists("./splits.json"):
-        splits_path = "./splits.json"
-    if not os.path.exists(splits_path):
-        raise FileNotFoundError(f"splits.json not found at {splits_path}")
+    splits_path = resolve_splits_path(data_root=args.data_root)
     with open(splits_path, "r") as f:
         splits = json.load(f)
     test_samples = dedupe_split(splits["test"])
-    logger.info(f"Test split: {len(test_samples)} samples (capped to {args.max_samples or 'all'})")
+    logger.info("Loaded %d test samples from %s", len(test_samples), splits_path)
 
-    config = load_config()
-    backbone = config.get("model", {}).get("backbone", "convnext_small")
-    model = HybridDeepfakeDetector(
-        backbone_name=backbone, pretrained=False, use_fft_branch=True, config=config
-    )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
 
-    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
-    state_dict = checkpoint.get("model_state_dict", checkpoint)
-    state_dict = clean_state_dict(state_dict)
-    model.load_state_dict(state_dict, strict=False)
-    model.to(device)
+    threshold = float(ckpt.get("optimal_threshold", 0.50))
+    temperature = float(ckpt.get("temperature", 1.0))
+    logger.info("Loaded threshold=%.4f, temperature=%.4f from checkpoint", threshold, temperature)
+
+    model = HybridDeepfakeDetector(pretrained=False).to(device)
+    state = ckpt.get("model_state_dict", ckpt)
+    model.load_state_dict(clean_state_dict(state), strict=False)
     model.eval()
 
-    threshold = float(checkpoint.get("optimal_threshold", 0.5))
-    temperature = float(checkpoint.get("temperature", 1.0))
-    logger.info(f"Checkpoint loaded. Threshold={threshold:.4f}, Temperature={temperature:.4f}")
+    results: dict[str, dict[str, dict[str, float]]] = {}
 
-    sweeps: list[tuple[str, list[tuple[str, Optional[Callable[[np.ndarray], np.ndarray]]]]]] = [
-        (
-            "JPEG Compression",
-            [
-                ("Clean (no degradation)", None),
-                ("Q=100", jpeg_fn(100)),
-                ("Q=90", jpeg_fn(90)),
-                ("Q=70", jpeg_fn(70)),
-                ("Q=50", jpeg_fn(50)),
-                ("Q=30", jpeg_fn(30)),
-            ],
-        ),
-        (
-            "Gaussian Blur",
-            [
-                ("Clean (no degradation)", None),
-                ("σ=0.5", blur_fn(0.5)),
-                ("σ=1.5", blur_fn(1.5)),
-                ("σ=3.0", blur_fn(3.0)),
-            ],
-        ),
-        (
-            "Gaussian Noise",
-            [
-                ("Clean (no degradation)", None),
-                ("σ=5", noise_fn(5)),
-                ("σ=15", noise_fn(15)),
-                ("σ=30", noise_fn(30)),
-            ],
-        ),
-        (
-            "Downscaling",
-            [
-                ("Clean (no degradation)", None),
-                ("0.75×", downscale_fn(0.75)),
-                ("0.50×", downscale_fn(0.50)),
-                ("0.25×", downscale_fn(0.25)),
-            ],
-        ),
-    ]
+    # Baseline (no degradation)
+    logger.info("--- Baseline Evaluation (No Degradation) ---")
+    b_auc, b_f1, n = run_eval(model, test_samples, args.data_root, None, threshold, temperature, device, args.batch_size, args.max_samples)
+    results["baseline"] = {"clean": {"auc": b_auc, "f1": b_f1, "samples": float(n)}}
+    logger.info("Baseline -> AUC: %.4f | F1: %.4f (N=%d)", b_auc, b_f1, n)
 
-    all_results: dict[str, list[dict[str, Any]]] = {}
-    for sweep_name, levels in sweeps:
-        print(f"\n{'='*60}")
-        print(f"  {sweep_name}")
-        print(f"{'='*60}")
-        print(f"  {'Level':<28} {'AUC':>8}  {'F1':>8}  {'N':>7}")
-        print(f"  {'-'*28} {'-'*8}  {'-'*8}  {'-'*7}")
+    # 1. JPEG Compression
+    logger.info("--- 1. JPEG Compression Sweep ---")
+    results["jpeg_compression"] = {}
+    for q in [90, 80, 70, 60, 50, 40, 30]:
+        auc, f1, n = run_eval(model, test_samples, args.data_root, jpeg_fn(q), threshold, temperature, device, args.batch_size, args.max_samples)
+        results["jpeg_compression"][f"q_{q}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        logger.info("  JPEG Q=%2d -> AUC: %.4f | F1: %.4f", q, auc, f1)
 
-        sweep_results: list[dict[str, Any]] = []
-        for label, deg_fn in levels:
-            auc, f1, n = run_eval(
-                model=model,
-                samples=test_samples,
-                root_dir=args.data_root,
-                degradation_fn=deg_fn,
-                threshold=threshold,
-                temperature=temperature,
-                device=device,
-                batch_size=args.batch_size,
-                max_samples=args.max_samples,
-            )
-            print(f"  {label:<28} {auc:>8.4f}  {f1:>8.4f}  {n:>7}")
-            sweep_results.append({"level": label, "auc": auc, "f1": f1, "n_samples": n})
+    # 2. Gaussian Blur
+    logger.info("--- 2. Gaussian Blur Sweep ---")
+    results["gaussian_blur"] = {}
+    for sigma in [0.5, 1.0, 1.5, 2.0, 3.0]:
+        auc, f1, n = run_eval(model, test_samples, args.data_root, blur_fn(sigma), threshold, temperature, device, args.batch_size, args.max_samples)
+        results["gaussian_blur"][f"sigma_{sigma}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        logger.info("  Blur sigma=%.1f -> AUC: %.4f | F1: %.4f", sigma, auc, f1)
 
-        all_results[sweep_name] = sweep_results
+    # 3. Gaussian Noise
+    logger.info("--- 3. Gaussian Noise Sweep ---")
+    results["gaussian_noise"] = {}
+    for sigma in [5.0, 10.0, 15.0, 20.0, 30.0]:
+        auc, f1, n = run_eval(model, test_samples, args.data_root, noise_fn(sigma), threshold, temperature, device, args.batch_size, args.max_samples)
+        results["gaussian_noise"][f"sigma_{sigma}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        logger.info("  Noise sigma=%4.1f -> AUC: %.4f | F1: %.4f", sigma, auc, f1)
+
+    # 4. Downscaling
+    logger.info("--- 4. Downscale Sweep ---")
+    results["downscale"] = {}
+    for scale in [0.75, 0.50, 0.33, 0.25]:
+        auc, f1, n = run_eval(model, test_samples, args.data_root, downscale_fn(scale), threshold, temperature, device, args.batch_size, args.max_samples)
+        results["downscale"][f"scale_{scale}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        logger.info("  Scale=%.2fx -> AUC: %.4f | F1: %.4f", scale, auc, f1)
 
     with open(args.output_json, "w") as f:
-        json.dump(all_results, f, indent=2)
-    logger.info(f"Results saved to {args.output_json}")
+        json.dump(results, f, indent=2)
+    logger.info("Robustness results written to %s", args.output_json)
 
 
 if __name__ == "__main__":
     main()
-

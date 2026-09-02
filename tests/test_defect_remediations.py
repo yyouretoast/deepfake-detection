@@ -4,7 +4,6 @@ import os
 import tempfile
 import threading
 import numpy as np
-import pytest
 import torch
 import torch.nn as nn
 from accelerate import Accelerator
@@ -16,7 +15,7 @@ from scripts.train_dual_stream_ddp import (
 )
 from scripts.train_loto_experiment import matches_holdout_domain
 from src.dataset.preprocess import DynamicFaceCropper
-from src.models.hybrid_detector import HybridDeepfakeDetector, RealFFT2DModule
+from src.models.hybrid_detector import RealFFT2DModule
 from src.utils.interpretability import MODEL_INFERENCE_LOCK
 
 

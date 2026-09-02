@@ -18,7 +18,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from src.config import load_config
 from src.dataset.loader import dedupe_split
@@ -33,54 +32,7 @@ DEFAULT_THRESHOLD = 0.01
 DEFAULT_TEMPERATURE = 1.4788
 
 
-class ConvNeXtGradCAM:
-    def __init__(self, model: HybridDeepfakeDetector) -> None:
-        self.model = model
-        self.feature_maps: torch.Tensor | None = None
-        self.gradients: torch.Tensor | None = None
-
-        target_layer = self.model.spatial_backbone[-1]
-        self.forward_handle = target_layer.register_forward_hook(self._save_feature_maps)
-        self.backward_handle = target_layer.register_full_backward_hook(self._save_gradients)
-
-    def _save_feature_maps(self, module: torch.nn.Module, input: tuple, output: torch.Tensor) -> None:
-        self.feature_maps = output
-
-    def _save_gradients(
-        self, module: torch.nn.Module, grad_input: tuple, grad_output: tuple
-    ) -> None:
-        self.gradients = grad_output[0]
-
-    def generate_heatmap(self, input_tensor: torch.Tensor) -> np.ndarray:
-        self.model.zero_grad(set_to_none=True)
-
-        with torch.enable_grad():
-            input_tensor.requires_grad_(True)
-            logits = self.model(input_tensor)
-            scalar_logit = logits.squeeze()
-            scalar_logit.backward()
-
-        if self.feature_maps is None or self.gradients is None:
-            logger.warning("Grad-CAM feature maps or gradients not captured.")
-            return np.zeros((IMG_SIZE, IMG_SIZE), dtype=np.float32)
-
-        weights = torch.mean(self.gradients[0], dim=(1, 2))
-        cam = torch.zeros(self.feature_maps.shape[2:], dtype=torch.float32, device=input_tensor.device)
-        for i, w in enumerate(weights):
-            cam += w * self.feature_maps[0, i]
-
-        cam = F.relu(cam).detach().cpu().numpy()
-        denom = cam.max() - cam.min()
-        if denom > 1e-6:
-            cam = (cam - cam.min()) / denom
-        else:
-            cam = np.zeros_like(cam)
-
-        return cv2.resize(cam, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_LINEAR)
-
-    def remove_hooks(self) -> None:
-        self.forward_handle.remove()
-        self.backward_handle.remove()
+from src.utils.interpretability import ConvNeXtGradCAM
 
 
 def generate_4panel_figure(

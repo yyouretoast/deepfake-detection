@@ -12,8 +12,8 @@ if REPO_ROOT not in sys.path:
 
 import random
 
-from scripts.train_dual_stream_ddp import find_dataset_root
 from src.dataset.loader import dedupe_split, extract_identities
+from src.dataset.resolver import find_dataset_root
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)

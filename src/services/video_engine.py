@@ -30,26 +30,28 @@ EXPECTED_WEIGHTS_SHA256: Optional[str] = os.getenv(
 )
 
 
-def load_prediction_engine() -> tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
+def load_prediction_engine(
+    weights_path: Optional[str] = None,
+) -> tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
     """
     Load prediction engine model weights, sidecar metadata, and face cropper.
 
     Returns:
         Tuple containing (pytorch_model, cropper, has_pytorch_weights, classification_threshold, temperature).
     """
-    candidate_paths = [
-        "models/dual_stream_calibrated.pth",
-        "weights/dual_stream_calibrated.pth",
-        "dual_stream_calibrated.pth",
-        "models/dual_stream_best.pth",
-        "weights/dual_stream_best.pth",
-        "dual_stream_best.pth",
-    ]
-    weights_path: Optional[str] = None
-    for p in candidate_paths:
-        if os.path.exists(p):
-            weights_path = p
-            break
+    if weights_path is None:
+        candidate_paths = [
+            "models/dual_stream_calibrated.pth",
+            "weights/dual_stream_calibrated.pth",
+            "dual_stream_calibrated.pth",
+            "models/dual_stream_best.pth",
+            "weights/dual_stream_best.pth",
+            "dual_stream_best.pth",
+        ]
+        for p in candidate_paths:
+            if os.path.exists(p):
+                weights_path = p
+                break
 
     if weights_path is None:
         try:

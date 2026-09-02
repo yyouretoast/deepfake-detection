@@ -27,6 +27,7 @@ if REPO_ROOT not in sys.path:
 
 from src.dataset.preprocess import preprocess_tensors_batch  # noqa: F401
 from src.services.video_engine import DEVICE, load_prediction_engine, process_video_frames
+from src.services.ui_components import render_diagnostic_quad
 from src.utils.checkpoint import clean_state_dict, normalize_confidence  # noqa: F401
 from src.utils.interpretability import generate_face_diagnostics
 from src.utils.visualization import render_temporal_anomaly_timeline
@@ -483,27 +484,7 @@ def render_ui() -> None:
                                     temperature=default_temperature,
                                 )
 
-                            d_col1, d_col2, d_col3, d_col4 = st.columns(4)
-                            with d_col1:
-                                st.image(
-                                    diag["original"],
-                                    caption="(a) RGB Face Crop",
-                                )
-                            with d_col2:
-                                st.image(
-                                    diag["srm_residual"],
-                                    caption="(b) SRM Noise Residual",
-                                )
-                            with d_col3:
-                                st.image(
-                                    diag["fft_spectrum"],
-                                    caption="(c) 2D FFT Magnitude",
-                                )
-                            with d_col4:
-                                st.image(
-                                    diag["gradcam_overlay"],
-                                    caption="(d) Grad-CAM Attention",
-                                )
+                            render_diagnostic_quad(diag, title_prefix="Timeline Frame Diagnostics")
 
             if sample_faces:
                 st.markdown("<hr>", unsafe_allow_html=True)
@@ -552,27 +533,7 @@ def render_ui() -> None:
                                 temperature=default_temperature,
                             )
 
-                        d_col1, d_col2, d_col3, d_col4 = st.columns(4)
-                        with d_col1:
-                            st.image(
-                                diag["original"],
-                                caption="(a) RGB Face Crop",
-                            )
-                        with d_col2:
-                            st.image(
-                                diag["srm_residual"],
-                                caption="(b) SRM Noise Residual",
-                            )
-                        with d_col3:
-                            st.image(
-                                diag["fft_spectrum"],
-                                caption="(c) 2D FFT Magnitude",
-                            )
-                        with d_col4:
-                            st.image(
-                                diag["gradcam_overlay"],
-                                caption="(d) Grad-CAM Attention",
-                            )
+                        render_diagnostic_quad(diag, title_prefix=f"Interpretability Diagnostics: Crop #{selected_idx + 1}")
 
     st.markdown("<hr style='margin: 30px 0 15px 0;'>", unsafe_allow_html=True)
     st.markdown(
