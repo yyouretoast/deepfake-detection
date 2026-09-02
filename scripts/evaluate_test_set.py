@@ -24,7 +24,11 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
 
 
-def evaluate(data_dir: Optional[str] = None, weights_path: Optional[str] = None) -> None:
+def evaluate(
+    data_dir: Optional[str] = None,
+    weights_path: Optional[str] = None,
+    save_calibrated: Optional[str] = None,
+) -> None:
     data_root = find_dataset_root(data_dir)
     splits_path = resolve_splits_path(data_root=data_root)
 
@@ -123,14 +127,31 @@ def evaluate(data_dir: Optional[str] = None, weights_path: Optional[str] = None)
     print("Detailed Classification Report (Optimal Threshold):")
     print(classification_report(test_targets, test_preds_opt, target_names=["Real", "Fake"], digits=4))
 
+    calibrated_ckpt_path = save_calibrated or (
+        "/kaggle/working/dual_stream_calibrated.pth"
+        if os.path.exists("/kaggle/working")
+        else "./dual_stream_calibrated.pth"
+    )
+    os.makedirs(os.path.dirname(os.path.abspath(calibrated_ckpt_path)), exist_ok=True)
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "optimal_threshold": float(best_thresh),
+            "temperature": float(optimal_temp),
+        },
+        calibrated_ckpt_path,
+    )
+    print(f"\nSaved Calibrated Model Checkpoint to: {calibrated_ckpt_path}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate Dual-Stream Deepfake Detector on Held-out Test Set")
     parser.add_argument("--data_dir", type=str, default=None, help="Directory containing splits.json and dataset")
     parser.add_argument("--weights_path", type=str, default=None, help="Path to dual_stream_best.pth")
+    parser.add_argument("--save_calibrated", type=str, default=None, help="Path to save calibrated model weights")
     args = parser.parse_args()
 
-    evaluate(data_dir=args.data_dir, weights_path=args.weights_path)
+    evaluate(data_dir=args.data_dir, weights_path=args.weights_path, save_calibrated=args.save_calibrated)
 
 
 if __name__ == "__main__":

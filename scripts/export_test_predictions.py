@@ -16,7 +16,7 @@ if REPO_ROOT not in sys.path:
 
 from src.dataset.datasets import FaceCropDataset
 from src.dataset.loader import dedupe_split
-from src.dataset.resolver import resolve_splits_path
+from src.dataset.resolver import find_dataset_root, find_weights_path, resolve_splits_path
 from src.evaluation.evaluator import ModelEvaluator
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
@@ -30,20 +30,23 @@ TestDataset = FaceCropDataset
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export per-sample test predictions for ROC/ECE plot generation.")
-    parser.add_argument("--checkpoint", required=True, help="Path to dual_stream_calibrated.pth")
-    parser.add_argument("--data_root", required=True, help="Dataset root containing splits.json")
+    parser.add_argument("--checkpoint", default=None, help="Path to dual_stream_calibrated.pth")
+    parser.add_argument("--data_root", default=None, help="Dataset root containing splits.json")
     parser.add_argument("--output_json", default="test_predictions.json", help="Output path for predictions JSON")
     parser.add_argument("--batch_size", type=int, default=32)
     args = parser.parse_args()
 
-    splits_path = resolve_splits_path(data_root=args.data_root)
+    data_root = find_dataset_root(args.data_root)
+    checkpoint_path = find_weights_path(args.checkpoint, data_root)
+
+    splits_path = resolve_splits_path(data_root=data_root)
     with open(splits_path, "r") as f:
         splits = json.load(f)
     test_samples = dedupe_split(splits["test"])
     logger.info("Loaded %d test samples from %s", len(test_samples), splits_path)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     temperature = float(ckpt.get("temperature", 1.0))
     threshold = float(ckpt.get("optimal_threshold", 0.50))
