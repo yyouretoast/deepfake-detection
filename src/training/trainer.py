@@ -111,8 +111,8 @@ class DualStreamTrainer:
                 probs = torch.sigmoid(outputs)
                 gathered_probs, gathered_labels = self.accelerator.gather_for_metrics((probs, labels))
 
-                all_preds.extend(gathered_probs.cpu().squeeze().tolist())
-                all_targets.extend(gathered_labels.cpu().squeeze().tolist())
+                all_preds.extend(gathered_probs.cpu().reshape(-1).tolist())
+                all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
         finally:
             if self.ema is not None and backup is not None:
                 self.ema.restore(unwrapped, backup)

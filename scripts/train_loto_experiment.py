@@ -165,8 +165,8 @@ def main() -> None:
             labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
             outputs = model(images)
             gathered_logits, gathered_labels = accelerator.gather_for_metrics((outputs, labels))
-            all_logits.extend(gathered_logits.cpu().squeeze().tolist())
-            all_targets.extend(gathered_labels.cpu().squeeze().tolist())
+            all_logits.extend(gathered_logits.cpu().reshape(-1).tolist())
+            all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
 
     if accelerator.is_main_process:
         eval_logits = np.array(all_logits).flatten()

@@ -55,3 +55,20 @@ class TestTrainingComponents:
         # Should gracefully return 0.5 without throwing ValueError
         auc = compute_roc_auc_safe(y_true, y_score, fallback=0.5)
         assert auc == 0.5
+
+    def test_trainer_evaluate_singleton_batch(self) -> None:
+        """Verifies evaluate handles single-sample batches without TypeError: 'float' object is not iterable."""
+        from accelerate import Accelerator
+        from torch.utils.data import DataLoader, TensorDataset
+        from src.training.trainer import DualStreamTrainer
+
+        model = nn.Linear(4, 1)
+        opt = torch.optim.SGD(model.parameters(), lr=0.01)
+        crit = MaskedBCEWithLogits()
+        acc = Accelerator()
+        val_ds = TensorDataset(torch.randn(1, 4), torch.tensor([[1.0]]), torch.tensor([[1.0]]))
+        val_loader = DataLoader(val_ds, batch_size=1)
+        trainer = DualStreamTrainer(model, opt, crit, None, val_loader, val_loader, acc)
+        metrics = trainer.evaluate()
+        assert "val_loss" in metrics
+        assert "val_auc" in metrics
