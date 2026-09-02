@@ -300,14 +300,17 @@ def main() -> None:
         robustness = json.load(f)
 
     loto_path = resolve_file(args.loto)
-    logger.info("Loading LOTO results from %s", loto_path)
-    with open(loto_path) as f:
-        loto = json.load(f)
+    if os.path.exists(loto_path):
+        logger.info("Loading LOTO results from %s", loto_path)
+        with open(loto_path) as f:
+            loto = json.load(f)
+        plot_loto(loto, os.path.join(args.output_dir, "loto_generalization.png"))
+    else:
+        logger.warning("LOTO results not found at %s; skipping loto_generalization.png", loto_path)
 
     plot_roc(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "roc_curve.png"))
     plot_ece(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "ece_reliability.png"))
     plot_robustness(robustness, os.path.join(args.output_dir, "robustness_degradation.png"))
-    plot_loto(loto, os.path.join(args.output_dir, "loto_generalization.png"))
     plot_per_generator(os.path.join(args.output_dir, "per_generator_auc.png"))
 
     logger.info("All figures saved to %s/", args.output_dir)
