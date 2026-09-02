@@ -57,41 +57,31 @@ def main() -> None:
     model.load_state_dict(clean_state_dict(state), strict=False)
     model.eval()
 
-    dataset = FaceCropDataset(test_samples, args.data_root, is_train=False)
+    dataset = FaceCropDataset(test_samples, data_root, is_train=False)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     evaluator = ModelEvaluator(model, device=device)
     all_logits, all_targets, all_valid = evaluator.predict_loader(loader)
 
-    probs_uncal = 1.0 / (1.0 + np.exp(-all_logits))
-    probs_cal = 1.0 / (1.0 + np.exp(-(all_logits / temperature)))
+    valid_mask = all_valid > 0.0
+    logits_clean = all_logits[valid_mask]
+    targets_clean = all_targets[valid_mask].astype(int)
 
-    records = []
-    for i, (path, label) in enumerate(test_samples):
-        if all_valid[i] > 0.0:
-            records.append({
-                "path": path,
-                "label": int(label),
-                "prob_uncal": float(probs_uncal[i]),
-                "prob_cal": float(probs_cal[i]),
-                "logit": float(all_logits[i]),
-                "pred": int(probs_cal[i] >= threshold),
-            })
+    probs_uncal = 1.0 / (1.0 + np.exp(-logits_clean))
+    probs_cal = 1.0 / (1.0 + np.exp(-(logits_clean / temperature)))
 
     output_data = {
-        "metadata": {
-            "checkpoint": args.checkpoint,
-            "data_root": args.data_root,
-            "temperature": temperature,
-            "threshold": threshold,
-            "n_samples": len(records),
-        },
-        "predictions": records,
+        "probs_raw": probs_uncal.tolist(),
+        "probs_cal": probs_cal.tolist(),
+        "labels": targets_clean.tolist(),
+        "temperature": float(temperature),
+        "threshold": float(threshold),
+        "n_samples": int(len(targets_clean)),
     }
 
     with open(args.output_json, "w") as f:
         json.dump(output_data, f, indent=2)
-    logger.info("Exported %d predictions to %s", len(records), args.output_json)
+    logger.info("Exported %d predictions to %s", len(targets_clean), args.output_json)
 
 
 if __name__ == "__main__":

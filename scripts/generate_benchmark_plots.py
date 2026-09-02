@@ -278,19 +278,30 @@ def main() -> None:
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    logger.info("Loading predictions from %s", args.predictions)
-    with open(args.predictions) as f:
+    def resolve_file(path_str: str) -> str:
+        if os.path.exists(path_str):
+            return path_str
+        kaggle_candidate = os.path.join("/kaggle/working", os.path.basename(path_str))
+        if os.path.exists(kaggle_candidate):
+            return kaggle_candidate
+        return path_str
+
+    pred_path = resolve_file(args.predictions)
+    logger.info("Loading predictions from %s", pred_path)
+    with open(pred_path) as f:
         preds = json.load(f)
     probs_raw = np.array(preds["probs_raw"])
     probs_cal = np.array(preds["probs_cal"])
     labels = np.array(preds["labels"], dtype=np.int32)
 
-    logger.info("Loading robustness results from %s", args.robustness)
-    with open(args.robustness) as f:
+    rob_path = resolve_file(args.robustness)
+    logger.info("Loading robustness results from %s", rob_path)
+    with open(rob_path) as f:
         robustness = json.load(f)
 
-    logger.info("Loading LOTO results from %s", args.loto)
-    with open(args.loto) as f:
+    loto_path = resolve_file(args.loto)
+    logger.info("Loading LOTO results from %s", loto_path)
+    with open(loto_path) as f:
         loto = json.load(f)
 
     plot_roc(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "roc_curve.png"))
