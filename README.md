@@ -37,14 +37,14 @@ The detection engine exposes intermediate representations across both spatial an
 ## Table of Contents
 
 * [System Architecture](#system-architecture)
-* [Quickstart & Python API](#quickstart--python-inference-api)
-* [Dataset Composition & Graph Partitioning](#dataset-composition--graph-partitioning)
+* [Quickstart and Python API](#quickstart-and-python-api)
+* [Dataset Composition and Graph Partitioning](#dataset-composition-and-graph-partitioning)
 * [Empirical Benchmarks](#empirical-benchmarks)
-* [Forensic Threat Model & Robustness](#forensic-threat-model--robustness)
-* [Hardware Latency & Profiling](#hardware-latency--profiling)
-* [CLI Reference & Reproduction](#cli-reference--reproduction-commands)
+* [Forensic Threat Model and Robustness](#forensic-threat-model-and-robustness)
+* [Hardware Latency and Profiling](#hardware-latency-and-profiling)
+* [CLI Reference and Reproduction Commands](#cli-reference-and-reproduction-commands)
 * [Repository Architecture](#repository-architecture)
-* [Dataset Compliance & Citations](#dataset-licensing--compliance)
+* [Dataset Compliance and Citations](#dataset-compliance-and-citations)
 
 ---
 
@@ -89,26 +89,45 @@ The detection engine exposes intermediate representations across both spatial an
 
 ### Mathematical Formulations
 
-1. **20-Channel Spectral Decomposition**:
-   Noise residuals from 3 fixed $5\times5$ SRM filters ($9$ channels) and $1$ learnable Bayar-Stamm constrained convolution ($1$ channel) are passed to an orthonormal 2D Real Fast Fourier Transform:
-   $$\mathcal{F}_{\text{norm}} = \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}})| + 1 \right)$$
-   Phase angles are computed with sub-epsilon magnitude autograd masking to eliminate infinite gradient singularities ($\frac{-y}{x^2 + y^2} \to \infty$):
-   $$\theta = \frac{1}{\pi} \text{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}$$
+#### 1. 20-Channel Spectral Decomposition
 
-2. **Symmetric Gated Residual Fusion**:
-   Both streams are symmetrically gated so neither branch dominates early optimization or starves the frequency stream of gradient flow:
-   $$\mathbf{g} = \sigma\left(\mathbf{W}_g [\mathbf{f}_s \parallel \mathbf{f}_f] + \mathbf{b}_g\right) \in \mathbb{R}^{512}$$
-   $$\mathbf{f}_{\text{fused}} = \left[ \mathbf{f}_s \odot (1 - \mathbf{g}) \;\parallel\; \mathbf{f}_f \odot \mathbf{g} \right] \in \mathbb{R}^{1024}$$
+Noise residuals from 3 fixed 5×5 SRM filters (9 channels) and 1 learnable Bayar-Stamm constrained convolution (1 channel) are passed to an orthonormal 2D Real Fast Fourier Transform:
 
-3. **Temporal Softmax-Weighted Aggregation (Video Sequences)**:
-   For multi-frame video inference, frame probabilities are pooled via temperature-scaled softmax weighting ($\tau = 0.10$), concentrating mass on high-confidence manipulation frames:
-   $$S_{\text{video}} = \sum_{k=1}^K w_k \cdot p_k \quad \text{where} \quad w_k = \frac{e^{p_k / \tau}}{\sum_{j=1}^K e^{p_j / \tau}}$$
+$$
+\mathcal{F}_{\text{norm}} = \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}})| + 1 \right)
+$$
+
+Phase angles are computed with sub-epsilon magnitude autograd masking to eliminate infinite gradient singularities:
+
+$$
+\theta = \frac{1}{\pi} \text{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
+$$
+
+#### 2. Symmetric Gated Residual Fusion
+
+Both streams are symmetrically gated so neither branch dominates early optimization or starves the frequency stream of gradient flow:
+
+$$
+\mathbf{g} = \sigma\left(\mathbf{W}_g [\mathbf{f}_s \parallel \mathbf{f}_f] + \mathbf{b}_g\right) \in \mathbb{R}^{512}
+$$
+
+$$
+\mathbf{f}_{\text{fused}} = \left[ \mathbf{f}_s \odot (1 - \mathbf{g}) \;\parallel\; \mathbf{f}_f \odot \mathbf{g} \right] \in \mathbb{R}^{1024}
+$$
+
+#### 3. Temporal Softmax-Weighted Aggregation (Video Sequences)
+
+For multi-frame video inference, frame probabilities are pooled via temperature-scaled softmax weighting ($\tau = 0.10$), concentrating mass on high-confidence manipulation frames:
+
+$$
+S_{\text{video}} = \sum_{k=1}^K w_k \cdot p_k \quad \text{where} \quad w_k = \frac{e^{p_k / \tau}}{\sum_{j=1}^K e^{p_j / \tau}}
+$$
 
 ---
 
-## Quickstart & Python Inference API
+## Quickstart and Python API
 
-### 1. Installation & Environment Requirements
+### 1. Installation and Environment Requirements
 
 * **OS**: Linux, macOS, or Windows 10/11
 * **Python**: 3.10 to 3.12
@@ -155,9 +174,13 @@ App opens at `http://localhost:8501` with support for live webcam, MP4 video upl
 
 ---
 
-## Dataset Composition & Graph Partitioning
+## Dataset Composition and Graph Partitioning
 
-To guarantee **100% zero identity leakage**, actor IDs (`id0_id16`) are partitioned using `networkx.Graph` connected-component subgraphs. Mutually interacting actor clusters are routed exclusively to a single split, guaranteeing $\text{Actors}_{\text{train}} \cap \text{Actors}_{\text{val}} \cap \text{Actors}_{\text{test}} = \emptyset$.
+To guarantee **100% zero identity leakage**, actor IDs (`id0_id16`) are partitioned using `networkx.Graph` connected-component subgraphs. Mutually interacting actor clusters are routed exclusively to a single split, guaranteeing:
+
+$$
+\text{Actors}_{\text{train}} \cap \text{Actors}_{\text{val}} \cap \text{Actors}_{\text{test}} = \emptyset
+$$
 
 | Split | Total Samples | % of Dataset | Real Faces | Fake Faces | Fake:Real Ratio |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -216,7 +239,7 @@ To test whether the network memorizes specific generation artifacts or learns ge
 
 ---
 
-## Forensic Threat Model & Robustness
+## Forensic Threat Model and Robustness
 
 In real-world deployment, adversaries attempt to bypass forensic detection by applying post-processing transformations to erase steganographic artifacts. We evaluated the calibrated model across 4 degradation attacks on the full held-out test split:
 
@@ -224,7 +247,7 @@ In real-world deployment, adversaries attempt to bypass forensic detection by ap
 
 ### Quantitative Degradation Breakdown
 
-| Perturbation Attack | Severity Parameter | ROC AUC | F1-Score | $\Delta$ AUC Relative to Clean |
+| Perturbation Attack | Severity Parameter | ROC AUC | F1-Score | Δ AUC Relative to Clean |
 | :--- | :--- | :---: | :---: | :---: |
 | **Clean Baseline** | Unperturbed | `0.9883` | `0.9759` | — |
 | **JPEG Compression** | Quality = 90 | `0.9872` | `0.9741` | −0.11% |
@@ -241,7 +264,7 @@ In real-world deployment, adversaries attempt to bypass forensic detection by ap
 
 ---
 
-## Hardware Latency & Profiling
+## Hardware Latency and Profiling
 
 *Evaluated at 256×256 facial crop resolution across PyTorch 2.1 FP16 / FP32 execution providers.*
 
@@ -254,7 +277,7 @@ In real-world deployment, adversaries attempt to bypass forensic detection by ap
 
 ---
 
-## CLI Reference & Reproduction Commands
+## CLI Reference and Reproduction Commands
 
 All scripts feature standard `argparse` CLI interfaces:
 
@@ -392,7 +415,7 @@ deepfake-detection/
 
 ---
 
-## Dataset Licensing & Compliance
+## Dataset Compliance and Citations
 
 This repository was evaluated on **FaceForensics++** and **Celeb-DF v2**:
 * **FaceForensics++**: Rössler et al., *IEEE/CVF ICCV 2019*. Access granted under the FaceForensics Non-Commercial Research Agreement.
