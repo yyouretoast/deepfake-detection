@@ -172,13 +172,35 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
 
 def plot_loto(loto_data: list, output_path: str) -> None:
     apply_base_style()
-    folds = [
-        ("Fold 1\nDeepfakes\n(FF++)", 0.9691, BLUE, None),
-        ("Fold 2\nFace2Face\n(FF++)", 0.9749, BLUE, None),
-        ("Fold 3\nFaceSwap\n(FF++)", 0.9662, BLUE, None),
-        ("Fold 4\nNeuralTextures\n(FF++)", 0.9783, BLUE, None),
-        ("Fold 5\nCeleb-DF v2\nCross-Dataset", 0.3234, RED, "0.6766 (1 - p)"),
-    ]
+    folds = []
+    if isinstance(loto_data, list) and len(loto_data) > 0:
+        name_map = {
+            "deepfakes": "Fold 1\nDeepfakes\n(FF++)",
+            "df": "Fold 1\nDeepfakes\n(FF++)",
+            "face2face": "Fold 2\nFace2Face\n(FF++)",
+            "f2f": "Fold 2\nFace2Face\n(FF++)",
+            "faceswap": "Fold 3\nFaceSwap\n(FF++)",
+            "fs": "Fold 3\nFaceSwap\n(FF++)",
+            "neuraltextures": "Fold 4\nNeuralTextures\n(FF++)",
+            "nt": "Fold 4\nNeuralTextures\n(FF++)",
+            "celeb": "Fold 5\nCeleb-DF v2\nCross-Dataset",
+        }
+        for entry in loto_data:
+            ho = entry.get("holdout", "").lower()
+            label = name_map.get(ho, f"{ho.title()}")
+            auc_val = float(entry.get("zero_shot_auc", 0.5))
+            color = RED if "celeb" in ho or auc_val < 0.5 else BLUE
+            note = f"{1.0 - auc_val:.4f} (1 - p)" if auc_val < 0.5 else None
+            folds.append((label, auc_val, color, note))
+
+    if not folds:
+        folds = [
+            ("Fold 1\nDeepfakes\n(FF++)", 0.9691, BLUE, None),
+            ("Fold 2\nFace2Face\n(FF++)", 0.9749, BLUE, None),
+            ("Fold 3\nFaceSwap\n(FF++)", 0.9662, BLUE, None),
+            ("Fold 4\nNeuralTextures\n(FF++)", 0.9783, BLUE, None),
+            ("Fold 5\nCeleb-DF v2\nCross-Dataset", 0.3234, RED, "0.6766 (1 - p)"),
+        ]
 
     fig, ax = plt.subplots(figsize=(8.5, 4.8))
     xs = list(range(len(folds)))

@@ -297,16 +297,25 @@ def main():
         logger.info("  Threshold: %.2f | Temperature (T*): %.4f", best_thresh, optimal_temp)
         logger.info("  AUC: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f", zero_shot_auc, zero_shot_f1, zero_shot_prec, zero_shot_rec)
 
-        res_dir = "/kaggle/working" if os.path.exists("/kaggle/working") else REPO_ROOT
-        res_file = os.path.join(res_dir, "loto_results.json")
+        candidates = [
+            "/kaggle/working/loto_results.json",
+            "/kaggle/working/repo/loto_results.json",
+            os.path.join(REPO_ROOT, "loto_results.json"),
+            "./loto_results.json",
+        ]
         results = []
-        if os.path.exists(res_file):
-            try:
-                with open(res_file, 'r') as f:
-                    results = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                results = []
+        for p in candidates:
+            if os.path.exists(p):
+                try:
+                    with open(p, 'r') as f:
+                        loaded = json.load(f)
+                        if isinstance(loaded, list) and len(loaded) > 0:
+                            results = loaded
+                            break
+                except (json.JSONDecodeError, OSError):
+                    continue
 
+        results = [r for r in results if r.get("holdout", "").lower() != args.holdout.lower()]
         results.append({
             "holdout": args.holdout,
             "threshold": float(best_thresh),

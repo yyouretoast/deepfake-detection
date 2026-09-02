@@ -33,9 +33,9 @@ def categorize_sample_path(rel_path: str) -> str:
     elif "id" in path_norm or "__" in path_norm or "celeb" in path_norm:
         return "Celeb-DF v2 Synthesis"
     else:
-        folder = path_norm.split("/")[1] if len(path_norm.split("/")) > 1 else ""
-        if re.match(r"^\d{3}_\d{3}$", folder):
-            pair_num = int(folder.split("_")[0]) if folder.split("_")[0].isdigit() else 0
+        pair_match = re.search(r"(?:^|/)(\d{3})_\d{3}(?:/|$)", path_norm)
+        if pair_match:
+            pair_num = int(pair_match.group(1))
             if 0 <= pair_num <= 199:
                 return "FF++ Deepfakes (Pairs 0-199)"
             elif 200 <= pair_num <= 399:
@@ -51,6 +51,10 @@ def categorize_sample_path(rel_path: str) -> str:
 def run_subdomain_evaluation() -> None:
     data_root = find_dataset_root()
     splits_path = os.path.join(data_root, "splits.json")
+    if os.path.exists("/kaggle/working/splits.json"):
+        splits_path = "/kaggle/working/splits.json"
+    elif os.path.exists("./splits.json"):
+        splits_path = "./splits.json"
     with open(splits_path, "r") as f:
         splits = json.load(f)
 

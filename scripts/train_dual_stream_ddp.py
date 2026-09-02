@@ -236,6 +236,8 @@ def main():
 
     if accelerator.is_main_process:
         logger.info(f"Verified Dataset Root: {data_root}")
+        os.makedirs(os.path.dirname(BEST_MODEL_WEIGHTS_PATH), exist_ok=True)
+        os.makedirs(CHECKPOINT_STATE_DIR, exist_ok=True)
 
     splits_path = os.path.join(data_root, 'splits.json')
     if os.path.exists('/kaggle/working/splits.json'):

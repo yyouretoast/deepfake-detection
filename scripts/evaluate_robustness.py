@@ -185,6 +185,10 @@ def main() -> None:
     logger.info(f"Device: {device}")
 
     splits_path = os.path.join(args.data_root, "splits.json")
+    if os.path.exists("/kaggle/working/splits.json"):
+        splits_path = "/kaggle/working/splits.json"
+    elif os.path.exists("./splits.json"):
+        splits_path = "./splits.json"
     if not os.path.exists(splits_path):
         raise FileNotFoundError(f"splits.json not found at {splits_path}")
     with open(splits_path, "r") as f:
