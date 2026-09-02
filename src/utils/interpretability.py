@@ -14,7 +14,8 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 
 logger = logging.getLogger(__name__)
 
-_GRADCAM_LOCK = threading.Lock()
+MODEL_INFERENCE_LOCK = threading.RLock()
+_GRADCAM_LOCK = MODEL_INFERENCE_LOCK
 
 
 class ConvNeXtGradCAM:

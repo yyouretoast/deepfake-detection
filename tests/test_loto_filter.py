@@ -6,17 +6,21 @@ from scripts.train_loto_experiment import filter_loto_split_strict, matches_hold
 def test_matches_holdout_domain_pair_ranges() -> None:
     assert matches_holdout_domain("fake/600_605/frame_001.webp", "neuraltextures") is True
     assert matches_holdout_domain("fake/799_800/frame_001.webp", "neuraltextures") is True
+    assert matches_holdout_domain("fake/350_355/frame_001.webp", "neuraltextures") is True
     assert matches_holdout_domain("fake/600_605/frame_001.webp", "nt") is True
 
-    assert matches_holdout_domain("fake/599_600/frame_001.webp", "neuraltextures") is False
     assert matches_holdout_domain("fake/800_805/frame_001.webp", "neuraltextures") is False
 
     assert matches_holdout_domain("fake/000_003/frame_001.webp", "deepfakes") is True
-    assert matches_holdout_domain("fake/199_200/frame_001.webp", "deepfakes") is True
-    assert matches_holdout_domain("fake/200_205/frame_001.webp", "deepfakes") is False
+    assert matches_holdout_domain("fake/050_055/frame_001.webp", "deepfakes") is True
+    assert matches_holdout_domain("fake/100_105/frame_001.webp", "deepfakes") is False
 
-    assert matches_holdout_domain("fake/205_210/frame_001.webp", "face2face") is True
+    assert matches_holdout_domain("fake/150_155/frame_001.webp", "face2face") is True
+    assert matches_holdout_domain("fake/250_255/frame_001.webp", "faceswap") is True
     assert matches_holdout_domain("fake/405_410/frame_001.webp", "faceswap") is True
+    assert matches_holdout_domain("fake/ff_c23/405_410/frame_001.webp", "faceswap") is True
+    assert matches_holdout_domain("/kaggle/input/deepfake-face-crops-256/deepfake_crops_512/fake/405_410/frame_001.webp", "faceswap") is True
+    assert matches_holdout_domain("fake/ff_c23/600_605/frame_001.webp", "neuraltextures") is True
 
     assert matches_holdout_domain("fake/id0_id16_0000/frame_002.webp", "celeb") is True
     assert matches_holdout_domain("fake/01_02__meeting_serious/frame_002.webp", "celeb") is True

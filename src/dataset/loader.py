@@ -232,6 +232,12 @@ def perform_graph_split(
             test_samples.append((path, label))
         elif id1 in train_comps or id2 in train_comps:
             train_samples.append((path, label))
+        else:
+            logger.warning(
+                "Sample %s with identities (%s, %s) not assigned to any component partition; routing to train.",
+                path, id1, id2
+            )
+            train_samples.append((path, label))
 
     if is_string_list:
         return (

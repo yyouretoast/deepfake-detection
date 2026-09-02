@@ -92,8 +92,15 @@ class RealFFT2DModule(nn.Module):
             x_fp32 = x.float()
             fft = torch.fft.fft2(x_fp32, norm="ortho")
             fft_shift = torch.fft.fftshift(fft, dim=(-2, -1))
-            mag = torch.log1p(torch.clamp(torch.abs(fft_shift), min=1e-7))
-            phase = torch.angle(fft_shift) / torch.pi
+            eps = 1e-6
+            abs_fft = torch.abs(fft_shift)
+            mag = torch.log1p(torch.clamp(abs_fft, min=1e-7))
+
+            mask = abs_fft < eps
+            safe_real = torch.where(mask, torch.ones_like(fft_shift.real), fft_shift.real)
+            safe_imag = torch.where(mask, torch.zeros_like(fft_shift.imag), fft_shift.imag)
+            phase_raw = torch.atan2(safe_imag, safe_real) / torch.pi
+            phase = torch.where(mask, torch.zeros_like(phase_raw), phase_raw)
 
             mag = torch.nan_to_num(mag, nan=0.0, posinf=10.0, neginf=-10.0)
             phase = torch.nan_to_num(phase, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -169,6 +176,15 @@ class HybridDeepfakeDetector(nn.Module):
         Forward pass for 4D image input tensor [B, 3, H, W].
         Returns unscaled classification logits [B, 1].
         """
+        if self.training and not torch.jit.is_scripting() and not torch.jit.is_tracing():
+            if (x < -0.1).any() or (x > 1.1).any():
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Input tensor x has values outside [0, 1] range: min=%.3f, max=%.3f. "
+                    "SRM and Bayar filters expect unnormalized [0, 1] inputs.",
+                    float(x.min()), float(x.max())
+                )
+
         mean = self.imagenet_mean.to(dtype=x.dtype, device=x.device)
         std = self.imagenet_std.to(dtype=x.dtype, device=x.device)
         x_spatial = (x - mean) / std

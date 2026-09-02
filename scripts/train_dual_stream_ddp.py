@@ -168,16 +168,30 @@ def find_dataset_root(custom_dir: Optional[str] = None) -> str:
         "./data/cropped",
         "./data",
         "/kaggle/working/local_crops",
+        "/kaggle/input/deepfake-face-crops-256/deepfake_crops_512",
+        "/kaggle/input/datasets/yassinyasserr/deepfake-face-crops-256/deepfake_crops_512",
+        "/kaggle/input/deepfake-face-crops-256",
         "/kaggle/input/datasets/yassinyasserr/deepfake-dataset/deepfake_crops_512",
         "/kaggle/input/deepfake-dataset/deepfake_crops_512",
         "/kaggle/input/datasets/yassinyasserr/deepfake-crops-512/deepfake_crops_512",
         "/kaggle/input/deepfake-crops-512/deepfake_crops_512",
         "/kaggle/input/deepfake_crops_512",
     ])
+    def is_valid_root(p: str) -> bool:
+        if not p or not os.path.exists(os.path.join(p, "splits.json")):
+            return False
+        return os.path.exists(os.path.join(p, "fake")) or os.path.exists(os.path.join(p, "real"))
+
+    for p in candidates:
+        if is_valid_root(p):
+            return p
     for p in candidates:
         if p and os.path.exists(os.path.join(p, "splits.json")):
             return p
     if os.path.exists("/kaggle/input"):
+        for r, d, f in os.walk("/kaggle/input"):
+            if "splits.json" in f and ("fake" in d or "real" in d):
+                return r
         for r, d, f in os.walk("/kaggle/input"):
             if "splits.json" in f:
                 return r
@@ -267,8 +281,10 @@ def main():
         logger.info(f"Class Distribution — Real: {num_real}, Fake: {num_fake} | Calculated pos_weight: {pos_weight_val:.4f}")
 
     pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
+    criterion = FocalLossWithLogits(gamma=2.0, pos_weight=pos_weight_tensor)
 
     model = HybridDeepfakeDetector()
+    ema = ExponentialMovingAverage(model, decay=0.999)
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     warmup_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=1)
     cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_MAX_TOTAL, eta_min=1e-6)
@@ -323,16 +339,17 @@ def main():
             # before updating weights. This simulates a larger effective batch size
             # without requiring more GPU memory per step.
             with accelerator.accumulate(model):
-                optimizer.zero_grad(set_to_none=True)
-
                 with accelerator.autocast():
                     outputs = model(images)
-                    loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, pos_weight=pos_weight_tensor, reduction='none')
+                    loss_unreduced = criterion(outputs, labels)
                     loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
 
                 accelerator.backward(loss)
                 accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                if accelerator.sync_gradients:
+                    ema.update(accelerator.unwrap_model(model))
 
             running_loss += loss.detach() * images.size(0)
 
@@ -348,6 +365,7 @@ def main():
         total_train_failures = int(accelerator.reduce(failed_reads_tensor, reduction='sum').item())
 
         model.eval()
+        val_shadow_backup = ema.apply_shadow(accelerator.unwrap_model(model))
         val_loss_tensor = torch.tensor(0.0, device=accelerator.device)
         val_failures_tensor = torch.tensor(0.0, device=accelerator.device)
         all_targets, all_preds = [], []
@@ -359,13 +377,15 @@ def main():
                 val_failures_tensor += (1.0 - valid_flags).sum()
 
                 outputs = model(images)
-                loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, pos_weight=pos_weight_tensor, reduction='none')
+                loss_unreduced = criterion(outputs, labels)
                 loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
                 val_loss_tensor += loss.detach() * images.size(0)
 
                 preds_g, targets_g = accelerator.gather_for_metrics((torch.sigmoid(outputs), labels))
                 all_preds.extend(preds_g.cpu().numpy())
                 all_targets.extend(targets_g.cpu().numpy())
+
+        ema.restore(accelerator.unwrap_model(model), val_shadow_backup)
 
         total_val_loss = accelerator.reduce(val_loss_tensor, reduction='sum').item()
         val_loss = total_val_loss / len(val_loader.dataset)
@@ -388,8 +408,10 @@ def main():
             if val_auc > best_val_auc:
                     best_val_auc = val_auc
                     epochs_without_improvement = 0
+                    val_shadow_backup = ema.apply_shadow(accelerator.unwrap_model(model))
                     unwrapped_model = accelerator.unwrap_model(model)
                     torch.save(unwrapped_model.state_dict(), BEST_MODEL_WEIGHTS_PATH)
+                    ema.restore(accelerator.unwrap_model(model), val_shadow_backup)
                     logger.info(f"Saved Checkpoint (Val AUC: {val_auc:.4f}) to {BEST_MODEL_WEIGHTS_PATH}")
             else:
                     epochs_without_improvement += 1

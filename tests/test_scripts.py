@@ -21,7 +21,8 @@ class TestLOTOScriptHelpers:
 
     def test_matches_holdout_domain_generators(self) -> None:
         assert matches_holdout_domain("fake/050_053/001.png", "deepfakes") is True
-        assert matches_holdout_domain("fake/250_253/001.png", "face2face") is True
+        assert matches_holdout_domain("fake/150_153/001.png", "face2face") is True
+        assert matches_holdout_domain("fake/250_253/001.png", "faceswap") is True
         assert matches_holdout_domain("fake/450_453/001.png", "faceswap") is True
         assert matches_holdout_domain("fake/650_653/001.png", "neuraltextures") is True
 

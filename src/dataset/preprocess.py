@@ -344,7 +344,8 @@ class DynamicFaceCropper:
         self,
         image_input: Union[str, np.ndarray, Image.Image],
         target_size: Optional[int] = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+        fallback_on_empty: bool = True,
+    ) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """Extract face crop from image returning (aligned_warped_crop, raw_unwarped_crop)."""
         out_size = target_size if target_size is not None else self.target_size
         if isinstance(image_input, str):
@@ -380,6 +381,9 @@ class DynamicFaceCropper:
         if cascade_boxes is not None and len(cascade_boxes) > 0:
             return self._crop_from_box(image_rgb, cascade_boxes, None, target_size=out_size)
 
+        if not fallback_on_empty:
+            return None, None
+
         c = self._center_crop(image_rgb, target_size=out_size)
         return c, c
 
@@ -387,20 +391,20 @@ class DynamicFaceCropper:
         self,
         image_input: Union[str, np.ndarray, Image.Image],
         target_size: Optional[int] = None,
-    ) -> np.ndarray:
+        fallback_on_empty: bool = True,
+    ) -> Optional[np.ndarray]:
         """Extract aligned face crop RGB numpy array of shape [target_size, target_size, 3]."""
-        aligned_crop, _ = self.crop_face_dual(image_input, target_size=target_size)
+        aligned_crop, _ = self.crop_face_dual(image_input, target_size=target_size, fallback_on_empty=fallback_on_empty)
         return aligned_crop
 
     def crop_faces_batched(
         self,
         image_inputs: list[Union[str, np.ndarray, Image.Image]],
         target_size: Optional[int] = None,
-    ) -> list[np.ndarray]:
+        fallback_on_empty: bool = True,
+    ) -> list[Optional[np.ndarray]]:
         """Batched face crop extraction returning list of RGB face arrays [H, W, 3]."""
-        if not image_inputs:
-            return []
-        return [self.crop_face(img, target_size=target_size) for img in image_inputs]
+        return [self.crop_face(img, target_size=target_size, fallback_on_empty=fallback_on_empty) for img in image_inputs]
 
     def extract_faces_from_video(
         self,

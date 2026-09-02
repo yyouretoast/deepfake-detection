@@ -188,7 +188,7 @@ def process_video_frames(
                 break
             if current_frame in target_set:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                face = cropper.crop_face(rgb)
+                face = cropper.crop_face(rgb, fallback_on_empty=False)
                 if face is not None:
                     all_faces.append(face)
                     detected_frame_indices.append(current_frame)
@@ -202,7 +202,30 @@ def process_video_frames(
         cap.release()
 
     if not all_faces:
+        logger.warning("No face detections found in %s; falling back to center crops", video_path)
+        cap = cv2.VideoCapture(video_path)
+        try:
+            target_set = set(frame_indices)
+            current_frame = 0
+            while cap.isOpened() and target_set:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    break
+                if current_frame in target_set:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    c = cropper._center_crop(rgb, target_size=cropper.target_size)
+                    all_faces.append(c)
+                    detected_frame_indices.append(current_frame)
+                    detected_timestamps.append(float(current_frame) / fps)
+                    target_set.discard(current_frame)
+                current_frame += 1
+        finally:
+            cap.release()
+
+    if not all_faces:
         return None
+
+    from src.utils.interpretability import MODEL_INFERENCE_LOCK
 
     batch_size = CONFIG.get("training", {}).get("batch_size", 16)
     all_probs: list[float] = []
@@ -212,12 +235,13 @@ def process_video_frames(
         batch_faces = all_faces[i : i + batch_size]
         _, sub_torch = preprocess_tensors_batch(batch_faces, device=DEVICE)
 
-        with torch.inference_mode():
-            with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature).view(-1)
-                p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature).view(-1)
-                p_avg = (p1 + p2) / 2.0
-                unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
+        with MODEL_INFERENCE_LOCK:
+            with torch.inference_mode():
+                with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
+                    p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature).view(-1)
+                    p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature).view(-1)
+                    p_avg = (p1 + p2) / 2.0
+                    unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
                 all_probs.extend([float(val) for val in p_avg.cpu().numpy().tolist()])
 
     _agg = aggregate_video_predictions(
