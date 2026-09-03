@@ -16,7 +16,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from src.dataset.datasets import FaceCropDataset, KaggleFastDataset
+from src.dataset.datasets import FaceCropDataset
 from src.dataset.loader import get_transforms
 from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.models.hybrid_detector import HybridDeepfakeDetector
@@ -37,7 +37,6 @@ CHECKPOINT_DIR = "./checkpoints_ddp"
 
 __all__ = [
     "find_dataset_root",
-    "KaggleFastDataset",
     "get_differential_param_groups",
     "ExponentialMovingAverage",
     "FocalLossWithLogits",

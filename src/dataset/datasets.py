@@ -105,11 +105,6 @@ class FaceCropDataset(Dataset):
         return tensor_img, int(label_val)
 
 
-KaggleFastDataset = FaceCropDataset
-RobustnessDataset = FaceCropDataset
-TestDataset = FaceCropDataset
-
-
 class DeepfakeDataset(FaceCropDataset):
     """Single-frame dataset returning (tensor, int_label) for backward compatibility."""
 

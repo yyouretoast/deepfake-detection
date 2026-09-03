@@ -25,7 +25,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
-TestDataset = FaceCropDataset
 
 
 def main() -> None:

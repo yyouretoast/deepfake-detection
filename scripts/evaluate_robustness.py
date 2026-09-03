@@ -30,7 +30,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
-RobustnessDataset = FaceCropDataset
 
 
 def jpeg_fn(quality: int) -> Callable[[np.ndarray], np.ndarray]:

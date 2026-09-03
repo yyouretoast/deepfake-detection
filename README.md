@@ -16,7 +16,7 @@ A PyTorch dual-stream deepfake detection framework fusing a ConvNeXt-Small spati
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
-[![pytest](https://img.shields.io/badge/pytest-108%2F108%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![pytest](https://img.shields.io/badge/pytest-109%2F109%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -323,7 +323,7 @@ dataset_root/
 ### Phase 1: Distributed Training & Calibration
 
 ```bash
-# 1. Run unit test suite (108 tests)
+# 1. Run unit test suite (109 tests)
 pytest tests/ -v
 
 # 2. Train dual-stream backbone with ResSE tower & hardened augmentations (~25 min)
@@ -419,7 +419,7 @@ deepfake-detection/
 │   ├── services/                  # Video prediction engine & Streamlit components
 │   ├── training/                  # Distributed trainer, focal loss, EMA, schedulers
 │   └── utils/                     # Bayesian thresholds, Grad-CAM, checkpoint tools
-└── tests/                         # Full PyTest test suite (108 passing tests)
+└── tests/                         # Full PyTest test suite (109 passing tests)
 ```
 
 ---

@@ -397,67 +397,6 @@ class DynamicFaceCropper:
         aligned_crop, _ = self.crop_face_dual(image_input, target_size=target_size, fallback_on_empty=fallback_on_empty)
         return aligned_crop
 
-    def crop_faces_batched(
-        self,
-        image_inputs: list[Union[str, np.ndarray, Image.Image]],
-        target_size: Optional[int] = None,
-        fallback_on_empty: bool = True,
-    ) -> list[Optional[np.ndarray]]:
-        """Batched face crop extraction returning list of RGB face arrays [H, W, 3]."""
-        return [self.crop_face(img, target_size=target_size, fallback_on_empty=fallback_on_empty) for img in image_inputs]
-
-    def extract_faces_from_video(
-        self,
-        video_path: str,
-        output_dir: str,
-        prefix: str = "frame",
-        frames_per_video: int = 15,
-        target_size: Optional[int] = None,
-        max_frames: Optional[int] = None,
-    ) -> list[str]:
-        """Extract face crops from video frames saving lossless WebP images to output directory."""
-        if max_frames is not None:
-            frames_per_video = max_frames
-        out_size = target_size if target_size is not None else self.target_size
-        os.makedirs(output_dir, exist_ok=True)
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            logger.warning("Could not open video: %s", video_path)
-            return []
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total_frames <= 0:
-            cap.release()
-            return []
-
-        actual_frames = min(frames_per_video, total_frames)
-        step = max(total_frames // actual_frames, 1)
-        target_indices = set(i * step for i in range(actual_frames))
-
-        saved_paths = []
-        frame_idx = 0
-        saved_count = 0
-
-        while cap.isOpened() and saved_count < actual_frames:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            if frame_idx in target_indices:
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                crop_rgb = self.crop_face(rgb_frame, target_size=out_size)
-                out_filename = f"{prefix}_{saved_count:04d}.webp"
-                out_filepath = os.path.join(output_dir, out_filename)
-
-                Image.fromarray(crop_rgb).save(out_filepath, format="WEBP", lossless=True)
-                saved_paths.append(out_filepath)
-                saved_count += 1
-
-            frame_idx += 1
-
-        cap.release()
-        return saved_paths
-
 
 def preprocess_tensors_batch(
     faces_rgb_list: list[np.ndarray], device: torch.device = torch.device("cpu")

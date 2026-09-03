@@ -1,11 +1,10 @@
 # Deepfake Detection Configuration
 
 paths:
-  kaggle_input: "/kaggle/input/datasets/xdxd003/ff-c23/FaceForensics++_C23"
   output_dir: "/kaggle/working/frames"
   processed_dir: "/kaggle/working/processed"
-  model_save_path: "/kaggle/working/deepfake_convnext_v2.pth"
-  weights_url: "https://huggingface.co/spaces/yyouretoast/deepfake-detector/resolve/main/deepfake_convnext_v2.pth"
+  model_save_path: "/kaggle/working/dual_stream_best.pth"
+  weights_url: "https://huggingface.co/spaces/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth"
 
 preprocessing:
   img_size: 512
@@ -27,11 +26,9 @@ training:
   batch_size: 16  # Effective batch size 32 via 2 gradient accumulation steps
   gradient_accumulation_steps: 2
   num_workers: 4
-  epochs_phase1: 3  # Frozen backbone warmup
-  epochs_phase2: 15  # End-to-end differential LR fine-tuning
-  lr_phase1: 1.0e-3
-  lr_backbone: 1.0e-5  # Phase 2 backbone learning rate
-  lr_head: 1.0e-4  # Phase 2 classifier head learning rate
+  epochs: 15  # End-to-end differential LR fine-tuning
+  lr_backbone: 1.0e-5  # Backbone learning rate
+  lr_head: 1.0e-4  # Classifier head learning rate
   weight_decay: 1.0e-2
   use_amp: true  # PyTorch Automatic Mixed Precision (fp16)
   warmup_ratio: 0.1
@@ -46,7 +43,6 @@ labels:
 
 manipulation_types:
   all: ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "Celeb-DF"]
-  held_out_loto: "Deepfakes"  # Default target domain for Leave-One-Target-Out generalization test
 
 app:
   frames_to_sample: 16
