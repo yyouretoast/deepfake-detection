@@ -254,9 +254,12 @@ $$
 
 ## Empirical Benchmarks
 
-### 1. Main Full-Scale Model Evaluation (`dual_stream_calibrated.pth`)
+### 1. Published Baseline Evaluation Benchmark (`dual_stream_calibrated.pth`)
 
 Evaluated on the held-out test split (14,688 facial crops) across 2× NVIDIA Tesla T4 GPUs.
+
+> [!NOTE]
+> **Baseline Weights vs. Enhanced Rerun**: These published benchmark metrics reflect the original dual-stream baseline checkpoint (ConvNeXt-Small + 2-layer CNN). Executing the full reproduction suite below retrains the engine with the enhanced ResSE-Spectral Tower (~2.98M params), degradation-hardened augmentations, and spatiotemporal Bi-GRU head to further harden cross-generator generalization.
 
 | Evaluation Metric | Measured Value | 95% Non-Parametric Bootstrap CI |
 | :--- | :---: | :---: |
