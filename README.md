@@ -9,9 +9,9 @@ pinned: false
 license: mit
 ---
 
-# Dual-Stream Deepfake Detection Engine
+# Dual-Stream Deepfake Detection Framework
 
-A production-grade, forensic deepfake detection engine fusing a ConvNeXt-Small spatial backbone with Steganographic Rich Model (SRM) and Bayar-Stamm 2D Real FFT spectral decomposition. Enhanced with a **4-Stage ResSE-Spectral Tower**, **Frozen Bi-GRU Spatiotemporal Consistency Head**, **Degradation-Hardened Augmentations**, and **Dual-Threshold Bayesian Confidence Bands**.
+A PyTorch dual-stream deepfake detection framework fusing a ConvNeXt-Small spatial backbone with Steganographic Rich Model (SRM) and Bayar-Stamm 2D Real FFT spectral decomposition, calibrated with SciPy L-BFGS-B log-temperature scaling and spatiotemporal sequence modeling.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
@@ -37,9 +37,7 @@ The detection engine exposes intermediate representations across both spatial an
 
 ## Table of Contents
 
-* [System Architecture](#system-architecture)
-* [Forensic Architecture and Core Modules](#forensic-architecture-and-core-modules)
-* [Mathematical Formulations](#mathematical-formulations)
+* [System Architecture and Methodology](#system-architecture-and-methodology)
 * [Quickstart and Python API](#quickstart-and-python-api)
 * [Dataset Composition and Expected Layout](#dataset-composition-and-expected-layout)
 * [Empirical Benchmarks](#empirical-benchmarks)
@@ -52,7 +50,7 @@ The detection engine exposes intermediate representations across both spatial an
 
 ---
 
-## System Architecture
+## System Architecture and Methodology
 
 ```text
 [ Input Video / Image Stream ]
@@ -88,43 +86,12 @@ The detection engine exposes intermediate representations across both spatial an
 • 3 Forensic Certainty Zones                 • 60.9 FPS Real-Time Video Engine
 ```
 
----
+### 1. Spatial Stream
+* **Backbone**: ConvNeXt-Small pre-trained on ImageNet-1K, outputting a 768-dimensional feature representation normalized via `LayerNorm2d` and projected to a 512-dimensional spatial embedding $\mathbf{f}_s \in \mathbb{R}^{512}$.
+* **Alignment**: Faces are dynamically localized using OpenCV's YuNet detector, expanded by $1.50\times$ to capture blending boundaries around the hairline and jaw, and aligned using 5-point facial landmark similarity transformations.
 
-## Forensic Architecture and Core Modules
-
-The detection engine incorporates four modular architectural components designed to balance feature capacity, harden against real-world social media degradations, capture inter-frame temporal anomalies, and establish calibrated certainty boundaries:
-
-### 1. ResSE-Spectral Tower & Auxiliary Frequency Supervision
-* **Architecture**: Replaces shallow convolutional layers with a 4-stage residual network with Squeeze-and-Excitation (`SEBlock`) channel attention ($48 \to 96 \to 192 \to 384$ channels, 2.98M parameters), preserving concentric radial and angular Fourier rings.
-* **Auxiliary Loss ($\lambda = 0.3$)**: During training, a dedicated auxiliary linear head supervises the frequency representation directly:
-  $$
-  \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{fused}} + 0.3 \cdot \mathcal{L}_{\text{freq}}
-  $$
-  This prevents the 50M ConvNeXt spatial stream from dominating the gating mechanism.
-* **Checkpoint Interoperability**: `HybridDeepfakeDetector` automatically distinguishes legacy 90k CNN checkpoints from ResSE checkpoints on `load_state_dict()` with zero manual flags required.
-
-### 2. Degradation-Hardened Augmentation Policy
-* **Compression Resilience**: An Albumentations pipeline applying JPEG compression sweeps (quality 35–95, $p = 0.35$), Gaussian blur ($\sigma \in [0.5, 2.5]$, $p = 0.30$), spatial downscaling ($0.5\times$ to $0.9\times$, $p = 0.20$), and cutout masking.
-* Prevents the frequency stream from overfitting to camera sensor PRNU noise while retaining forensic upsampling artifacts.
-
-### 3. Spatiotemporal Sequence Modeling (Bi-GRU Head)
-* **Temporal Consistency**: A 2-layer Bidirectional GRU with Temporal Self-Attention (2.46M parameters) operating on frozen 512-dimensional sequence embeddings extracted from video frames.
-* **Frame Glitch Localization**: Normalized attention weights ($\sum_t \alpha_t = 1.0$) localize single-frame synthesis failures, boundary jitter, and unnatural blink intervals without the memory overhead of 3D-CNNs.
-* **Decoupled Training**: Trains directly on cached or frozen embeddings in under 5 minutes on a single GPU.
-
-### 4. Dual-Threshold Bayesian Confidence Bands
-* Rather than enforcing a single fixed 0.50 threshold that produces false decisions on perturbed or low-quality media, the engine computes high-precision decision boundaries $(\tau_{\text{real}}, \tau_{\text{fake}})$:
-  * **Confirmed Authentic**: $p \le \tau_{\text{real}}$ (Precision $\ge$ 98%)
-  * **Inconclusive / Perturbation Detected**: $\tau_{\text{real}} < p < \tau_{\text{fake}}$ (Ambiguous boundary samples routed for manual forensic inspection)
-  * **Confirmed Synthetic**: $p \ge \tau_{\text{fake}}$ (Precision $\ge$ 98%)
-
----
-
-## Mathematical Formulations
-
-### 1. 20-Channel Spectral Decomposition
-
-Noise residuals from 3 fixed 5×5 SRM filters (9 channels) and 1 learnable Bayar-Stamm constrained convolution (1 channel) are passed to an orthonormal 2D Real Fast Fourier Transform:
+### 2. Frequency Stream: SRM, Bayar-Stamm, and 2D Real FFT
+Noise residuals from 3 fixed $5\times5$ Steganographic Rich Model (SRM) kernels (9 channels) and 1 learnable Bayar-Stamm constrained convolution (1 channel) isolate high-frequency spatial discrepancies:
 
 $$
 \mathcal{F}_{\text{norm}} = \ln\left( \left| \mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}}) \right| + 1 \right)
@@ -136,9 +103,7 @@ $$
 \theta = \frac{1}{\pi} \text{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
 $$
 
-### 2. Squeeze-and-Excitation Channel Attention
-
-Within each spectral residual stage, SE blocks recalibrate concentric radial and angular frequency rings:
+The resulting 20-channel representation (10 log-magnitude + 10 phase maps) is processed by the **ResSE-Spectral Tower**: a 4-stage residual network ($48 \to 96 \to 192 \to 384$ channels, 2.98M parameters) with Squeeze-and-Excitation (`SEBlock`) channel attention:
 
 $$
 \mathbf{z} = \text{AdaptiveAvgPool2d}(\mathbf{X}) \in \mathbb{R}^C
@@ -152,9 +117,14 @@ $$
 \widetilde{\mathbf{X}} = \mathbf{s} \odot \mathbf{X}
 $$
 
-### 3. Symmetric Gated Residual Fusion
+To prevent the spatial stream from dominating gradient updates during training, an auxiliary linear head supervises the frequency representation directly:
 
-Both streams are symmetrically gated so neither branch dominates early optimization or starves the frequency stream of gradient flow:
+$$
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{fused}} + 0.3 \cdot \mathcal{L}_{\text{freq}}
+$$
+
+### 3. Symmetric Gated Residual Fusion
+Both streams are symmetrically gated so neither stream starves the other of gradient flow:
 
 $$
 \mathbf{g} = \sigma\left(\mathbf{W}_g [\mathbf{f}_s \parallel \mathbf{f}_f] + \mathbf{b}_g\right) \in \mathbb{R}^{512}
@@ -164,9 +134,8 @@ $$
 \mathbf{f}_{\text{fused}} = \left[ \mathbf{f}_s \odot (1 - \mathbf{g}) \;\parallel\; \mathbf{f}_f \odot \mathbf{g} \right] \in \mathbb{R}^{1024}
 $$
 
-### 4. Bi-GRU Spatiotemporal Sequence Attention
-
-For video sequence modeling over frame embeddings $\mathbf{e}_t \in \mathbb{R}^{512}$:
+### 4. Spatiotemporal Sequence Modeling (Bi-GRU Head)
+For video inference, frozen 512-dimensional sequence embeddings $\mathbf{e}_t = \mathbf{f}_s \odot (1 - \mathbf{g}) + \mathbf{f}_f \odot \mathbf{g}$ are processed by a 2-layer Bidirectional GRU (2.46M parameters) with temporal self-attention:
 
 $$
 \mathbf{h}_t = [\text{GRU}_{\text{fwd}}(\mathbf{e}_t) \parallel \text{GRU}_{\text{bwd}}(\mathbf{e}_t)] \in \mathbb{R}^{2H}
@@ -179,6 +148,12 @@ $$
 $$
 \mathbf{c} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \hat{y}_{\text{video}} = \text{Classifier}(\mathbf{c})
 $$
+
+### 5. Dual-Threshold Bayesian Confidence Bands
+Rather than enforcing a fixed 0.50 cutoff on ambiguous or compressed inputs, high-precision decision boundaries $(\tau_{\text{real}}, \tau_{\text{fake}})$ partition outputs into three certainty zones:
+* **Confirmed Authentic**: $p \le \tau_{\text{real}}$ (Precision $\ge$ 98%)
+* **Inconclusive / Perturbation Detected**: $\tau_{\text{real}} < p < \tau_{\text{fake}}$ (Flagged for manual inspection)
+* **Confirmed Synthetic**: $p \ge \tau_{\text{fake}}$ (Precision $\ge$ 98%)
 
 ---
 
@@ -204,7 +179,7 @@ pip install -r requirements.txt
 
 ### 2. Download Pre-trained Weights (Optional)
 
-If you wish to evaluate or run the live serving application without retraining:
+To evaluate or run the live serving application without retraining:
 
 ```bash
 # Download calibrated baseline checkpoint (195 MB)
@@ -250,7 +225,7 @@ App opens at `http://localhost:8501` with support for live webcam, MP4 video upl
 
 ## Dataset Composition and Expected Layout
 
-To guarantee **100% zero identity leakage**, actor IDs (`id0_id16`) are partitioned using `networkx.Graph` connected-component subgraphs. Mutually interacting actor clusters are routed exclusively to a single split, guaranteeing:
+To guarantee **100% zero identity leakage**, actor IDs (`id0_id16`) are partitioned using `networkx.Graph` connected-component subgraphs:
 
 $$
 \text{Actors}_{\text{train}} \cap \text{Actors}_{\text{val}} \cap \text{Actors}_{\text{test}} = \emptyset
