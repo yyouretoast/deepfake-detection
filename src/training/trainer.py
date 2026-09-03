@@ -30,6 +30,7 @@ class DualStreamTrainer:
         accelerator: Any,
         ema: Optional[ExponentialMovingAverage] = None,
         max_grad_norm: float = 1.0,
+        aux_loss_weight: float = 0.3,
     ) -> None:
         self.model = model
         self.optimizer = optimizer
@@ -40,6 +41,7 @@ class DualStreamTrainer:
         self.accelerator = accelerator
         self.ema = ema
         self.max_grad_norm = max_grad_norm
+        self.aux_loss_weight = aux_loss_weight
 
     def train_one_epoch(self, epoch: int, total_epochs: int) -> dict[str, float]:
         """Runs a single training epoch with gradient accumulation and EMA updates."""
@@ -61,9 +63,23 @@ class DualStreamTrainer:
             total_failures += num_corrupt
 
             with self.accelerator.accumulate(self.model):
-                outputs = self.model(images)
-                loss_unreduced = self.criterion(outputs, labels)
-                loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+                unwrapped = self.accelerator.unwrap_model(self.model)
+                has_aux = (
+                    getattr(unwrapped, "frequency_backbone", None) == "resse"
+                    and getattr(unwrapped, "use_fft_branch", False)
+                )
+
+                if has_aux:
+                    outputs, aux_outputs = self.model(images, return_aux=True)
+                    loss_main_unreduced = self.criterion(outputs, labels)
+                    loss_main = (loss_main_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+                    loss_aux_unreduced = self.criterion(aux_outputs, labels)
+                    loss_aux = (loss_aux_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+                    loss = loss_main + self.aux_loss_weight * loss_aux
+                else:
+                    outputs = self.model(images)
+                    loss_unreduced = self.criterion(outputs, labels)
+                    loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
 
                 self.accelerator.backward(loss)
 

@@ -9,11 +9,13 @@ from src.dataset.datasets import (
 )
 from src.dataset.domains import DomainClassifier, DomainInfo, ManipulationDomain
 from src.dataset.loader import (
+    SequenceVideoDataset,
     create_dataloaders,
     dedupe_split,
     extract_identities,
     extract_video_id,
     get_transforms,
+    group_video_sequences,
     perform_graph_split,
 )
 from src.dataset.preprocess import DynamicFaceCropper
@@ -44,4 +46,6 @@ __all__ = [
     "get_transforms",
     "create_dataloaders",
     "DynamicFaceCropper",
+    "SequenceVideoDataset",
+    "group_video_sequences",
 ]

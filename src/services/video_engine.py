@@ -13,7 +13,8 @@ import torch
 from src.config import load_config
 from src.dataset.preprocess import DynamicFaceCropper, preprocess_tensors_batch
 from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import DEFAULT_THRESHOLD, clean_state_dict
+from src.models.temporal_head import BiGRUTemporalDetector
+from src.utils.checkpoint import DEFAULT_THRESHOLD, classify_three_zone, clean_state_dict
 from src.utils.temporal_aggregation import aggregate_video_predictions
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,36 @@ def load_prediction_engine(
     return pytorch_model, cropper, has_weights, opt_threshold, temperature
 
 
+def load_temporal_engine(
+    weights_path: Optional[str] = None,
+) -> Optional[torch.nn.Module]:
+    """Loads optional Bi-GRU spatiotemporal consistency head if checkpoint exists."""
+    if weights_path is None:
+        candidate_paths = [
+            "models/temporal_head_best.pth",
+            "weights/temporal_head_best.pth",
+            "temporal_head_best.pth",
+        ]
+        for p in candidate_paths:
+            if os.path.exists(p):
+                weights_path = p
+                break
+
+    if weights_path and os.path.exists(weights_path):
+        try:
+            ckpt = torch.load(weights_path, map_location=DEVICE, weights_only=False)
+            state_dict = ckpt.get("model_state_dict", ckpt)
+            hidden_dim = int(ckpt.get("hidden_dim", 256))
+            temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim).to(DEVICE)
+            temporal_model.load_state_dict(clean_state_dict(state_dict), strict=False)
+            temporal_model.eval()
+            logger.info("Loaded Bi-GRU temporal model from %s", weights_path)
+            return temporal_model
+        except Exception as e:
+            logger.warning("Failed to load temporal model from %s: %s", weights_path, e)
+    return None
+
+
 def process_video_frames(
     video_path: str,
     pytorch_model: Optional[torch.nn.Module] = None,
@@ -138,6 +169,7 @@ def process_video_frames(
     has_pytorch_weights: Optional[bool] = None,
     aggregation_method: str = "soft_max",
     num_frames: Optional[int] = None,
+    temporal_model: Optional[torch.nn.Module] = None,
 ) -> Optional[dict[str, Any]]:
     """
     Video inference engine with OpenCV keyframe seeking, AMP autocast, and temporal aggregation.
@@ -159,6 +191,9 @@ def process_video_frames(
         temperature = temperature if temperature is not None else temp
         if has_pytorch_weights is None:
             has_pytorch_weights = h_weights
+
+    if temporal_model is None:
+        temporal_model = load_temporal_engine()
 
     try:
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -232,6 +267,7 @@ def process_video_frames(
     batch_size = CONFIG.get("training", {}).get("batch_size", 16)
     all_probs: list[float] = []
     unflipped_probs: list[float] = []
+    all_embeddings: list[torch.Tensor] = []
 
     for i in range(0, len(all_faces), batch_size):
         batch_faces = all_faces[i : i + batch_size]
@@ -244,14 +280,28 @@ def process_video_frames(
                     p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature).view(-1)
                     p_avg = (p1 + p2) / 2.0
                     unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
+                    if temporal_model is not None and hasattr(pytorch_model, "extract_features"):
+                        emb = pytorch_model.extract_features(sub_torch)
+                        all_embeddings.append(emb)
                 all_probs.extend([float(val) for val in p_avg.cpu().numpy().tolist()])
 
-    _agg = aggregate_video_predictions(
-        scores=all_probs,
-        method=aggregation_method,
-        threshold=classification_threshold,
-    )
-    raw_video_prob = float(_agg["video_score"])
+    frame_attention = None
+    if temporal_model is not None and all_embeddings:
+        with MODEL_INFERENCE_LOCK:
+            with torch.inference_mode():
+                seq_tensor = torch.cat(all_embeddings, dim=0).unsqueeze(0)  # [1, T, 512]
+                v_logit, v_attn = temporal_model(seq_tensor)
+                raw_video_prob = float(torch.sigmoid(v_logit.float() / temperature).item())
+                frame_attention = [float(w) for w in v_attn.squeeze(0).cpu().tolist()]
+    else:
+        _agg = aggregate_video_predictions(
+            scores=all_probs,
+            method=aggregation_method,
+            threshold=classification_threshold,
+        )
+        raw_video_prob = float(_agg["video_score"])
+
+    three_zone = classify_three_zone(raw_video_prob)
 
     zipped_data = list(zip(all_faces, all_probs))
     zipped_data.sort(key=lambda x: x[1], reverse=True)
@@ -268,5 +318,7 @@ def process_video_frames(
         "all_faces": all_faces,
         "frame_indices": detected_frame_indices,
         "timestamps": detected_timestamps,
+        "three_zone": three_zone,
+        "temporal_attention": frame_attention,
     }
 

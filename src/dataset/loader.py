@@ -249,21 +249,43 @@ def perform_graph_split(
     return train_samples, val_samples, test_samples
 
 
-def get_transforms(img_size: int = 256) -> tuple[Optional[Any], Optional[Any]]:
+def get_transforms(
+    img_size: int = 256, hardened: bool = True
+) -> tuple[Optional[Any], Optional[Any]]:
     """Build albumentations train and validation transform pipelines for target resolution [H, W]."""
     if not HAS_ALBUMENTATIONS:
         return None, None
 
-    train_transform = A.Compose([
-        A.Resize(img_size, img_size),
-        A.HorizontalFlip(p=0.5),
-        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.2),
-        A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.2),
-        # Conservative spatial augmentations to provide degradation resilience without wiping out SRM noise residuals
-        A.ImageCompression(quality_range=(85, 100), p=0.15),
-        A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.2, 0.6), p=0.15),
-        ToTensorV2(),
-    ])
+    if hardened:
+        # Modern degradation-hardened augmentation pipeline
+        # Immunizes against social media compression (JPEG 35-95), blurring, downscaling, and feature masking
+        train_transform = A.Compose([
+            A.Resize(img_size, img_size),
+            A.HorizontalFlip(p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.08, scale_limit=0.08, rotate_limit=15, p=0.25),
+            A.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15, hue=0.05, p=0.25),
+            A.ImageCompression(quality_range=(35, 95), p=0.35),
+            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=0.30),
+            A.Downscale(scale_range=(0.5, 0.9), p=0.20),
+            A.CoarseDropout(
+                num_holes_range=(1, 4),
+                hole_height_range=(16, 48),
+                hole_width_range=(16, 48),
+                p=0.20,
+            ),
+            ToTensorV2(),
+        ])
+    else:
+        # Conservative legacy pipeline
+        train_transform = A.Compose([
+            A.Resize(img_size, img_size),
+            A.HorizontalFlip(p=0.5),
+            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.2),
+            A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.2),
+            A.ImageCompression(quality_range=(85, 100), p=0.15),
+            A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.2, 0.6), p=0.15),
+            ToTensorV2(),
+        ])
 
     eval_transform = A.Compose([
         A.Resize(img_size, img_size),
@@ -271,6 +293,25 @@ def get_transforms(img_size: int = 256) -> tuple[Optional[Any], Optional[Any]]:
     ])
 
     return train_transform, eval_transform
+
+
+def group_video_sequences(
+    samples: list[tuple[str, int]], min_frames: int = 4
+) -> list[tuple[list[str], int]]:
+    """Groups flat frame crop samples into video sequence lists by parent directory."""
+    video_map: dict[str, tuple[list[str], int]] = {}
+    for path, label in samples:
+        parent_dir = os.path.dirname(os.path.abspath(path))
+        if parent_dir not in video_map:
+            video_map[parent_dir] = ([], label)
+        video_map[parent_dir][0].append(path)
+
+    grouped: list[tuple[list[str], int]] = []
+    for paths, label in video_map.values():
+        if len(paths) >= min_frames:
+            # Sort frames alphabetically to preserve chronological order
+            grouped.append((sorted(paths), label))
+    return grouped
 
 
 def load_image_rgb(path: str) -> np.ndarray:

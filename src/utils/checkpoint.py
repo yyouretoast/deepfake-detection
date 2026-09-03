@@ -74,3 +74,76 @@ def compute_ece(probs: Any, targets: Any, n_bins: int = 15) -> float:
             ece += abs(accuracy_in_bin - avg_confidence_in_bin) * prop_in_bin
 
     return float(ece)
+
+
+def compute_dual_thresholds(
+    probs: Any, targets: Any, min_precision: float = 0.98
+) -> tuple[float, float]:
+    """
+    Computes high-precision Bayesian decision thresholds (tau_real, tau_fake).
+    - tau_fake: Decision threshold guaranteeing >= min_precision for synthetic classifications.
+    - tau_real: Decision threshold guaranteeing >= min_precision for authentic classifications.
+    Samples between [tau_real, tau_fake] form the forensic inconclusive/ambiguity zone.
+    """
+    probs_arr = np.asarray(probs, dtype=np.float32)
+    targets_arr = np.asarray(targets, dtype=np.int32)
+    thresholds = np.linspace(0.01, 0.99, 100)
+
+    tau_fake = 0.5
+    for t in thresholds:
+        pred_fake = (probs_arr >= t).astype(int)
+        tp = np.sum((pred_fake == 1) & (targets_arr == 1))
+        fp = np.sum((pred_fake == 1) & (targets_arr == 0))
+        if tp + fp > 0:
+            prec = tp / (tp + fp)
+            if prec >= min_precision:
+                tau_fake = float(t)
+                break
+
+    tau_real = 0.5
+    for t in reversed(thresholds):
+        pred_real = (probs_arr <= t).astype(int)
+        tn = np.sum((pred_real == 1) & (targets_arr == 0))
+        fn = np.sum((pred_real == 1) & (targets_arr == 1))
+        if tn + fn > 0:
+            prec = tn / (tn + fn)
+            if prec >= min_precision:
+                tau_real = float(t)
+                break
+
+    if tau_real > tau_fake:
+        tau_real, tau_fake = 0.40, 0.60
+
+    return float(tau_real), float(tau_fake)
+
+
+def classify_three_zone(
+    prob: float, tau_real: float = 0.40, tau_fake: float = 0.60
+) -> dict[str, Any]:
+    """
+    Classifies prediction probability into three forensic certainty zones:
+    1. Confirmed Real (prob <= tau_real)
+    2. Inconclusive / Perturbation Detected (tau_real < prob < tau_fake)
+    3. Confirmed Fake (prob >= tau_fake)
+    """
+    p = float(np.clip(prob, 0.0, 1.0))
+    if p >= tau_fake:
+        return {
+            "verdict": "Confirmed Synthetic",
+            "zone": "high_confidence_fake",
+            "confidence": float(p),
+            "is_inconclusive": False,
+        }
+    if p <= tau_real:
+        return {
+            "verdict": "Confirmed Authentic",
+            "zone": "high_confidence_real",
+            "confidence": float(1.0 - p),
+            "is_inconclusive": False,
+        }
+    return {
+        "verdict": "Inconclusive (Heavy Compression / Perturbation Detected)",
+        "zone": "ambiguity_zone",
+        "confidence": float(max(p, 1.0 - p)),
+        "is_inconclusive": True,
+    }
