@@ -4,12 +4,17 @@ import argparse
 import json
 import logging
 import os
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 from src.dataset.loader import SequenceVideoDataset, get_transforms, group_video_sequences
 from src.dataset.resolver import DatasetResolver, find_weights_path
