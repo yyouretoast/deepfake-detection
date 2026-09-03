@@ -141,8 +141,8 @@ To evaluate whether the detector memorizes specific generator artifacts or learn
 
 | LOTO Fold | Excluded Holdout Generator | Zero-Shot AUC | Zero-Shot F1 | Precision | Recall | Threshold | Temp ($T^*$) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9507`** | **`0.8264`** | 76.64% | **`89.67%`** | 0.12 | 2.5082 |
-| **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9292`** | **`0.8151`** | 77.80% | **`85.58%`** | 0.14 | 1.8170 |
+| **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9691`** | **`0.9065`** | 92.72% | **`88.67%`** | 0.10 | 2.6572 |
+| **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9749`** | **`0.9179`** | 91.83% | **`91.75%`** | 0.10 | 2.4866 |
 | **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.9662`** | `0.8969` | 93.37% | 86.29% | 0.11 | 3.6684 |
 | **Fold 4** | `FF++ NeuralTextures` (Pairs 600–799) | **`0.9783`** | `0.9230` | 92.44% | 92.17% | 0.12 | 2.3930 |
 | **Fold 5** | `Celeb-DF v2` (Cross-Dataset) | `0.3234` | `0.1202` | 95.42% | 6.41% | 0.12 | 3.1047 |

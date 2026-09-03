@@ -77,24 +77,29 @@ def compute_ece(probs: Any, targets: Any, n_bins: int = 15) -> float:
 
 
 def compute_dual_thresholds(
-    probs: Any, targets: Any, min_precision: float = 0.98
+    probs: Any, targets: Any, min_precision: float = 0.98, min_samples: int = 20
 ) -> tuple[float, float]:
     """
     Computes high-precision Bayesian decision thresholds (tau_real, tau_fake).
     - tau_fake: Decision threshold guaranteeing >= min_precision for synthetic classifications.
     - tau_real: Decision threshold guaranteeing >= min_precision for authentic classifications.
+    - min_samples: Minimum number of samples required in the precision bin to avoid sparse flukes.
     Samples between [tau_real, tau_fake] form the forensic inconclusive/ambiguity zone.
     """
     probs_arr = np.asarray(probs, dtype=np.float32)
     targets_arr = np.asarray(targets, dtype=np.int32)
     thresholds = np.linspace(0.01, 0.99, 100)
 
+    # Adaptive sample floor: scales down gracefully for small test arrays while enforcing
+    # statistical significance (e.g. min 20 samples) on production validation/test splits.
+    effective_min_samples = max(1, min(min_samples, len(probs_arr) // 10))
+
     tau_fake = 0.5
     for t in thresholds:
         pred_fake = (probs_arr >= t).astype(int)
         tp = np.sum((pred_fake == 1) & (targets_arr == 1))
         fp = np.sum((pred_fake == 1) & (targets_arr == 0))
-        if tp + fp > 0:
+        if tp + fp >= effective_min_samples:
             prec = tp / (tp + fp)
             if prec >= min_precision:
                 tau_fake = float(t)
@@ -105,7 +110,7 @@ def compute_dual_thresholds(
         pred_real = (probs_arr <= t).astype(int)
         tn = np.sum((pred_real == 1) & (targets_arr == 0))
         fn = np.sum((pred_real == 1) & (targets_arr == 1))
-        if tn + fn > 0:
+        if tn + fn >= effective_min_samples:
             prec = tn / (tn + fn)
             if prec >= min_precision:
                 tau_real = float(t)

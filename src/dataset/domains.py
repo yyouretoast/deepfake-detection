@@ -46,7 +46,9 @@ class DomainClassifier:
         """Classify a relative or absolute sample path into its manipulation domain and metadata."""
         norm_path = path.replace("\\", "/").lower()
 
-        if "real" in norm_path and "fake" not in norm_path:
+        is_real_folder = "/real/" in norm_path or norm_path.startswith("real/")
+        is_fake_folder = "/fake/" in norm_path or norm_path.startswith("fake/")
+        if is_real_folder and not is_fake_folder:
             return DomainInfo(
                 domain=ManipulationDomain.REAL,
                 display_name="Original Real Faces",
@@ -71,21 +73,21 @@ class DomainClassifier:
                     is_fake=True,
                     pair_number=pair_num,
                 )
-            elif 100 <= pair_num <= 199 or 200 <= pair_num <= 399:
+            elif 100 <= pair_num <= 399:
                 return DomainInfo(
                     domain=ManipulationDomain.FACE2FACE,
                     display_name="FF++ Face2Face",
                     is_fake=True,
                     pair_number=pair_num,
                 )
-            elif 200 <= pair_num <= 299 or 400 <= pair_num <= 599:
+            elif 400 <= pair_num <= 599:
                 return DomainInfo(
                     domain=ManipulationDomain.FACESWAP,
                     display_name="FF++ FaceSwap",
                     is_fake=True,
                     pair_number=pair_num,
                 )
-            elif 300 <= pair_num <= 399 or 600 <= pair_num <= 799:
+            elif 600 <= pair_num <= 799:
                 return DomainInfo(
                     domain=ManipulationDomain.NEURALTEXTURES,
                     display_name="FF++ NeuralTextures",
@@ -114,36 +116,32 @@ class DomainClassifier:
     def matches_holdout(cls, path: str, holdout_keyword: str) -> bool:
         """
         Check if sample path belongs to the specified LOTO holdout generator domain.
-        Strictly path-invariant across flat, nested, and Windows/Linux paths.
+        Strictly delegates to classify() as the single canonical source of truth.
         """
         norm_path = path.replace("\\", "/").lower()
         kw = holdout_keyword.lower().strip()
 
-        sub_path = norm_path
-        if "/fake/" in sub_path:
-            sub_path = sub_path.split("/fake/", 1)[1]
-        elif sub_path.startswith("fake/"):
-            sub_path = sub_path[5:]
-        elif "/real/" in sub_path:
-            sub_path = sub_path.split("/real/", 1)[1]
-        elif sub_path.startswith("real/"):
-            sub_path = sub_path[5:]
-
-        if "real" in sub_path and "fake" not in sub_path:
+        info = cls.classify(norm_path)
+        if not info.is_fake:
             return False
 
-        if kw in ("celeb", "celeb-df", "celeb_df", "celebdf"):
-            return "id" in sub_path or "__" in sub_path or "celeb" in sub_path
+        keyword_to_domain = {
+            "deepfakes": ManipulationDomain.DEEPFAKES,
+            "df": ManipulationDomain.DEEPFAKES,
+            "face2face": ManipulationDomain.FACE2FACE,
+            "f2f": ManipulationDomain.FACE2FACE,
+            "faceswap": ManipulationDomain.FACESWAP,
+            "fs": ManipulationDomain.FACESWAP,
+            "neuraltextures": ManipulationDomain.NEURALTEXTURES,
+            "nt": ManipulationDomain.NEURALTEXTURES,
+            "celeb": ManipulationDomain.CELEB_DF,
+            "celeb-df": ManipulationDomain.CELEB_DF,
+            "celeb_df": ManipulationDomain.CELEB_DF,
+            "celebdf": ManipulationDomain.CELEB_DF,
+        }
 
-        pair_num = cls.extract_pair_number(sub_path)
-        if pair_num is not None:
-            if kw in ("deepfakes", "df"):
-                return 0 <= pair_num <= 99
-            elif kw in ("face2face", "f2f"):
-                return 100 <= pair_num <= 199 or 200 <= pair_num <= 399
-            elif kw in ("faceswap", "fs"):
-                return 200 <= pair_num <= 299 or 400 <= pair_num <= 599
-            elif kw in ("neuraltextures", "nt"):
-                return 300 <= pair_num <= 399 or 600 <= pair_num <= 799
+        if kw in keyword_to_domain:
+            return info.domain == keyword_to_domain[kw]
 
-        return kw in sub_path
+        # Generic keyword fallback for synthetic / custom domains (e.g. sora, midjourney)
+        return kw in norm_path

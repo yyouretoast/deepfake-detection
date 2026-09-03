@@ -123,13 +123,17 @@ def main() -> None:
     scheduler = create_scheduler(optimizer, warmup_epochs=1, total_epochs=args.epochs)
     criterion = FocalLossWithLogits(gamma=2.0, pos_weight=pos_weight_tensor)
 
-    ema = ExponentialMovingAverage(model, decay=0.999) if accelerator.is_main_process else None
-
     if accelerator.num_processes > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
     model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, val_loader, scheduler
+    )
+
+    ema = (
+        ExponentialMovingAverage(accelerator.unwrap_model(model), decay=0.999)
+        if accelerator.is_main_process
+        else None
     )
 
     trainer = DualStreamTrainer(

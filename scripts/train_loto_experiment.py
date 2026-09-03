@@ -146,13 +146,17 @@ def main() -> None:
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
     criterion = FocalLossWithLogits(gamma=2.0, pos_weight=pos_weight_tensor)
 
-    ema = ExponentialMovingAverage(model, decay=0.999) if accelerator.is_main_process else None
-
     if accelerator.num_processes > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
     model, optimizer, train_loader, val_loader, eval_loader, scheduler = accelerator.prepare(
         model, optimizer, train_loader, val_loader, eval_loader, scheduler
+    )
+
+    ema = (
+        ExponentialMovingAverage(accelerator.unwrap_model(model), decay=0.999)
+        if accelerator.is_main_process
+        else None
     )
 
     trainer = DualStreamTrainer(

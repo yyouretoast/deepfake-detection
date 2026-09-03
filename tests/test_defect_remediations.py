@@ -139,12 +139,16 @@ def test_loto_path_invariant_matching() -> None:
     assert matches_holdout_domain("fake/400_403/frame_001.webp", "faceswap") is True
     assert matches_holdout_domain("fake/ff_c23/400_403/frame_001.webp", "faceswap") is True
     assert matches_holdout_domain("/kaggle/input/deepfake-face-crops-256/deepfake_crops_512/fake/400_403/frame_001.webp", "faceswap") is True
-    assert matches_holdout_domain("fake/250_253/frame_001.webp", "faceswap") is True
+    assert matches_holdout_domain("fake/250_253/frame_001.webp", "face2face") is True
+    assert matches_holdout_domain("fake/250_253/frame_001.webp", "faceswap") is False
+    assert matches_holdout_domain("fake/450_453/frame_001.webp", "faceswap") is True
 
     assert matches_holdout_domain("fake/600_603/frame_001.webp", "neuraltextures") is True
     assert matches_holdout_domain("fake/ff_c23/600_603/frame_001.webp", "neuraltextures") is True
     assert matches_holdout_domain("/kaggle/input/deepfake-face-crops-256/deepfake_crops_512/fake/600_603/frame_001.webp", "neuraltextures") is True
-    assert matches_holdout_domain("fake/350_355/frame_001.webp", "neuraltextures") is True
+    assert matches_holdout_domain("fake/350_355/frame_001.webp", "face2face") is True
+    assert matches_holdout_domain("fake/350_355/frame_001.webp", "neuraltextures") is False
+    assert matches_holdout_domain("fake/650_653/frame_001.webp", "neuraltextures") is True
 
     assert matches_holdout_domain("fake/400_403/frame_001.webp", "deepfakes") is False
     assert matches_holdout_domain("fake/400_403/frame_001.webp", "face2face") is False

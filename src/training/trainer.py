@@ -178,6 +178,7 @@ class DualStreamTrainer:
             val_auc = val_metrics["val_auc"]
             val_loss = val_metrics["val_loss"]
             train_loss = train_metrics["train_loss"]
+            should_stop = torch.tensor(0, dtype=torch.int32, device=self.accelerator.device)
 
             if self.accelerator.is_main_process:
                 current_lr = self.optimizer.param_groups[0]["lr"]
@@ -202,6 +203,12 @@ class DualStreamTrainer:
                     epochs_without_improvement += 1
                     if epochs_without_improvement >= patience:
                         logger.info(f"Early stopping triggered after {epoch + 1} epochs.")
-                        break
+                        should_stop = torch.tensor(1, dtype=torch.int32, device=self.accelerator.device)
+
+            if self.accelerator.num_processes > 1:
+                should_stop = self.accelerator.reduce(should_stop, reduction="max")
+
+            if should_stop.item() == 1:
+                break
 
         return best_val_auc

@@ -36,3 +36,9 @@ class TestDualThresholds:
         res_ambig = classify_three_zone(0.50, tau_real=tau_real, tau_fake=tau_fake)
         assert res_ambig["zone"] == "ambiguity_zone"
         assert res_ambig["is_inconclusive"]
+
+    def test_compute_dual_thresholds_min_samples_floor(self) -> None:
+        probs = np.array([0.1] * 50 + [0.99])
+        targets = np.array([0] * 50 + [1])
+        tau_real, tau_fake = compute_dual_thresholds(probs, targets, min_precision=0.98, min_samples=5)
+        assert tau_fake in (0.5, 0.60)
