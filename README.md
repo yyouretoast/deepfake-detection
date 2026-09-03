@@ -38,14 +38,14 @@ The detection engine exposes intermediate representations across both spatial an
 ## Table of Contents
 
 * [System Architecture](#system-architecture)
-* [Forensic Architecture & Core Modules](#forensic-architecture--core-modules)
+* [Forensic Architecture and Core Modules](#forensic-architecture-and-core-modules)
 * [Mathematical Formulations](#mathematical-formulations)
 * [Quickstart and Python API](#quickstart-and-python-api)
-* [Dataset Composition and Graph Partitioning](#dataset-composition-and-graph-partitioning)
+* [Dataset Composition and Expected Layout](#dataset-composition-and-expected-layout)
 * [Empirical Benchmarks](#empirical-benchmarks)
 * [Forensic Threat Model and Robustness](#forensic-threat-model-and-robustness)
 * [Hardware Latency and Profiling](#hardware-latency-and-profiling)
-* [Complete Kaggle Rerun & CLI Reproduction Guide](#complete-kaggle-rerun--cli-reproduction-guide)
+* [Complete Kaggle Reproduction Guide](#complete-kaggle-reproduction-guide)
 * [Repository Architecture](#repository-architecture)
 * [Dataset Compliance and Citations](#dataset-compliance-and-citations)
 * [Academic References](#academic-references)
@@ -90,7 +90,7 @@ The detection engine exposes intermediate representations across both spatial an
 
 ---
 
-## Forensic Architecture & Core Modules
+## Forensic Architecture and Core Modules
 
 The detection engine incorporates four modular architectural components designed to balance feature capacity, harden against real-world social media degradations, capture inter-frame temporal anomalies, and establish calibrated certainty boundaries:
 
@@ -123,13 +123,13 @@ The detection engine incorporates four modular architectural components designed
 Noise residuals from 3 fixed 5×5 SRM filters (9 channels) and 1 learnable Bayar-Stamm constrained convolution (1 channel) are passed to an orthonormal 2D Real Fast Fourier Transform:
 
 $$
-\mathcal{F}_{\text{norm}} = \ln\left( |\mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}})| + 1 \right)
+\mathcal{F}_{\text{norm}} = \ln\left( \left| \mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}}) \right| + 1 \right)
 $$
 
 Phase angles are computed with sub-epsilon magnitude autograd masking to eliminate infinite gradient singularities:
 
 $$
-\theta = \frac{1}{\pi} \text{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
+\theta = \frac{1}{\pi} \operatorname{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
 $$
 
 ### 2. Squeeze-and-Excitation Channel Attention
@@ -137,11 +137,11 @@ $$
 Within each spectral residual stage, SE blocks recalibrate concentric radial and angular frequency rings:
 
 $$
-\mathbf{z} = \text{AdaptiveAvgPool2d}(\mathbf{X}) \in \mathbb{R}^C
+\mathbf{z} = \operatorname{AdaptiveAvgPool2d}(\mathbf{X}) \in \mathbb{R}^C
 $$
 
 $$
-\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \text{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \; \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
+\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \operatorname{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \; \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
 $$
 
 $$
@@ -165,22 +165,22 @@ $$
 For video sequence modeling over frame embeddings $\mathbf{e}_t \in \mathbb{R}^{512}$:
 
 $$
-\mathbf{h}_t = [\overrightarrow{\text{GRU}}(\mathbf{e}_t) \parallel \overleftarrow{\text{GRU}}(\mathbf{e}_t)] \in \mathbb{R}^{2H}
+\mathbf{h}_t = [\overrightarrow{\operatorname{GRU}}(\mathbf{e}_t) \parallel \overleftarrow{\operatorname{GRU}}(\mathbf{e}_t)] \in \mathbb{R}^{2H}
 $$
 
 $$
-\alpha_t = \frac{\exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_t)\right)}{\sum_{j=1}^T \exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_j)\right)} \quad \text{such that} \quad \sum_{t=1}^T \alpha_t = 1.0
+\alpha_t = \frac{\exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_t)\right)}{\sum_{j=1}^T \exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_j)\right)} \quad \text{where} \quad \sum_{t=1}^T \alpha_t = 1.0
 $$
 
 $$
-\mathbf{c} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \hat{y}_{\text{video}} = \text{Classifier}(\mathbf{c})
+\mathbf{c} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \hat{y}_{\text{video}} = \operatorname{Classifier}(\mathbf{c})
 $$
 
 ---
 
 ## Quickstart and Python API
 
-### 1. Installation and Environment Requirements
+### 1. Installation and Environment Setup
 
 * **OS**: Linux, macOS, or Windows 10/11
 * **Python**: 3.10 to 3.12
@@ -198,7 +198,16 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Python Inference API
+### 2. Download Pre-trained Weights (Optional)
+
+If you wish to evaluate or run the live serving application without retraining:
+
+```bash
+# Download calibrated baseline checkpoint (195 MB)
+wget -O dual_stream_calibrated.pth https://huggingface.co/spaces/yyouretoast/deepfake-detector/resolve/main/models/dual_stream_calibrated.pth
+```
+
+### 3. Python Inference API
 
 ```python
 import torch
@@ -226,7 +235,7 @@ print(f"Deepfake Probability: {prob:.4f}")
 print(f"Forensic Verdict:     {verdict['verdict']} (Zone: {verdict['zone']})")
 ```
 
-### 3. Launch Local Streamlit Serving UI
+### 4. Launch Local Streamlit Serving UI
 
 ```bash
 streamlit run app.py
@@ -235,7 +244,7 @@ App opens at `http://localhost:8501` with support for live webcam, MP4 video upl
 
 ---
 
-## Dataset Composition and Graph Partitioning
+## Dataset Composition and Expected Layout
 
 To guarantee **100% zero identity leakage**, actor IDs (`id0_id16`) are partitioned using `networkx.Graph` connected-component subgraphs. Mutually interacting actor clusters are routed exclusively to a single split, guaranteeing:
 
@@ -249,6 +258,18 @@ $$
 | **Validation** | 20,544 | 18.0% | 2,112 | 18,432 | 8.73 : 1 |
 | **Test** | 14,688 | 12.8% | 2,184 | 12,504 | 5.73 : 1 |
 | **Total** | **114,329** | **100.0%** | **22,669** | **91,660** | **4.04 : 1** |
+
+### Expected On-Disk Directory Structure
+
+```text
+dataset_root/
+├── splits.json        # Manifest containing train/val/test relative image paths and labels
+├── real/              # Extracted authentic facial crops (256x256 PNGs)
+└── fake/              # Extracted synthesized facial crops (organized by generator family)
+```
+
+> [!NOTE]
+> **Automatic Dataset Discovery**: If `--data_dir` is omitted, `DatasetResolver` automatically locates standard dataset roots across local directories (`./data/cropped`, `./data`) and Kaggle environments (`/kaggle/input/**`).
 
 ---
 
@@ -339,16 +360,18 @@ In real-world deployment, adversaries attempt to bypass forensic detection by ap
 
 ---
 
-## Complete Kaggle Rerun & CLI Reproduction Guide
+## Complete Kaggle Reproduction Guide
 
-To perform a complete, end-to-end retraining and benchmark reproduction on **Kaggle (2× Tesla T4 GPUs)**:
+The full retraining and benchmark reproduction workflow is organized into three sequential phases on **Kaggle (2× Tesla T4 GPUs)**:
 
-### 1. Verification of the Unit Test Suite (108 Tests)
+### Phase 1: Multi-GPU Training and Calibration
+
+#### 1. Unit Test Verification (108 Tests)
 ```bash
 pytest tests/ -v
 ```
 
-### 2. Distributed Multi-GPU Backbone Training
+#### 2. Distributed Multi-GPU Backbone Training
 Trains the dual-stream detector with the new **ResSE-Spectral Tower** (~2.98M params) and **Degradation-Hardened Augmentations** using Hugging Face Accelerate DDP:
 ```bash
 accelerate launch --multi_gpu --mixed_precision fp16 --num_processes 2 \
@@ -361,7 +384,7 @@ accelerate launch --multi_gpu --mixed_precision fp16 --num_processes 2 \
     --save_path /kaggle/working/dual_stream_best.pth
 ```
 
-### 3. Held-Out Evaluation, Temperature Calibration & Dual-Threshold Fitting
+#### 3. Held-Out Evaluation, Calibration & Dual-Threshold Fitting
 Fits optimal calibration temperature $T^*$ via SciPy L-BFGS-B and derives high-precision Bayesian thresholds $(\tau_{\text{real}}, \tau_{\text{fake}})$:
 ```bash
 python scripts/evaluate_test_set.py \
@@ -369,7 +392,7 @@ python scripts/evaluate_test_set.py \
     --save_calibrated /kaggle/working/dual_stream_calibrated.pth
 ```
 
-### 4. Spatiotemporal Bi-GRU Head Training
+#### 4. Spatiotemporal Bi-GRU Head Training
 Extracts 512-dim sequence embeddings from the frozen backbone and trains the 2-layer Bi-GRU temporal consistency head with temporal self-attention (~4 min):
 ```bash
 python scripts/train_temporal_head.py \
@@ -380,7 +403,11 @@ python scripts/train_temporal_head.py \
     --seq_len 8
 ```
 
-### 5. Export Per-Sample Test Predictions
+---
+
+### Phase 2: Diagnostic and Generalization Evaluation
+
+#### 5. Export Per-Sample Test Predictions
 Exports individual sample logits, calibrated probabilities, and ground-truth targets to JSON:
 ```bash
 python scripts/export_test_predictions.py \
@@ -388,14 +415,14 @@ python scripts/export_test_predictions.py \
     --output_json /kaggle/working/test_predictions.json
 ```
 
-### 6. Subdomain Breakdown Evaluation
+#### 6. Subdomain Breakdown Evaluation
 Computes fine-grained ROC AUC, F1, precision, and recall per generator family:
 ```bash
 python scripts/evaluate_subdomain_breakdown.py \
     --weights_path /kaggle/working/dual_stream_calibrated.pth
 ```
 
-### 7. Robustness Degradation Stress Testing
+#### 7. Robustness Degradation Stress Testing
 Sweeps JPEG compression, Gaussian blur, additive noise, and spatial downscaling attacks:
 ```bash
 python scripts/evaluate_robustness.py \
@@ -403,7 +430,7 @@ python scripts/evaluate_robustness.py \
     --output_json /kaggle/working/robustness_results.json
 ```
 
-### 8. 5-Fold Leave-One-Technology-Out (LOTO) Cross-Generator Suite
+#### 8. 5-Fold Leave-One-Technology-Out (LOTO) Cross-Generator Suite
 Conducts the full cross-generator domain generalization experiment across all 5 holdouts:
 ```bash
 for fold in deepfakes face2face faceswap neuraltextures celeb; do
@@ -417,7 +444,11 @@ for fold in deepfakes face2face faceswap neuraltextures celeb; do
 done
 ```
 
-### 9. Generate 300 DPI Publication Benchmark Plots
+---
+
+### Phase 3: Production Export and Interpretability
+
+#### 9. Generate 300 DPI Publication Benchmark Plots
 Renders ROC curves, ECE reliability diagrams, LOTO generalization bars, and robustness curves:
 ```bash
 python scripts/generate_benchmark_plots.py \
@@ -427,7 +458,7 @@ python scripts/generate_benchmark_plots.py \
     --output_dir /kaggle/working/figures
 ```
 
-### 10. Export Model to Optimized ONNX
+#### 10. Export Model to Optimized ONNX
 Exports the dual-stream backbone to ONNX for production edge serving:
 ```bash
 python scripts/export_onnx.py \
@@ -436,7 +467,7 @@ python scripts/export_onnx.py \
     --img_size 256
 ```
 
-### 11. Benchmark Inference Latency & Throughput
+#### 11. Benchmark Inference Latency & Throughput
 ```bash
 python scripts/benchmark_latency.py \
     --weights /kaggle/working/dual_stream_calibrated.pth \
@@ -445,7 +476,7 @@ python scripts/benchmark_latency.py \
     --device cuda
 ```
 
-### 12. Render 4-Panel Interpretability Diagnostics
+#### 12. Render 4-Panel Interpretability Diagnostics
 ```bash
 python scripts/visualize_attention_maps.py \
     --checkpoint /kaggle/working/dual_stream_calibrated.pth \
