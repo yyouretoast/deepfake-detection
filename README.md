@@ -16,7 +16,7 @@ A PyTorch dual-stream deepfake detection framework fusing a ConvNeXt-Small spati
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
-[![pytest](https://img.shields.io/badge/pytest-99%2F99%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![pytest](https://img.shields.io/badge/pytest-108%2F108%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Live Interactive Space**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)  
@@ -64,8 +64,9 @@ The detection engine exposes intermediate representations across both spatial an
 • ConvNeXt-Small Backbone                       • 1 Learnable Bayar-Stamm Conv (1 ch)
 • LayerNorm2d Feature Normalization             • 2D Real FFT (torch.fft.fft2, FP32)
 • 512-d Spatial Embedding (f_s)                 • 10 Log-Mag + 10 Phase Angle Maps
-                                                • 2-Layer Conv2d + AdaptiveAvgPool
+                                                • ResSE-Spectral Tower (4 stages + SE, 2.9M)
                                                 • 512-d Spectral Embedding (f_f)
+                                                • Auxiliary Supervision Head (λ = 0.3)
        │                                                │
        └───────────────────────┬────────────────────────┘
                                ▼
@@ -73,18 +74,13 @@ The detection engine exposes intermediate representations across both spatial an
             • Gating: g = Sigmoid(Linear(1024, 512)([f_s || f_f]))
             • Fused Feature: f_fused = [f_s * (1 - g) || f_f * g] ∈ R^1024
                                │
-                               ▼
-                   [ Binary Classification Head ]
-                   • Linear(1024, 256) -> ReLU -> Dropout(0.3) -> Linear(256, 1)
-                   • Raw Logit Output z
-                               │
-       ┌───────────────────────┴───────────────────────┐
-       ▼                                               ▼
-[ Temperature Calibration ]                 [ 4-Panel Diagnostic Engine ]
-• Scaled Logit: z / T* (T* = 2.2018)        • (a) Aligned RGB Face Crop
-• Probability: p = Sigmoid(z / T*)          • (b) SRM Noise Residual Map
-• Operating Threshold: 0.0100               • (c) 2D FFT Magnitude Spectrum
-• ECE: 0.0482 -> 0.0195                     • (d) ConvNeXt Grad-CAM Overlay
+        ┌──────────────────────┴───────────────────────┐
+        ▼                                              ▼
+[ Binary Classifier Head ]                 [ Bi-GRU Spatiotemporal Head ]
+• Linear(1024, 256) -> Linear(256, 1)      • 2-Layer Bi-GRU + Temporal Attention
+• Temperature Scaled (T* = 2.2018)         • Inter-frame synthesis anomaly detection
+• Dual Bayesian Thresholds (τ_r, τ_f)      • 60.9 FPS Real-Time Video Engine
+• Inconclusive Ambiguity Band              • Live 4-Panel Interpretability
 ```
 
 ### Mathematical Formulations
@@ -281,7 +277,7 @@ In real-world deployment, adversaries attempt to bypass forensic detection by ap
 
 All scripts feature standard `argparse` CLI interfaces:
 
-### 1. Full Unit Test Suite (99 Tests)
+### 1. Full Unit Test Suite (108 Tests)
 ```bash
 pytest tests/ -v
 ```
@@ -292,30 +288,41 @@ accelerate launch --mixed_precision fp16 --num_processes 2 scripts/train_dual_st
     --data_dir /path/to/dataset \
     --epochs 5 \
     --batch_size 16 \
+    --frequency_backbone resse \
     --save_path /kaggle/working/dual_stream_best.pth
 ```
 
-### 3. Leave-One-Target-Out (LOTO) Training
+### 3. Spatiotemporal Bi-GRU Head Training
+```bash
+python scripts/train_temporal_head.py \
+    --backbone_weights /kaggle/working/dual_stream_best.pth \
+    --save_path /kaggle/working/temporal_head_best.pth \
+    --epochs 5 \
+    --batch_size 8
+```
+
+### 4. Leave-One-Target-Out (LOTO) Training
 ```bash
 accelerate launch --mixed_precision fp16 --num_processes 2 scripts/train_loto_experiment.py \
     --holdout neuraltextures \
     --epochs 3 \
-    --batch_size 16
+    --batch_size 16 \
+    --frequency_backbone resse
 ```
 
-### 4. Held-Out Evaluation & Temperature Fitting
+### 5. Held-Out Evaluation & Temperature Fitting
 ```bash
 python scripts/evaluate_test_set.py \
     --weights_path /kaggle/working/dual_stream_best.pth
 ```
 
-### 5. Subdomain Breakdown Evaluation
+### 6. Subdomain Breakdown Evaluation
 ```bash
 python scripts/evaluate_subdomain_breakdown.py \
     --weights_path /kaggle/working/dual_stream_calibrated.pth
 ```
 
-### 6. Robustness Degradation Stress Testing
+### 7. Robustness Degradation Stress Testing
 ```bash
 python scripts/evaluate_robustness.py \
     --checkpoint /kaggle/working/dual_stream_calibrated.pth \
@@ -323,7 +330,7 @@ python scripts/evaluate_robustness.py \
     --output_json /kaggle/working/robustness_results.json
 ```
 
-### 7. Export Model to ONNX
+### 8. Export Model to ONNX
 ```bash
 python scripts/export_onnx.py \
     --weights dual_stream_calibrated.pth \
@@ -331,7 +338,7 @@ python scripts/export_onnx.py \
     --img_size 256
 ```
 
-### 8. Benchmark Latency & Throughput
+### 9. Benchmark Latency & Throughput
 ```bash
 python scripts/benchmark_latency.py \
     --weights dual_stream_calibrated.pth \
@@ -340,7 +347,7 @@ python scripts/benchmark_latency.py \
     --device cuda
 ```
 
-### 9. Render 4-Panel Diagnostic Figures
+### 10. Render 4-Panel Diagnostic Figures
 ```bash
 python scripts/visualize_attention_maps.py \
     --checkpoint dual_stream_calibrated.pth \

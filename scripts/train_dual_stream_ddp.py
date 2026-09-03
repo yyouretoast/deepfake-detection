@@ -58,6 +58,13 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=EPOCHS, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=BATCH_SIZE, help="Batch size per process")
     parser.add_argument("--save_path", type=str, default=BEST_MODEL_WEIGHTS_PATH, help="Path to save best weights")
+    parser.add_argument(
+        "--frequency_backbone",
+        type=str,
+        default="resse",
+        choices=["resse", "legacy"],
+        help="Frequency stream architecture: resse (~2.9M ResSE tower) or legacy (90k CNN)",
+    )
     args = parser.parse_args()
 
     accelerator = Accelerator(gradient_accumulation_steps=ACCUMULATION_STEPS)
@@ -105,7 +112,7 @@ def main() -> None:
     pos_weight_val = min(float(num_real / max(1, num_fake)), 3.0)
     pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
 
-    model = HybridDeepfakeDetector(pretrained=True)
+    model = HybridDeepfakeDetector(pretrained=True, frequency_backbone=args.frequency_backbone)
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     scheduler = create_scheduler(optimizer, warmup_epochs=1, total_epochs=args.epochs)
     criterion = FocalLossWithLogits(gamma=2.0, pos_weight=pos_weight_tensor)

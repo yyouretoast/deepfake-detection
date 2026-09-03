@@ -73,6 +73,13 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size per GPU")
     parser.add_argument("--data_dir", type=str, default=None, help="Directory containing dataset and splits.json")
+    parser.add_argument(
+        "--frequency_backbone",
+        type=str,
+        default="resse",
+        choices=["resse", "legacy"],
+        help="Frequency stream architecture: resse or legacy",
+    )
     args = parser.parse_args()
 
     accelerator = Accelerator()
@@ -128,7 +135,7 @@ def main() -> None:
     pos_weight_val = min(float(num_real / max(1, num_fake)), 3.0)
     pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
 
-    model = HybridDeepfakeDetector()
+    model = HybridDeepfakeDetector(frequency_backbone=args.frequency_backbone)
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
     criterion = FocalLossWithLogits(gamma=2.0, pos_weight=pos_weight_tensor)
