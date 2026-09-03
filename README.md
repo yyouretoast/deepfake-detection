@@ -1,14 +1,3 @@
----
-title: Deepfake Detection Engine
-colorFrom: blue
-colorTo: purple
-sdk: streamlit
-sdk_version: 1.32.0
-app_file: app.py
-pinned: false
-license: mit
----
-
 # Dual-Stream Deepfake Detection Engine
 
 A production-grade, forensic deepfake detection engine fusing a ConvNeXt-Small spatial backbone with Steganographic Rich Model (SRM) and Bayar-Stamm 2D Real FFT spectral decomposition. Enhanced with a **4-Stage ResSE-Spectral Tower**, **Frozen Bi-GRU Spatiotemporal Consistency Head**, **Degradation-Hardened Augmentations**, and **Dual-Threshold Bayesian Confidence Bands**.
@@ -96,11 +85,15 @@ The detection engine incorporates four modular architectural components designed
 
 ### 1. ResSE-Spectral Tower & Auxiliary Frequency Supervision
 * **Architecture**: Replaces shallow convolutional layers with a 4-stage residual network with Squeeze-and-Excitation (`SEBlock`) channel attention ($48 \to 96 \to 192 \to 384$ channels, 2.98M parameters), preserving concentric radial and angular Fourier rings.
-* **Auxiliary Loss ($\lambda = 0.3$)**: During training, a dedicated auxiliary linear head supervises the frequency representation directly ($\mathcal{L} = \mathcal{L}_{\text{fused}} + 0.3 \cdot \mathcal{L}_{\text{freq}}$), preventing the 50M ConvNeXt spatial stream from dominating the gating mechanism.
+* **Auxiliary Loss ($\lambda = 0.3$)**: During training, a dedicated auxiliary linear head supervises the frequency representation directly:
+  $$
+  \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{fused}} + 0.3 \cdot \mathcal{L}_{\text{freq}}
+  $$
+  This prevents the 50M ConvNeXt spatial stream from dominating the gating mechanism.
 * **Checkpoint Interoperability**: `HybridDeepfakeDetector` automatically distinguishes legacy 90k CNN checkpoints from ResSE checkpoints on `load_state_dict()` with zero manual flags required.
 
 ### 2. Degradation-Hardened Augmentation Policy
-* **Compression Resilience**: An Albumentations pipeline applying JPEG compression sweeps (quality 35–95, $p=0.35$), Gaussian blur ($\sigma \in [0.5, 2.5]$, $p=0.30$), spatial downscaling ($0.5\times$–$0.9\times$, $p=0.20$), and cutout masking.
+* **Compression Resilience**: An Albumentations pipeline applying JPEG compression sweeps (quality 35–95, $p = 0.35$), Gaussian blur ($\sigma \in [0.5, 2.5]$, $p = 0.30$), spatial downscaling ($0.5\times$ to $0.9\times$, $p = 0.20$), and cutout masking.
 * Prevents the frequency stream from overfitting to camera sensor PRNU noise while retaining forensic upsampling artifacts.
 
 ### 3. Spatiotemporal Sequence Modeling (Bi-GRU Head)
@@ -110,9 +103,9 @@ The detection engine incorporates four modular architectural components designed
 
 ### 4. Dual-Threshold Bayesian Confidence Bands
 * Rather than enforcing a single fixed 0.50 threshold that produces false decisions on perturbed or low-quality media, the engine computes high-precision decision boundaries $(\tau_{\text{real}}, \tau_{\text{fake}})$:
-  * **Confirmed Authentic**: $p \le \tau_{\text{real}}$ (Precision $\ge 98\%$)
+  * **Confirmed Authentic**: $p \le \tau_{\text{real}}$ (Precision $\ge$ 98%)
   * **Inconclusive / Perturbation Detected**: $\tau_{\text{real}} < p < \tau_{\text{fake}}$ (Ambiguous boundary samples routed for manual forensic inspection)
-  * **Confirmed Synthetic**: $p \ge \tau_{\text{fake}}$ (Precision $\ge 98\%$)
+  * **Confirmed Synthetic**: $p \ge \tau_{\text{fake}}$ (Precision $\ge$ 98%)
 
 ---
 
@@ -129,7 +122,7 @@ $$
 Phase angles are computed with sub-epsilon magnitude autograd masking to eliminate infinite gradient singularities:
 
 $$
-\theta = \frac{1}{\pi} \operatorname{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
+\theta = \frac{1}{\pi} \text{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
 $$
 
 ### 2. Squeeze-and-Excitation Channel Attention
@@ -137,11 +130,11 @@ $$
 Within each spectral residual stage, SE blocks recalibrate concentric radial and angular frequency rings:
 
 $$
-\mathbf{z} = \operatorname{AdaptiveAvgPool2d}(\mathbf{X}) \in \mathbb{R}^C
+\mathbf{z} = \text{AdaptiveAvgPool2d}(\mathbf{X}) \in \mathbb{R}^C
 $$
 
 $$
-\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \operatorname{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \; \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
+\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \text{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \; \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
 $$
 
 $$
@@ -165,7 +158,7 @@ $$
 For video sequence modeling over frame embeddings $\mathbf{e}_t \in \mathbb{R}^{512}$:
 
 $$
-\mathbf{h}_t = [\overrightarrow{\operatorname{GRU}}(\mathbf{e}_t) \parallel \overleftarrow{\operatorname{GRU}}(\mathbf{e}_t)] \in \mathbb{R}^{2H}
+\mathbf{h}_t = [\text{GRU}_{\text{fwd}}(\mathbf{e}_t) \parallel \text{GRU}_{\text{bwd}}(\mathbf{e}_t)] \in \mathbb{R}^{2H}
 $$
 
 $$
@@ -173,7 +166,7 @@ $$
 $$
 
 $$
-\mathbf{c} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \hat{y}_{\text{video}} = \operatorname{Classifier}(\mathbf{c})
+\mathbf{c} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \hat{y}_{\text{video}} = \text{Classifier}(\mathbf{c})
 $$
 
 ---
