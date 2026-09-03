@@ -21,7 +21,7 @@ from src.dataset.resolver import find_dataset_root, find_weights_path, resolve_s
 from src.evaluation.evaluator import ModelEvaluator
 from src.evaluation.metrics import compute_ece, fit_temperature_log
 from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict
+from src.utils.checkpoint import clean_state_dict, compute_dual_thresholds
 
 
 def evaluate(
@@ -127,6 +127,12 @@ def evaluate(
     print("Detailed Classification Report (Optimal Threshold):")
     print(classification_report(test_targets, test_preds_opt, target_names=["Real", "Fake"], digits=4))
 
+    tau_real, tau_fake = compute_dual_thresholds(val_probs_cal, val_targets, min_precision=0.98)
+    print("\nDual Bayesian High-Precision Thresholds (>=98% Precision):")
+    print(f"    tau_real (Authentic): <= {tau_real:.4f}")
+    print(f"    tau_fake (Synthetic): >= {tau_fake:.4f}")
+    print(f"    Inconclusive Ambiguity Band: ({tau_real:.4f}, {tau_fake:.4f})")
+
     calibrated_ckpt_path = save_calibrated or (
         "/kaggle/working/dual_stream_calibrated.pth"
         if os.path.exists("/kaggle/working")
@@ -138,6 +144,8 @@ def evaluate(
             "model_state_dict": model.state_dict(),
             "optimal_threshold": float(best_thresh),
             "temperature": float(optimal_temp),
+            "tau_real": float(tau_real),
+            "tau_fake": float(tau_fake),
         },
         calibrated_ckpt_path,
     )

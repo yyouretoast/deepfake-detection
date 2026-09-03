@@ -11,12 +11,13 @@ license: mit
 
 # Dual-Stream Deepfake Detection Engine
 
-A PyTorch dual-stream deepfake detection framework fusing a ConvNeXt-Small spatial backbone with Steganographic Rich Model (SRM) and Bayar-Stamm 2D Real FFT spectral decomposition, calibrated with SciPy L-BFGS-B log-temperature scaling.
+A production-grade, forensic deepfake detection engine fusing a ConvNeXt-Small spatial backbone with Steganographic Rich Model (SRM) and Bayar-Stamm 2D Real FFT spectral decomposition. Enhanced with a **4-Stage ResSE-Spectral Tower**, **Frozen Bi-GRU Spatiotemporal Consistency Head**, **Degradation-Hardened Augmentations**, and **Dual-Threshold Bayesian Confidence Bands**.
 
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
 [![pytest](https://img.shields.io/badge/pytest-108%2F108%20Passing-2EA44F?style=flat&logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Live Interactive Space**: [https://huggingface.co/spaces/yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)  
@@ -37,14 +38,17 @@ The detection engine exposes intermediate representations across both spatial an
 ## Table of Contents
 
 * [System Architecture](#system-architecture)
+* [Forensic Architecture & Core Modules](#forensic-architecture--core-modules)
+* [Mathematical Formulations](#mathematical-formulations)
 * [Quickstart and Python API](#quickstart-and-python-api)
 * [Dataset Composition and Graph Partitioning](#dataset-composition-and-graph-partitioning)
 * [Empirical Benchmarks](#empirical-benchmarks)
 * [Forensic Threat Model and Robustness](#forensic-threat-model-and-robustness)
 * [Hardware Latency and Profiling](#hardware-latency-and-profiling)
-* [CLI Reference and Reproduction Commands](#cli-reference-and-reproduction-commands)
+* [Complete Kaggle Rerun & CLI Reproduction Guide](#complete-kaggle-rerun--cli-reproduction-guide)
 * [Repository Architecture](#repository-architecture)
 * [Dataset Compliance and Citations](#dataset-compliance-and-citations)
+* [Academic References](#academic-references)
 
 ---
 
@@ -64,7 +68,7 @@ The detection engine exposes intermediate representations across both spatial an
 • ConvNeXt-Small Backbone                       • 1 Learnable Bayar-Stamm Conv (1 ch)
 • LayerNorm2d Feature Normalization             • 2D Real FFT (torch.fft.fft2, FP32)
 • 512-d Spatial Embedding (f_s)                 • 10 Log-Mag + 10 Phase Angle Maps
-                                                • ResSE-Spectral Tower (4 stages + SE, 2.9M)
+                                                • ResSE-Spectral Tower (4 stages + SE, 2.98M)
                                                 • 512-d Spectral Embedding (f_f)
                                                 • Auxiliary Supervision Head (λ = 0.3)
        │                                                │
@@ -73,19 +77,48 @@ The detection engine exposes intermediate representations across both spatial an
             [ Symmetric Gated Residual Fusion ]
             • Gating: g = Sigmoid(Linear(1024, 512)([f_s || f_f]))
             • Fused Feature: f_fused = [f_s * (1 - g) || f_f * g] ∈ R^1024
+            • Video Embedding: e_t = f_s * (1 - g) + f_f * g ∈ R^512
                                │
-        ┌──────────────────────┴───────────────────────┐
-        ▼                                              ▼
-[ Binary Classifier Head ]                 [ Bi-GRU Spatiotemporal Head ]
-• Linear(1024, 256) -> Linear(256, 1)      • 2-Layer Bi-GRU + Temporal Attention
-• Temperature Scaled (T* = 2.2018)         • Inter-frame synthesis anomaly detection
-• Dual Bayesian Thresholds (τ_r, τ_f)      • 60.9 FPS Real-Time Video Engine
-• Inconclusive Ambiguity Band              • Live 4-Panel Interpretability
+       ┌───────────────────────┴────────────────────────┐
+       ▼                                                ▼
+[ Frame-Level Classifier Head ]              [ Bi-GRU Spatiotemporal Head ]
+• Linear(1024, 256) -> Linear(256, 1)        • 2-Layer Bidirectional GRU (2.46M params)
+• Temperature Scaled: z / T* (T* = 2.2018)   • Temporal Attention Context Pooling (α_t)
+• Dual Bayesian Thresholds (τ_real, τ_fake)  • Inter-frame flickering / glitch detection
+• 3 Forensic Certainty Zones                 • 60.9 FPS Real-Time Video Engine
 ```
 
-### Mathematical Formulations
+---
 
-#### 1. 20-Channel Spectral Decomposition
+## Forensic Architecture & Core Modules
+
+The detection engine incorporates four modular architectural components designed to balance feature capacity, harden against real-world social media degradations, capture inter-frame temporal anomalies, and establish calibrated certainty boundaries:
+
+### 1. ResSE-Spectral Tower & Auxiliary Frequency Supervision
+* **Architecture**: Replaces shallow convolutional layers with a 4-stage residual network with Squeeze-and-Excitation (`SEBlock`) channel attention ($48 \to 96 \to 192 \to 384$ channels, 2.98M parameters), preserving concentric radial and angular Fourier rings.
+* **Auxiliary Loss ($\lambda = 0.3$)**: During training, a dedicated auxiliary linear head supervises the frequency representation directly ($\mathcal{L} = \mathcal{L}_{\text{fused}} + 0.3 \cdot \mathcal{L}_{\text{freq}}$), preventing the 50M ConvNeXt spatial stream from dominating the gating mechanism.
+* **Checkpoint Interoperability**: `HybridDeepfakeDetector` automatically distinguishes legacy 90k CNN checkpoints from ResSE checkpoints on `load_state_dict()` with zero manual flags required.
+
+### 2. Degradation-Hardened Augmentation Policy
+* **Compression Resilience**: An Albumentations pipeline applying JPEG compression sweeps (quality 35–95, $p=0.35$), Gaussian blur ($\sigma \in [0.5, 2.5]$, $p=0.30$), spatial downscaling ($0.5\times$–$0.9\times$, $p=0.20$), and cutout masking.
+* Prevents the frequency stream from overfitting to camera sensor PRNU noise while retaining forensic upsampling artifacts.
+
+### 3. Spatiotemporal Sequence Modeling (Bi-GRU Head)
+* **Temporal Consistency**: A 2-layer Bidirectional GRU with Temporal Self-Attention (2.46M parameters) operating on frozen 512-dimensional sequence embeddings extracted from video frames.
+* **Frame Glitch Localization**: Normalized attention weights ($\sum_t \alpha_t = 1.0$) localize single-frame synthesis failures, boundary jitter, and unnatural blink intervals without the memory overhead of 3D-CNNs.
+* **Decoupled Training**: Trains directly on cached or frozen embeddings in under 5 minutes on a single GPU.
+
+### 4. Dual-Threshold Bayesian Confidence Bands
+* Rather than enforcing a single fixed 0.50 threshold that produces false decisions on perturbed or low-quality media, the engine computes high-precision decision boundaries $(\tau_{\text{real}}, \tau_{\text{fake}})$:
+  * **Confirmed Authentic**: $p \le \tau_{\text{real}}$ (Precision $\ge 98\%$)
+  * **Inconclusive / Perturbation Detected**: $\tau_{\text{real}} < p < \tau_{\text{fake}}$ (Ambiguous boundary samples routed for manual forensic inspection)
+  * **Confirmed Synthetic**: $p \ge \tau_{\text{fake}}$ (Precision $\ge 98\%$)
+
+---
+
+## Mathematical Formulations
+
+### 1. 20-Channel Spectral Decomposition
 
 Noise residuals from 3 fixed 5×5 SRM filters (9 channels) and 1 learnable Bayar-Stamm constrained convolution (1 channel) are passed to an orthonormal 2D Real Fast Fourier Transform:
 
@@ -99,7 +132,23 @@ $$
 \theta = \frac{1}{\pi} \text{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
 $$
 
-#### 2. Symmetric Gated Residual Fusion
+### 2. Squeeze-and-Excitation Channel Attention
+
+Within each spectral residual stage, SE blocks recalibrate concentric radial and angular frequency rings:
+
+$$
+\mathbf{z} = \text{AdaptiveAvgPool2d}(\mathbf{X}) \in \mathbb{R}^C
+$$
+
+$$
+\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \text{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \; \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
+$$
+
+$$
+\widetilde{\mathbf{X}} = \mathbf{s} \odot \mathbf{X}
+$$
+
+### 3. Symmetric Gated Residual Fusion
 
 Both streams are symmetrically gated so neither branch dominates early optimization or starves the frequency stream of gradient flow:
 
@@ -111,12 +160,20 @@ $$
 \mathbf{f}_{\text{fused}} = \left[ \mathbf{f}_s \odot (1 - \mathbf{g}) \;\parallel\; \mathbf{f}_f \odot \mathbf{g} \right] \in \mathbb{R}^{1024}
 $$
 
-#### 3. Temporal Softmax-Weighted Aggregation (Video Sequences)
+### 4. Bi-GRU Spatiotemporal Sequence Attention
 
-For multi-frame video inference, frame probabilities are pooled via temperature-scaled softmax weighting ($\tau = 0.10$), concentrating mass on high-confidence manipulation frames:
+For video sequence modeling over frame embeddings $\mathbf{e}_t \in \mathbb{R}^{512}$:
 
 $$
-S_{\text{video}} = \sum_{k=1}^K w_k \cdot p_k \quad \text{where} \quad w_k = \frac{e^{p_k / \tau}}{\sum_{j=1}^K e^{p_j / \tau}}
+\mathbf{h}_t = [\overrightarrow{\text{GRU}}(\mathbf{e}_t) \parallel \overleftarrow{\text{GRU}}(\mathbf{e}_t)] \in \mathbb{R}^{2H}
+$$
+
+$$
+\alpha_t = \frac{\exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_t)\right)}{\sum_{j=1}^T \exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_j)\right)} \quad \text{such that} \quad \sum_{t=1}^T \alpha_t = 1.0
+$$
+
+$$
+\mathbf{c} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \hat{y}_{\text{video}} = \text{Classifier}(\mathbf{c})
 $$
 
 ---
@@ -127,7 +184,7 @@ $$
 
 * **OS**: Linux, macOS, or Windows 10/11
 * **Python**: 3.10 to 3.12
-* **Hardware**: CUDA 11.8+ / 12.1+ GPU (minimum 6 GB VRAM for 256×256 inference; 16 GB for multi-GPU DDP training). CPU inference is fully supported.
+* **Hardware**: CUDA 11.8+ / 12.1+ GPU (minimum 6 GB VRAM for inference; 16 GB for multi-GPU DDP training). CPU inference is fully supported.
 
 ```bash
 git clone https://github.com/yyouretoast/deepfake-detection.git
@@ -141,24 +198,32 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Python Inference (5-Line API)
+### 2. Python Inference API
 
 ```python
 import torch
 from src.models import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict
+from src.utils.checkpoint import clean_state_dict, classify_three_zone
 
+# 1. Load trained & calibrated detector
 model = HybridDeepfakeDetector(pretrained=False).eval()
 ckpt = torch.load("dual_stream_calibrated.pth", map_location="cpu", weights_only=False)
 model.load_state_dict(clean_state_dict(ckpt.get("model_state_dict", ckpt)), strict=False)
 
-# Input: Unnormalized RGB float tensor in [0.0, 1.0] range, shape [B, 3, 256, 256]
+# 2. Extract unnormalized RGB float tensor [B, 3, 256, 256] in [0.0, 1.0]
 x = torch.rand(1, 3, 256, 256)
 with torch.no_grad():
     logits = model(x)
-    calibrated_prob = torch.sigmoid(logits / 2.2018).item()
+    temp = float(ckpt.get("temperature", 2.2018))
+    prob = float(torch.sigmoid(logits / temp).item())
 
-print(f"Deepfake Probability: {calibrated_prob:.4f}")
+# 3. Classify into 3-zone forensic certainty
+tau_real = float(ckpt.get("tau_real", 0.35))
+tau_fake = float(ckpt.get("tau_fake", 0.65))
+verdict = classify_three_zone(prob, tau_real=tau_real, tau_fake=tau_fake)
+
+print(f"Deepfake Probability: {prob:.4f}")
+print(f"Forensic Verdict:     {verdict['verdict']} (Zone: {verdict['zone']})")
 ```
 
 ### 3. Launch Local Streamlit Serving UI
@@ -166,7 +231,7 @@ print(f"Deepfake Probability: {calibrated_prob:.4f}")
 ```bash
 streamlit run app.py
 ```
-App opens at `http://localhost:8501` with support for live webcam, MP4 video uploads, and 4-panel diagnostic rendering.
+App opens at `http://localhost:8501` with support for live webcam, MP4 video uploads, temporal attention anomaly timelines, and 4-panel diagnostic rendering.
 
 ---
 
@@ -237,7 +302,7 @@ To test whether the network memorizes specific generation artifacts or learns ge
 
 ## Forensic Threat Model and Robustness
 
-In real-world deployment, adversaries attempt to bypass forensic detection by applying post-processing transformations to erase steganographic artifacts. We evaluated the calibrated model across 4 degradation attacks on the full held-out test split:
+In real-world deployment, adversaries attempt to bypass forensic detection by applying post-processing transformations to erase steganographic artifacts. We evaluated the model across 4 degradation attacks on the full held-out test split:
 
 ![Robustness Degradation](figures/robustness_degradation.png)
 
@@ -256,8 +321,6 @@ In real-world deployment, adversaries attempt to bypass forensic detection by ap
 | **Gaussian Blur** | $\sigma = 1.5$ | `0.9620` | `0.8540` | −2.63% |
 | **Gaussian Blur** | $\sigma = 3.0$ (Aggressive Low-Pass Filtering) | `0.7375` | `0.8411` | **−25.08%** (Most Vulnerable) |
 
-* **Why Gaussian Blur is the Most Damaging**: Spatial smoothing acts as an aggressive low-pass filter, attenuating the sub-pixel high-frequency SRM noise residuals and Fourier upsampling harmonics that the frequency stream relies upon.
-
 ---
 
 ## Hardware Latency and Profiling
@@ -273,85 +336,117 @@ In real-world deployment, adversaries attempt to bypass forensic detection by ap
 
 ---
 
-## CLI Reference and Reproduction Commands
+## Complete Kaggle Rerun & CLI Reproduction Guide
 
-All scripts feature standard `argparse` CLI interfaces:
+To perform a complete, end-to-end retraining and benchmark reproduction on **Kaggle (2× Tesla T4 GPUs)**:
 
-### 1. Full Unit Test Suite (108 Tests)
+### 1. Verification of the Unit Test Suite (108 Tests)
 ```bash
 pytest tests/ -v
 ```
 
-### 2. Distributed Training (Multi-GPU DDP)
+### 2. Distributed Multi-GPU Backbone Training
+Trains the dual-stream detector with the new **ResSE-Spectral Tower** (~2.98M params) and **Degradation-Hardened Augmentations** using Hugging Face Accelerate DDP:
 ```bash
-accelerate launch --mixed_precision fp16 --num_processes 2 scripts/train_dual_stream_ddp.py \
+accelerate launch --multi_gpu --mixed_precision fp16 --num_processes 2 \
+    scripts/train_dual_stream_ddp.py \
     --data_dir /path/to/dataset \
     --epochs 5 \
     --batch_size 16 \
     --frequency_backbone resse \
+    --hardened \
     --save_path /kaggle/working/dual_stream_best.pth
 ```
 
-### 3. Spatiotemporal Bi-GRU Head Training
+### 3. Held-Out Evaluation, Temperature Calibration & Dual-Threshold Fitting
+Fits optimal calibration temperature $T^*$ via SciPy L-BFGS-B and derives high-precision Bayesian thresholds $(\tau_{\text{real}}, \tau_{\text{fake}})$:
+```bash
+python scripts/evaluate_test_set.py \
+    --weights_path /kaggle/working/dual_stream_best.pth \
+    --save_calibrated /kaggle/working/dual_stream_calibrated.pth
+```
+
+### 4. Spatiotemporal Bi-GRU Head Training
+Extracts 512-dim sequence embeddings from the frozen backbone and trains the 2-layer Bi-GRU temporal consistency head with temporal self-attention (~4 min):
 ```bash
 python scripts/train_temporal_head.py \
     --backbone_weights /kaggle/working/dual_stream_best.pth \
     --save_path /kaggle/working/temporal_head_best.pth \
     --epochs 5 \
-    --batch_size 8
+    --batch_size 8 \
+    --seq_len 8
 ```
 
-### 4. Leave-One-Target-Out (LOTO) Training
+### 5. Export Per-Sample Test Predictions
+Exports individual sample logits, calibrated probabilities, and ground-truth targets to JSON:
 ```bash
-accelerate launch --mixed_precision fp16 --num_processes 2 scripts/train_loto_experiment.py \
-    --holdout neuraltextures \
-    --epochs 3 \
-    --batch_size 16 \
-    --frequency_backbone resse
-```
-
-### 5. Held-Out Evaluation & Temperature Fitting
-```bash
-python scripts/evaluate_test_set.py \
-    --weights_path /kaggle/working/dual_stream_best.pth
+python scripts/export_test_predictions.py \
+    --checkpoint /kaggle/working/dual_stream_calibrated.pth \
+    --output_json /kaggle/working/test_predictions.json
 ```
 
 ### 6. Subdomain Breakdown Evaluation
+Computes fine-grained ROC AUC, F1, precision, and recall per generator family:
 ```bash
 python scripts/evaluate_subdomain_breakdown.py \
     --weights_path /kaggle/working/dual_stream_calibrated.pth
 ```
 
 ### 7. Robustness Degradation Stress Testing
+Sweeps JPEG compression, Gaussian blur, additive noise, and spatial downscaling attacks:
 ```bash
 python scripts/evaluate_robustness.py \
     --checkpoint /kaggle/working/dual_stream_calibrated.pth \
-    --data_root /path/to/dataset \
     --output_json /kaggle/working/robustness_results.json
 ```
 
-### 8. Export Model to ONNX
+### 8. 5-Fold Leave-One-Technology-Out (LOTO) Cross-Generator Suite
+Conducts the full cross-generator domain generalization experiment across all 5 holdouts:
+```bash
+for fold in deepfakes face2face faceswap neuraltextures celeb; do
+    accelerate launch --multi_gpu --mixed_precision fp16 --num_processes 2 \
+        scripts/train_loto_experiment.py \
+        --holdout $fold \
+        --epochs 3 \
+        --batch_size 16 \
+        --frequency_backbone resse \
+        --hardened
+done
+```
+
+### 9. Generate 300 DPI Publication Benchmark Plots
+Renders ROC curves, ECE reliability diagrams, LOTO generalization bars, and robustness curves:
+```bash
+python scripts/generate_benchmark_plots.py \
+    --predictions /kaggle/working/test_predictions.json \
+    --robustness /kaggle/working/robustness_results.json \
+    --loto /kaggle/working/loto_results.json \
+    --output_dir /kaggle/working/figures
+```
+
+### 10. Export Model to Optimized ONNX
+Exports the dual-stream backbone to ONNX for production edge serving:
 ```bash
 python scripts/export_onnx.py \
-    --weights dual_stream_calibrated.pth \
-    --output models/dual_stream.onnx \
+    --weights /kaggle/working/dual_stream_calibrated.pth \
+    --output /kaggle/working/models/dual_stream.onnx \
     --img_size 256
 ```
 
-### 9. Benchmark Latency & Throughput
+### 11. Benchmark Inference Latency & Throughput
 ```bash
 python scripts/benchmark_latency.py \
-    --weights dual_stream_calibrated.pth \
+    --weights /kaggle/working/dual_stream_calibrated.pth \
     --img_size 256 \
     --batch_size 1 \
     --device cuda
 ```
 
-### 10. Render 4-Panel Diagnostic Figures
+### 12. Render 4-Panel Interpretability Diagnostics
 ```bash
 python scripts/visualize_attention_maps.py \
-    --checkpoint dual_stream_calibrated.pth \
-    --output_dir figures/attention_maps \
+    --checkpoint /kaggle/working/dual_stream_calibrated.pth \
+    --output_dir /kaggle/working/figures/attention_maps \
     --n_samples 6
 ```
 
@@ -373,18 +468,20 @@ deepfake-detection/
 │   └── roc_curve.png              # Held-out test set ROC curve
 ├── notebooks/
 │   └── master_pipeline.ipynb      # End-to-end research training & analysis notebook
+├── rerun_pipeline.ipynb           # Quick reproduction Kaggle notebook for 2x T4
 ├── scripts/                       # Thin executable CLI entry points
 │   ├── benchmark_latency.py       # Inference latency & throughput benchmarking
 │   ├── evaluate_robustness.py     # Degradation perturbation sweeps
 │   ├── evaluate_subdomain_breakdown.py # Subdomain breakdown evaluation
-│   ├── evaluate_test_set.py       # Held-out test evaluation & temperature fitting
+│   ├── evaluate_test_set.py       # Held-out test evaluation, T* & dual thresholds
 │   ├── export_onnx.py             # ONNX format export
 │   ├── export_test_predictions.py # Sample predictions JSON exporter
 │   ├── extract_face_crops.py      # Multi-threaded YuNet face crop extraction
 │   ├── generate_benchmark_plots.py# 300 DPI plot rendering
 │   ├── rebalance_splits.py        # Split manifest re-balancer
-│   ├── train_dual_stream_ddp.py   # Multi-GPU DDP training runner
+│   ├── train_dual_stream_ddp.py   # Multi-GPU DDP training runner (ResSE / legacy)
 │   ├── train_loto_experiment.py   # LOTO cross-generator training runner
+│   ├── train_temporal_head.py     # Spatiotemporal Bi-GRU video head training
 │   └── visualize_attention_maps.py# Diagnostic map rendering runner
 ├── src/                           # Modular core library
 │   ├── dataset/
@@ -400,7 +497,9 @@ deepfake-detection/
 │   │   ├── fusion.py              # LayerNorm2d, GatedResidualFusion, ClassifierHead
 │   │   ├── hybrid_detector.py     # Dual-stream hybrid detector architecture
 │   │   ├── spectral.py            # RealFFT2DModule with sub-epsilon autograd
-│   │   └── steganography.py       # SRMConv2d & BayarConv2d high-pass filters
+│   │   ├── spectral_tower.py      # 4-Stage ResSE-Spectral Tower (~2.98M params)
+│   │   ├── steganography.py       # SRMConv2d & BayarConv2d high-pass filters
+│   │   └── temporal_head.py       # BiGRUTemporalDetector (~2.46M params)
 │   ├── services/
 │   │   ├── ui_components.py       # Decoupled Streamlit visual rendering components
 │   │   └── video_engine.py        # Video prediction engine & sequential seek
@@ -410,10 +509,10 @@ deepfake-detection/
 │   │   ├── optimization.py        # Differential param groups & lr schedulers
 │   │   └── trainer.py             # DualStreamTrainer distributed execution engine
 │   └── utils/
-│       ├── checkpoint.py          # State dict cleaning & temperature scaling
+│       ├── checkpoint.py          # Dual thresholds, three-zone certainty, temperature
 │       ├── interpretability.py    # Thread-safe ConvNeXt Grad-CAM implementation
 │       └── temporal_aggregation.py# Softmax, Top-k, EMA temporal frame pooling
-├── tests/                         # Full PyTest test suite (99 passing tests)
+├── tests/                         # Full PyTest test suite (108 passing tests)
 ├── LICENSE                        # MIT License
 ├── pyproject.toml                 # Ruff & pytest configuration
 ├── README.md                      # Authoritative single-source-of-truth documentation
@@ -437,7 +536,8 @@ Model weights and code are provided solely for non-commercial academic research,
 1. **ConvNeXt**: Liu, Z., et al. (2022). *A ConvNet for the 2020s*. IEEE/CVF CVPR.
 2. **Steganographic Rich Model (SRM)**: Fridrich, J., & Kodovsky, J. (2012). *Rich models for steganalysis of digital images*. IEEE TIFS.
 3. **Bayar-Stamm Constrained Convolution**: Bayar, B., & Stamm, M. C. (2016). *A deep learning approach to universal image manipulation detection*. IEEE IH&MMSec.
-4. **Grad-CAM**: Selvaraju, R. R., et al. (2017). *Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization*. IEEE/CVF ICCV.
-5. **Temperature Scaling Calibration**: Guo, C., et al. (2017). *On Calibration of Modern Neural Networks*. ICML.
-6. **FaceForensics++**: Rössler, A., et al. (2019). *FaceForensics++: Learning to Detect Manipulated Facial Images*. IEEE/CVF ICCV.
-7. **Celeb-DF**: Li, Y., et al. (2020). *Celeb-DF: A Large-Scale Challenging Dataset for DeepFake Forensics*. IEEE/CVF CVPR.
+4. **Squeeze-and-Excitation Networks**: Hu, J., Shen, L., & Sun, G. (2018). *Squeeze-and-Excitation Networks*. IEEE/CVF CVPR.
+5. **Grad-CAM**: Selvaraju, R. R., et al. (2017). *Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization*. IEEE/CVF ICCV.
+6. **Temperature Scaling Calibration**: Guo, C., et al. (2017). *On Calibration of Modern Neural Networks*. ICML.
+7. **FaceForensics++**: Rössler, A., et al. (2019). *FaceForensics++: Learning to Detect Manipulated Facial Images*. IEEE/CVF ICCV.
+8. **Celeb-DF**: Li, Y., et al. (2020). *Celeb-DF: A Large-Scale Challenging Dataset for DeepFake Forensics*. IEEE/CVF CVPR.

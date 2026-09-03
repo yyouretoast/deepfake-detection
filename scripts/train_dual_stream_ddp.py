@@ -65,6 +65,12 @@ def main() -> None:
         choices=["resse", "legacy"],
         help="Frequency stream architecture: resse (~2.9M ResSE tower) or legacy (90k CNN)",
     )
+    parser.add_argument(
+        "--hardened",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use degradation-hardened augmentations (JPEG, blur, dropout)",
+    )
     args = parser.parse_args()
 
     accelerator = Accelerator(gradient_accumulation_steps=ACCUMULATION_STEPS)
@@ -78,7 +84,7 @@ def main() -> None:
     train_samples = splits["train"]
     val_samples = splits["val"]
 
-    train_transform, eval_transform = get_transforms(img_size=IMG_SIZE)
+    train_transform, eval_transform = get_transforms(img_size=IMG_SIZE, hardened=args.hardened)
     train_ds = FaceCropDataset(train_samples, data_root, is_train=True, transform=train_transform)
     val_ds = FaceCropDataset(val_samples, data_root, is_train=False, transform=eval_transform)
 

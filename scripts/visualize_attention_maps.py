@@ -62,8 +62,11 @@ def generate_4panel_figure(
         f_s = model.spatial_pool(model.spatial_backbone(x_spatial)).flatten(1)
         f_s = model.spatial_fc(f_s)
 
-        f_f = model.freq_conv(freq_maps).flatten(1)
-        f_f = model.freq_fc(f_f)
+        if hasattr(model, "freq_tower"):
+            f_f, _ = model.freq_tower(freq_maps)
+        else:
+            f_f = model.freq_conv(freq_maps).flatten(1)
+            f_f = model.freq_fc(f_f)
 
         concat_feat = torch.cat([f_s, f_f], dim=1)
         gate = model.gate_fc(concat_feat)

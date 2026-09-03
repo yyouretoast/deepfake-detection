@@ -113,10 +113,11 @@ def load_prediction_engine(
 
     if state_dict is not None:
         incompatible_keys = pytorch_model.load_state_dict(state_dict, strict=False)
+        freq_prefix = "freq_tower" if getattr(pytorch_model, "frequency_backbone", "legacy") == "resse" else "freq_conv"
         missing_critical = [
             k
             for k in incompatible_keys.missing_keys
-            if any(prefix in k for prefix in ["spatial_backbone", "freq_conv", "gate_fc", "classifier"])
+            if any(prefix in k for prefix in ["spatial_backbone", freq_prefix, "gate_fc", "classifier"])
         ]
         if missing_critical:
             raise RuntimeError(f"Critical model weights missing from loaded checkpoint: {missing_critical[:5]}")

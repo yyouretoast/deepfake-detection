@@ -80,6 +80,12 @@ def main() -> None:
         choices=["resse", "legacy"],
         help="Frequency stream architecture: resse or legacy",
     )
+    parser.add_argument(
+        "--hardened",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use degradation-hardened augmentations",
+    )
     args = parser.parse_args()
 
     accelerator = Accelerator()
@@ -112,7 +118,7 @@ def main() -> None:
             len(eval_target_samples),
         )
 
-    train_transform, eval_transform = get_transforms(img_size=256)
+    train_transform, eval_transform = get_transforms(img_size=256, hardened=args.hardened)
     train_ds = FaceCropDataset(train_loto_samples, data_root, is_train=True, transform=train_transform)
     val_ds = FaceCropDataset(val_loto_samples, data_root, is_train=False, transform=eval_transform)
     eval_ds = FaceCropDataset(eval_target_samples, data_root, is_train=False, transform=eval_transform)
