@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -149,44 +149,63 @@ def main() -> None:
     model.load_state_dict(clean_state_dict(state), strict=False)
     model.eval()
 
-    results: dict[str, dict[str, dict[str, float]]] = {}
+    results: dict[str, Any] = {}
 
     # Baseline (no degradation)
     logger.info("--- Baseline Evaluation (No Degradation) ---")
-    b_auc, b_f1, n = run_eval(model, test_samples, args.data_root, None, threshold, temperature, device, args.batch_size, args.max_samples)
+    b_auc, b_f1, n = run_eval(
+        model, test_samples, args.data_root, None, threshold, temperature, device, args.batch_size, args.max_samples
+    )
+    clean_entry = {"level": "Clean (no degradation)", "auc": float(b_auc), "f1": float(b_f1), "n_samples": int(n)}
     results["baseline"] = {"clean": {"auc": b_auc, "f1": b_f1, "samples": float(n)}}
     logger.info("Baseline -> AUC: %.4f | F1: %.4f (N=%d)", b_auc, b_f1, n)
 
     # 1. JPEG Compression
     logger.info("--- 1. JPEG Compression Sweep ---")
     results["jpeg_compression"] = {}
+    results["JPEG Compression"] = [dict(clean_entry)]
     for q in [90, 80, 70, 60, 50, 40, 30]:
-        auc, f1, n = run_eval(model, test_samples, args.data_root, jpeg_fn(q), threshold, temperature, device, args.batch_size, args.max_samples)
-        results["jpeg_compression"][f"q_{q}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        auc, f1, n_q = run_eval(
+            model, test_samples, args.data_root, jpeg_fn(q), threshold, temperature, device, args.batch_size, args.max_samples
+        )
+        results["jpeg_compression"][f"q_{q}"] = {"auc": auc, "f1": f1, "samples": float(n_q)}
+        results["JPEG Compression"].append({"level": f"Q={q}", "auc": float(auc), "f1": float(f1), "n_samples": int(n_q)})
         logger.info("  JPEG Q=%2d -> AUC: %.4f | F1: %.4f", q, auc, f1)
 
     # 2. Gaussian Blur
     logger.info("--- 2. Gaussian Blur Sweep ---")
     results["gaussian_blur"] = {}
+    results["Gaussian Blur"] = [dict(clean_entry)]
     for sigma in [0.5, 1.0, 1.5, 2.0, 3.0]:
-        auc, f1, n = run_eval(model, test_samples, args.data_root, blur_fn(sigma), threshold, temperature, device, args.batch_size, args.max_samples)
-        results["gaussian_blur"][f"sigma_{sigma}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        auc, f1, n_s = run_eval(
+            model, test_samples, args.data_root, blur_fn(sigma), threshold, temperature, device, args.batch_size, args.max_samples
+        )
+        results["gaussian_blur"][f"sigma_{sigma}"] = {"auc": auc, "f1": f1, "samples": float(n_s)}
+        results["Gaussian Blur"].append({"level": f"sigma={sigma:.1f}", "auc": float(auc), "f1": float(f1), "n_samples": int(n_s)})
         logger.info("  Blur sigma=%.1f -> AUC: %.4f | F1: %.4f", sigma, auc, f1)
 
     # 3. Gaussian Noise
     logger.info("--- 3. Gaussian Noise Sweep ---")
     results["gaussian_noise"] = {}
+    results["Gaussian Noise"] = [dict(clean_entry)]
     for sigma in [5.0, 10.0, 15.0, 20.0, 30.0]:
-        auc, f1, n = run_eval(model, test_samples, args.data_root, noise_fn(sigma), threshold, temperature, device, args.batch_size, args.max_samples)
-        results["gaussian_noise"][f"sigma_{sigma}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        auc, f1, n_s = run_eval(
+            model, test_samples, args.data_root, noise_fn(sigma), threshold, temperature, device, args.batch_size, args.max_samples
+        )
+        results["gaussian_noise"][f"sigma_{sigma}"] = {"auc": auc, "f1": f1, "samples": float(n_s)}
+        results["Gaussian Noise"].append({"level": f"sigma={sigma:.1f}", "auc": float(auc), "f1": float(f1), "n_samples": int(n_s)})
         logger.info("  Noise sigma=%4.1f -> AUC: %.4f | F1: %.4f", sigma, auc, f1)
 
     # 4. Downscaling
     logger.info("--- 4. Downscale Sweep ---")
     results["downscale"] = {}
+    results["Downscaling"] = [dict(clean_entry)]
     for scale in [0.75, 0.50, 0.33, 0.25]:
-        auc, f1, n = run_eval(model, test_samples, args.data_root, downscale_fn(scale), threshold, temperature, device, args.batch_size, args.max_samples)
-        results["downscale"][f"scale_{scale}"] = {"auc": auc, "f1": f1, "samples": float(n)}
+        auc, f1, n_s = run_eval(
+            model, test_samples, args.data_root, downscale_fn(scale), threshold, temperature, device, args.batch_size, args.max_samples
+        )
+        results["downscale"][f"scale_{scale}"] = {"auc": auc, "f1": f1, "samples": float(n_s)}
+        results["Downscaling"].append({"level": f"{scale:.2f}x", "auc": float(auc), "f1": float(f1), "n_samples": int(n_s)})
         logger.info("  Scale=%.2fx -> AUC: %.4f | F1: %.4f", scale, auc, f1)
 
     with open(args.output_json, "w") as f:

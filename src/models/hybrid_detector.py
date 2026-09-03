@@ -111,6 +111,8 @@ class HybridDeepfakeDetector(nn.Module):
 
     def _switch_to_legacy_frequency_branch(self) -> None:
         """Dynamically switches frequency stream to legacy 90k CNN to load legacy checkpoints."""
+        device = next(self.parameters()).device if list(self.parameters()) else torch.device("cpu")
+        dtype = next(self.parameters()).dtype if list(self.parameters()) else torch.float32
         if hasattr(self, "freq_tower"):
             delattr(self, "freq_tower")
         self.freq_conv = nn.Sequential(
@@ -121,17 +123,19 @@ class HybridDeepfakeDetector(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d(1),
-        )
-        self.freq_fc = nn.Sequential(nn.Linear(128, 512), nn.ReLU())
+        ).to(device=device, dtype=dtype)
+        self.freq_fc = nn.Sequential(nn.Linear(128, 512), nn.ReLU()).to(device=device, dtype=dtype)
         self.frequency_backbone = "legacy"
 
     def _switch_to_resse_frequency_branch(self) -> None:
         """Dynamically switches frequency stream to ResSE-Spectral Tower."""
+        device = next(self.parameters()).device if list(self.parameters()) else torch.device("cpu")
+        dtype = next(self.parameters()).dtype if list(self.parameters()) else torch.float32
         if hasattr(self, "freq_conv"):
             delattr(self, "freq_conv")
         if hasattr(self, "freq_fc"):
             delattr(self, "freq_fc")
-        self.freq_tower = ResSESpectralTower(in_channels=20, embed_dim=512)
+        self.freq_tower = ResSESpectralTower(in_channels=20, embed_dim=512).to(device=device, dtype=dtype)
         self.frequency_backbone = "resse"
 
     def load_state_dict(self, state_dict: dict[str, Any], strict: bool = True, assign: bool = False):

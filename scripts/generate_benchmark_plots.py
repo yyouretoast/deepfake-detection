@@ -142,10 +142,33 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
     sweep_names = ["JPEG Compression", "Gaussian Blur", "Gaussian Noise", "Downscaling"]
     colors = [BLUE, ORANGE, RED, GREEN]
 
+    key_aliases = {
+        "JPEG Compression": ["JPEG Compression", "jpeg_compression", "jpeg"],
+        "Gaussian Blur": ["Gaussian Blur", "gaussian_blur", "blur"],
+        "Gaussian Noise": ["Gaussian Noise", "gaussian_noise", "noise"],
+        "Downscaling": ["Downscaling", "downscale", "downscaling"],
+    }
+
     for ax, sweep_name, color in zip(axes, sweep_names, colors):
-        data = robustness[sweep_name]
-        levels = [d["level"] for d in data]
-        aucs = [d["auc"] for d in data]
+        raw_data = None
+        for alias in key_aliases.get(sweep_name, [sweep_name]):
+            if alias in robustness:
+                raw_data = robustness[alias]
+                break
+        if raw_data is None:
+            continue
+
+        if isinstance(raw_data, list):
+            levels = [d.get("level", str(i)) for i, d in enumerate(raw_data)]
+            aucs = [float(d.get("auc", 0.5)) for d in raw_data]
+        elif isinstance(raw_data, dict):
+            levels = list(raw_data.keys())
+            aucs = [float(v.get("auc", 0.5) if isinstance(v, dict) else v) for v in raw_data.values()]
+        else:
+            continue
+
+        if not aucs:
+            continue
         baseline_auc = aucs[0]
         xs = list(range(len(levels)))
 
