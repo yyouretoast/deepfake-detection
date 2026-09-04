@@ -52,3 +52,20 @@ def test_dynamic_face_cropper_similarity_transform_math() -> None:
     assert aligned_face is not None
     assert aligned_face.shape == (256, 256, 3)
     assert raw_crop.shape == (256, 256, 3)
+
+
+def test_yunet_landmark_order_affine_determinant() -> None:
+    cropper = DynamicFaceCropper(target_size=256, scale_factor=1.50)
+    image = np.ones((400, 400, 3), dtype=np.uint8) * 128
+
+    r_eye = np.array([150.0, 150.0])
+    l_eye = np.array([250.0, 150.0])
+    nose = np.array([200.0, 200.0])
+    r_mouth = np.array([160.0, 260.0])
+    l_mouth = np.array([240.0, 260.0])
+    lms = np.array([r_eye, l_eye, nose, r_mouth, l_mouth], dtype=np.float32)
+
+    box = np.array([100, 100, 300, 300])
+    aligned_face, raw_crop = cropper._crop_single_box(image, box, landmarks=lms, target_size=256)
+    assert aligned_face is not None
+    assert aligned_face.shape == (256, 256, 3)

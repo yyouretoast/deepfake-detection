@@ -42,4 +42,4 @@ class MaskedBCEWithLogits(nn.Module):
         )
         if valid_flags is not None:
             return (unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
-        return unreduced.mean()
+        return unreduced

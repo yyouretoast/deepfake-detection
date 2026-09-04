@@ -150,7 +150,7 @@ class DynamicFaceCropper:
                 nose = face[8:10]
                 r_mouth = face[10:12]
                 l_mouth = face[12:14]
-                lms = np.array([l_eye, r_eye, nose, l_mouth, r_mouth], dtype=np.float32)
+                lms = np.array([r_eye, l_eye, nose, r_mouth, l_mouth], dtype=np.float32)
                 landmarks_list.append(lms)
 
             return np.array(boxes), np.array(landmarks_list)

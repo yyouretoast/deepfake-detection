@@ -31,14 +31,38 @@ EXPECTED_WEIGHTS_SHA256: Optional[str] = os.getenv(
 )
 
 
+class PredictionEngine(tuple):
+    """5-tuple holding prediction components with attribute access for Bayesian thresholds."""
+
+    def __new__(
+        cls,
+        model: torch.nn.Module,
+        cropper: DynamicFaceCropper,
+        has_weights: bool,
+        threshold: float,
+        temperature: float,
+        tau_real: float = 0.40,
+        tau_fake: float = 0.60,
+    ) -> "PredictionEngine":
+        instance = super().__new__(cls, (model, cropper, has_weights, threshold, temperature))
+        instance.model = model
+        instance.cropper = cropper
+        instance.has_weights = has_weights
+        instance.threshold = threshold
+        instance.temperature = temperature
+        instance.tau_real = tau_real
+        instance.tau_fake = tau_fake
+        return instance
+
+
 def load_prediction_engine(
     weights_path: Optional[str] = None,
-) -> tuple[torch.nn.Module, DynamicFaceCropper, bool, float, float]:
+) -> PredictionEngine:
     """
     Load prediction engine model weights, sidecar metadata, and face cropper.
 
     Returns:
-        Tuple containing (pytorch_model, cropper, has_pytorch_weights, classification_threshold, temperature).
+        PredictionEngine 5-tuple: (pytorch_model, cropper, has_pytorch_weights, classification_threshold, temperature).
     """
     if weights_path is None:
         candidate_paths = [
@@ -79,6 +103,8 @@ def load_prediction_engine(
 
     opt_threshold = DEFAULT_THRESHOLD
     temperature = 1.0
+    tau_real = 0.40
+    tau_fake = 0.60
 
     sidecar_paths = ["models/dual_stream_detector.json", "dual_stream_detector.json"]
     for sp in sidecar_paths:
@@ -88,6 +114,8 @@ def load_prediction_engine(
                     meta = json.load(f)
                     opt_threshold = float(meta.get("optimal_threshold", DEFAULT_THRESHOLD))
                     temperature = float(meta.get("temperature", 1.0))
+                    tau_real = float(meta.get("tau_real", 0.40))
+                    tau_fake = float(meta.get("tau_fake", 0.60))
                     break
             except (json.JSONDecodeError, OSError, ValueError) as e:
                 logger.warning("Could not load sidecar metadata: %s", e)
@@ -100,6 +128,8 @@ def load_prediction_engine(
             state_dict = checkpoint["model_state_dict"]
             opt_threshold = float(checkpoint.get("optimal_threshold", opt_threshold))
             temperature = float(checkpoint.get("temperature", temperature))
+            tau_real = float(checkpoint.get("tau_real", tau_real))
+            tau_fake = float(checkpoint.get("tau_fake", tau_fake))
         elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             state_dict = checkpoint["state_dict"]
         else:
@@ -128,7 +158,9 @@ def load_prediction_engine(
     scale_factor: float = CONFIG.get("preprocessing", {}).get("scale_factor", 1.50)
     cropper = DynamicFaceCropper(scale_factor=scale_factor, target_size=IMG_SIZE, device=DEVICE)
 
-    return pytorch_model, cropper, has_weights, opt_threshold, temperature
+    return PredictionEngine(
+        pytorch_model, cropper, has_weights, opt_threshold, temperature, tau_real, tau_fake
+    )
 
 
 def load_temporal_engine(
@@ -171,6 +203,8 @@ def process_video_frames(
     aggregation_method: str = "soft_max",
     num_frames: Optional[int] = None,
     temporal_model: Optional[torch.nn.Module] = None,
+    tau_real: Optional[float] = None,
+    tau_fake: Optional[float] = None,
 ) -> Optional[dict[str, Any]]:
     """
     Video inference engine with OpenCV keyframe seeking, AMP autocast, and temporal aggregation.
@@ -182,8 +216,11 @@ def process_video_frames(
     if not cap.isOpened():
         return None
 
+    engine_tau_real = 0.40
+    engine_tau_fake = 0.60
     if pytorch_model is None or cropper is None or classification_threshold is None or temperature is None:
-        p_model, c_crop, h_weights, threshold, temp = load_prediction_engine()
+        engine = load_prediction_engine()
+        p_model, c_crop, h_weights, threshold, temp = engine
         pytorch_model = pytorch_model or p_model
         cropper = cropper or c_crop
         classification_threshold = (
@@ -192,6 +229,11 @@ def process_video_frames(
         temperature = temperature if temperature is not None else temp
         if has_pytorch_weights is None:
             has_pytorch_weights = h_weights
+        engine_tau_real = getattr(engine, "tau_real", 0.40)
+        engine_tau_fake = getattr(engine, "tau_fake", 0.60)
+
+    effective_tau_real = tau_real if tau_real is not None else engine_tau_real
+    effective_tau_fake = tau_fake if tau_fake is not None else engine_tau_fake
 
     if temporal_model is None:
         temporal_model = load_temporal_engine()
@@ -302,7 +344,9 @@ def process_video_frames(
         )
         raw_video_prob = float(_agg["video_score"])
 
-    three_zone = classify_three_zone(raw_video_prob)
+    three_zone = classify_three_zone(
+        raw_video_prob, tau_real=effective_tau_real, tau_fake=effective_tau_fake
+    )
 
     zipped_data = list(zip(all_faces, all_probs))
     zipped_data.sort(key=lambda x: x[1], reverse=True)
@@ -321,5 +365,7 @@ def process_video_frames(
         "timestamps": detected_timestamps,
         "three_zone": three_zone,
         "temporal_attention": frame_attention,
+        "tau_real": effective_tau_real,
+        "tau_fake": effective_tau_fake,
     }
 

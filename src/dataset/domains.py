@@ -29,13 +29,21 @@ class DomainInfo(NamedTuple):
 class DomainClassifier:
     """Canonical domain classifier and holdout matcher for FF++ and Celeb-DF."""
 
-    PAIR_REGEX = re.compile(r"(?:^|/)(\d{3})_\d{3}(?:/|$)")
-    CELEB_INDICATORS = ("id", "__", "celeb")
+    PAIR_REGEX = re.compile(r"(?:^|[\\/])(\d{3})_\d{3}(?:[\\/\.]|$)")
+    CELEB_REGEX = re.compile(r"(?:celeb|(?:^|[\\/_\-])id\d+|__)", re.IGNORECASE)
+
+    # Boundary-aware generator method regexes matching official benchmark folder names
+    DEEPFAKES_METHOD_REGEX = re.compile(r"(?:^|[\\/])(?:manipulated_sequences[\\/])?deepfakes(?:[\\/]|$)", re.IGNORECASE)
+    FACE2FACE_METHOD_REGEX = re.compile(r"(?:^|[\\/])(?:manipulated_sequences[\\/])?face2face(?:[\\/]|$)", re.IGNORECASE)
+    FACESWAP_METHOD_REGEX = re.compile(r"(?:^|[\\/])(?:manipulated_sequences[\\/])?faceswap(?:[\\/]|$)", re.IGNORECASE)
+    NEURALTEXTURES_METHOD_REGEX = re.compile(r"(?:^|[\\/])(?:manipulated_sequences[\\/])?neuraltextures(?:[\\/]|$)", re.IGNORECASE)
 
     @classmethod
     def extract_pair_number(cls, path: str) -> Optional[int]:
         """Extract the 3-digit source actor pair number from a sample path if present."""
         norm_path = path.replace("\\", "/").lower()
+        if norm_path.startswith("./"):
+            norm_path = norm_path[2:]
         match = cls.PAIR_REGEX.search(norm_path)
         if match:
             return int(match.group(1))
@@ -45,10 +53,24 @@ class DomainClassifier:
     def classify(cls, path: str) -> DomainInfo:
         """Classify a relative or absolute sample path into its manipulation domain and metadata."""
         norm_path = path.replace("\\", "/").lower()
+        if norm_path.startswith("./"):
+            norm_path = norm_path[2:]
 
-        is_real_folder = "/real/" in norm_path or norm_path.startswith("real/")
-        is_fake_folder = "/fake/" in norm_path or norm_path.startswith("fake/")
-        if is_real_folder and not is_fake_folder:
+        # Tier 1: Authentic / Real Faces
+        is_explicit_real = (
+            "/real/" in norm_path
+            or norm_path.startswith("real/")
+            or "original_sequences" in norm_path
+            or "celeb-real" in norm_path
+            or "youtube-real" in norm_path
+        )
+        is_explicit_fake = (
+            "/fake/" in norm_path
+            or norm_path.startswith("fake/")
+            or "manipulated_sequences" in norm_path
+            or "celeb-synthesis" in norm_path
+        )
+        if is_explicit_real and not is_explicit_fake:
             return DomainInfo(
                 domain=ManipulationDomain.REAL,
                 display_name="Original Real Faces",
@@ -56,7 +78,8 @@ class DomainClassifier:
                 pair_number=None,
             )
 
-        if any(ind in norm_path for ind in cls.CELEB_INDICATORS):
+        # Tier 2: Celeb-DF v2 Synthesis
+        if cls.CELEB_REGEX.search(norm_path):
             return DomainInfo(
                 domain=ManipulationDomain.CELEB_DF,
                 display_name="Celeb-DF v2 Synthesis",
@@ -65,6 +88,38 @@ class DomainClassifier:
             )
 
         pair_num = cls.extract_pair_number(norm_path)
+
+        # Tier 3: Explicit FF++ Method Directories (Official FF++ Structure)
+        if cls.FACE2FACE_METHOD_REGEX.search(norm_path) or "face2face" in norm_path:
+            return DomainInfo(
+                domain=ManipulationDomain.FACE2FACE,
+                display_name="FF++ Face2Face",
+                is_fake=True,
+                pair_number=pair_num,
+            )
+        if cls.FACESWAP_METHOD_REGEX.search(norm_path) or "faceswap" in norm_path:
+            return DomainInfo(
+                domain=ManipulationDomain.FACESWAP,
+                display_name="FF++ FaceSwap",
+                is_fake=True,
+                pair_number=pair_num,
+            )
+        if cls.NEURALTEXTURES_METHOD_REGEX.search(norm_path) or "neuraltextures" in norm_path:
+            return DomainInfo(
+                domain=ManipulationDomain.NEURALTEXTURES,
+                display_name="FF++ NeuralTextures",
+                is_fake=True,
+                pair_number=pair_num,
+            )
+        if cls.DEEPFAKES_METHOD_REGEX.search(norm_path):
+            return DomainInfo(
+                domain=ManipulationDomain.DEEPFAKES,
+                display_name="FF++ Deepfakes",
+                is_fake=True,
+                pair_number=pair_num,
+            )
+
+        # Tier 4: Pair-Range Fallback (For Flattened Extracted Crops Without Method Names)
         if pair_num is not None:
             if 0 <= pair_num <= 99:
                 return DomainInfo(
@@ -101,15 +156,7 @@ class DomainClassifier:
                 pair_number=pair_num,
             )
 
-        if "deepfake" in norm_path or "df" in norm_path:
-            return DomainInfo(ManipulationDomain.DEEPFAKES, "FF++ Deepfakes", True, None)
-        if "face2face" in norm_path or "f2f" in norm_path:
-            return DomainInfo(ManipulationDomain.FACE2FACE, "FF++ Face2Face", True, None)
-        if "faceswap" in norm_path or "fs" in norm_path:
-            return DomainInfo(ManipulationDomain.FACESWAP, "FF++ FaceSwap", True, None)
-        if "neuraltextures" in norm_path or "nt" in norm_path:
-            return DomainInfo(ManipulationDomain.NEURALTEXTURES, "FF++ NeuralTextures", True, None)
-
+        # Tier 5: Generic Fallback
         return DomainInfo(ManipulationDomain.UNKNOWN, "FF++ Deepfakes / Mixed", True, None)
 
     @classmethod

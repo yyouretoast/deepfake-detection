@@ -43,6 +43,17 @@ class DualStreamTrainer:
         self.max_grad_norm = max_grad_norm
         self.aux_loss_weight = aux_loss_weight
 
+    def _compute_loss(
+        self, outputs: torch.Tensor, labels: torch.Tensor, valid_flags: torch.Tensor
+    ) -> torch.Tensor:
+        try:
+            return self.criterion(outputs, labels, valid_flags=valid_flags)
+        except TypeError:
+            loss_unreduced = self.criterion(outputs, labels)
+            if loss_unreduced.ndim > 0:
+                return (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+            return loss_unreduced
+
     def train_one_epoch(self, epoch: int, total_epochs: int) -> dict[str, float]:
         """Runs a single training epoch with gradient accumulation and EMA updates."""
         if hasattr(self.train_loader, "sampler") and hasattr(self.train_loader.sampler, "set_epoch"):
@@ -71,15 +82,12 @@ class DualStreamTrainer:
 
                 if has_aux:
                     outputs, aux_outputs = self.model(images, return_aux=True)
-                    loss_main_unreduced = self.criterion(outputs, labels)
-                    loss_main = (loss_main_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
-                    loss_aux_unreduced = self.criterion(aux_outputs, labels)
-                    loss_aux = (loss_aux_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+                    loss_main = self._compute_loss(outputs, labels, valid_flags)
+                    loss_aux = self._compute_loss(aux_outputs, labels, valid_flags)
                     loss = loss_main + self.aux_loss_weight * loss_aux
                 else:
                     outputs = self.model(images)
-                    loss_unreduced = self.criterion(outputs, labels)
-                    loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+                    loss = self._compute_loss(outputs, labels, valid_flags)
 
                 self.accelerator.backward(loss)
 
@@ -120,8 +128,7 @@ class DualStreamTrainer:
                 val_failures_tensor += (valid_flags == 0.0).sum()
 
                 outputs = self.model(images)
-                loss_unreduced = self.criterion(outputs, labels)
-                loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+                loss = self._compute_loss(outputs, labels, valid_flags)
                 val_loss_tensor += loss.detach()
 
                 probs = torch.sigmoid(outputs)

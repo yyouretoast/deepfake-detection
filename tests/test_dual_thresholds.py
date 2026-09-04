@@ -42,3 +42,20 @@ class TestDualThresholds:
         targets = np.array([0] * 50 + [1])
         tau_real, tau_fake = compute_dual_thresholds(probs, targets, min_precision=0.98, min_samples=5)
         assert tau_fake in (0.5, 0.60)
+
+    def test_prediction_engine_backward_compatibility(self) -> None:
+        from src.services.video_engine import PredictionEngine
+
+        engine = PredictionEngine("model", "cropper", True, 0.45, 1.2, tau_real=0.35, tau_fake=0.75)
+        m, c, w, t, temp = engine
+        assert m == "model"
+        assert c == "cropper"
+        assert w is True
+        assert t == 0.45
+        assert temp == 1.2
+        assert len(engine) == 5
+
+        assert engine.tau_real == 0.35
+        assert engine.tau_fake == 0.75
+        assert engine.threshold == 0.45
+        assert engine.temperature == 1.2

@@ -123,6 +123,15 @@ def render_ui() -> None:
             backdrop-filter: blur(8px);
             box-shadow: 0 8px 24px rgba(34, 197, 94, 0.2);
         }
+        .result-card-ambiguous {
+            text-align: center;
+            padding: 24px;
+            border-radius: 16px;
+            background: rgba(234, 179, 8, 0.12);
+            border: 2px solid #eab308;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 24px rgba(234, 179, 8, 0.2);
+        }
         .sidebar-card {
             background: rgba(15, 23, 42, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -165,9 +174,10 @@ def render_ui() -> None:
     )
 
     try:
-        pytorch_model, cropper, has_pytorch_weights, default_threshold, default_temperature = (
-            _cached_model_loader()
-        )
+        engine = _cached_model_loader()
+        pytorch_model, cropper, has_pytorch_weights, default_threshold, default_temperature = engine
+        tau_real = getattr(engine, "tau_real", 0.40)
+        tau_fake = getattr(engine, "tau_fake", 0.60)
     except (RuntimeError, ValueError, OSError, TypeError) as e:
         st.error(f"Model initialization error: {e}")
         st.stop()
@@ -313,6 +323,8 @@ def render_ui() -> None:
                     has_pytorch_weights=has_pytorch_weights,
                     aggregation_method=aggregation_select,
                     num_frames=n_frames_slider,
+                    tau_real=tau_real,
+                    tau_fake=tau_fake,
                 )
                 prog_bar.progress(100)
                 prog_status.empty()
@@ -363,14 +375,27 @@ def render_ui() -> None:
 
             with col_results:
                 st.markdown("#### Detection Result")
+                three_zone = res.get("three_zone", {})
+                is_ambiguous = three_zone.get("is_inconclusive", False)
                 is_fake = final_label == "Fake"
-                card_class = "result-card-fake" if is_fake else "result-card-real"
-                color = "#ef4444" if is_fake else "#22c55e"
+
+                if is_ambiguous:
+                    card_class = "result-card-ambiguous"
+                    color = "#eab308"
+                    card_title = "INCONCLUSIVE / AMBIGUITY ZONE"
+                elif is_fake:
+                    card_class = "result-card-fake"
+                    color = "#ef4444"
+                    card_title = f"DETECTED: {final_label.upper()}"
+                else:
+                    card_class = "result-card-real"
+                    color = "#22c55e"
+                    card_title = f"DETECTED: {final_label.upper()}"
 
                 st.markdown(
                     f"""
                     <div class="{card_class}">
-                        <h2 style="color: {color}; margin: 0;">DETECTED: {final_label.upper()}</h2>
+                        <h2 style="color: {color}; margin: 0;">{card_title}</h2>
                         <h4 style="color: {color}; margin-top: 4px;">Confidence: {final_conf:.1f}%</h4>
                         <p style="color: #94a3b8; font-size: 12px; margin: 4px 0 0 0;">
                             Probability Score: {raw_video_prob:.4f} (Threshold: {threshold_slider:.2f})
@@ -379,6 +404,18 @@ def render_ui() -> None:
                 """,
                     unsafe_allow_html=True,
                 )
+
+                if is_ambiguous:
+                    st.warning(
+                        f"⚠️ **Forensic Ambiguity Warning**: Anomaly score ({raw_video_prob:.4f}) falls between "
+                        f"τ_real ({tau_real:.2f}) and τ_fake ({tau_fake:.2f}). Expert review recommended."
+                    )
+                else:
+                    zone_label = three_zone.get("verdict", final_label)
+                    st.caption(
+                        f"🛡️ Bayesian High-Certainty Band: **{zone_label}** "
+                        f"(τ_real={tau_real:.2f}, τ_fake={tau_fake:.2f})"
+                    )
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 col_m1, col_m2, col_m3 = st.columns(3)
@@ -395,6 +432,12 @@ def render_ui() -> None:
                     "aggregated_anomaly_score": round(float(raw_video_prob), 6),
                     "operating_decision_threshold": float(threshold_slider),
                     "optimal_temperature_T_star": float(default_temperature),
+                    "bayesian_thresholds": {
+                        "tau_real": float(tau_real),
+                        "tau_fake": float(tau_fake),
+                    },
+                    "three_zone_verdict": three_zone.get("verdict", final_label),
+                    "is_inconclusive": bool(is_ambiguous),
                     "analyzed_frame_count": len(all_probs),
                     "real_frame_count": real_faces_count,
                     "fake_frame_count": fake_faces_count,

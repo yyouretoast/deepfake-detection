@@ -90,3 +90,19 @@ def test_loss_masking_all_corrupt_batch(
     for p in model.parameters():
         if p.requires_grad and p.grad is not None:
             assert torch.isfinite(p.grad).all(), "NaN/Inf gradient detected in all-corrupt batch backward pass"
+
+
+def test_masked_bce_unreduced_when_valid_flags_none() -> None:
+    from src.training.loss import MaskedBCEWithLogits
+
+    crit = MaskedBCEWithLogits()
+    logits = torch.tensor([[2.0], [-1.0], [5.0]])
+    targets = torch.tensor([[1.0], [0.0], [1.0]])
+
+    unreduced = crit(logits, targets)
+    assert unreduced.shape == (3, 1), f"Expected shape (3, 1), got {unreduced.shape}"
+
+    valid_flags = torch.tensor([[1.0], [1.0], [0.0]])
+    masked_loss = (unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+    expected_loss = F.binary_cross_entropy_with_logits(logits[:2], targets[:2], reduction="mean")
+    assert torch.allclose(masked_loss, expected_loss), "Corrupt sample leaked into masked loss"
