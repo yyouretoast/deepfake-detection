@@ -21,6 +21,7 @@ import torch
 
 from src.config import load_config
 from src.dataset.loader import dedupe_split
+from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict
 
@@ -136,7 +137,7 @@ def main() -> None:
         description="Generate 4-panel visual interpretability diagnostic figures."
     )
     parser.add_argument("--checkpoint", default="dual_stream_calibrated.pth", help="Path to trained model weights checkpoint")
-    parser.add_argument("--data_root", default="data/cropped", help="Dataset root containing splits.json")
+    parser.add_argument("--data_root", default=None, help="Dataset root containing splits.json")
     parser.add_argument("--output_dir", default="figures/attention_maps", help="Output directory for rendered figures")
     parser.add_argument("--n_samples", type=int, default=6, help="Number of sample diagnostic figures to generate")
     parser.add_argument("--image_path", type=str, default=None, help="Optional single image path for one-off visualization")
@@ -145,6 +146,8 @@ def main() -> None:
     os.makedirs(args.output_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Device: %s", device)
+
+    data_root = find_dataset_root(args.data_root)
 
     config = load_config()
     backbone = config.get("model", {}).get("backbone", "convnext_small")
@@ -183,7 +186,7 @@ def main() -> None:
         grad_cam.remove_hooks()
         return
 
-    splits_path = os.path.join(args.data_root, "splits.json")
+    splits_path = resolve_splits_path(data_root=data_root)
     samples = []
     if os.path.exists(splits_path):
         with open(splits_path) as f:
@@ -213,7 +216,7 @@ def main() -> None:
             )
     else:
         for idx, (rel_path, label_str) in enumerate(samples):
-            full_path = os.path.join(args.data_root, rel_path)
+            full_path = os.path.join(data_root, rel_path)
             if not os.path.exists(full_path):
                 continue
             bgr = cv2.imread(full_path, cv2.IMREAD_COLOR)

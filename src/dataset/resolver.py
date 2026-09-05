@@ -11,6 +11,8 @@ class DatasetResolver:
     """Resolves dataset root directories, split manifests, and checkpoint paths."""
 
     DEFAULT_DATASET_CANDIDATES = (
+        "./deepfake_crops_512",
+        "/kaggle/working/deepfake_crops_512",
         "./data/cropped",
         "./data",
         "/kaggle/working/local_crops",

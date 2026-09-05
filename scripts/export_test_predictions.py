@@ -78,6 +78,7 @@ def main() -> None:
         "n_samples": int(len(targets_clean)),
     }
 
+    os.makedirs(os.path.dirname(os.path.abspath(args.output_json)), exist_ok=True)
     with open(args.output_json, "w") as f:
         json.dump(output_data, f, indent=2)
     logger.info("Exported %d predictions to %s", len(targets_clean), args.output_json)

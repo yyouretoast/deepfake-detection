@@ -17,7 +17,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from src.dataset.loader import SequenceVideoDataset, get_transforms, group_video_sequences
-from src.dataset.resolver import DatasetResolver, find_weights_path
+from src.dataset.resolver import DatasetResolver, find_weights_path, resolve_splits_path
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.temporal_head import BiGRUTemporalDetector
 from src.utils.checkpoint import clean_state_dict
@@ -53,6 +53,7 @@ def extract_clip_embeddings(
 
 def main() -> None:
     args = parse_args()
+    os.makedirs(os.path.dirname(os.path.abspath(args.save_path)), exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     data_root = DatasetResolver.find_dataset_root(args.data_root)
@@ -68,11 +69,9 @@ def main() -> None:
     for p in backbone.parameters():
         p.requires_grad = False
 
-    manifest_path = os.path.join(data_root, "splits.json")
-    if not os.path.exists(manifest_path):
-        raise FileNotFoundError(f"Splits manifest not found at {manifest_path}")
-
-    with open(manifest_path, "r") as f:
+    splits_path = resolve_splits_path(data_root=data_root)
+    logger.info("Loading sequence splits from: %s", splits_path)
+    with open(splits_path, "r") as f:
         manifest = json.load(f)
 
     train_samples = [(os.path.join(data_root, p), lbl) for p, lbl in manifest["train"]]
