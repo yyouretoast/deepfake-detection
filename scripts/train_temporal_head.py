@@ -125,8 +125,8 @@ def main() -> None:
                 with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
                     logits, _ = temporal_model(embeddings)
                     probs = torch.sigmoid(logits)
-                val_preds.extend(probs.cpu().squeeze(-1).tolist())
-                val_targets.extend(labels.cpu().squeeze(-1).tolist())
+                val_preds.extend(probs.detach().cpu().reshape(-1).tolist())
+                val_targets.extend(labels.detach().cpu().reshape(-1).tolist())
 
         y_true = np.array(val_targets)
         y_score = np.array(val_preds)

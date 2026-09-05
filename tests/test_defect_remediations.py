@@ -164,3 +164,28 @@ def test_find_dataset_root_filters_empty_code_repo() -> None:
 
         root = find_dataset_root(custom_dir=crops_dir)
         assert root == crops_dir
+
+
+def test_evaluator_single_sample_batch_no_scalar_collapse() -> None:
+    """Verifies that ModelEvaluator.predict_loader handles single-sample batches without scalar collapse."""
+    from torch.utils.data import DataLoader, TensorDataset
+    from src.evaluation.evaluator import ModelEvaluator
+
+    class DummyModel(nn.Module):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return torch.zeros(x.size(0), 1)
+
+    evaluator = ModelEvaluator(DummyModel(), device=torch.device("cpu"), use_tta=False)
+
+    images = torch.zeros(1, 3, 256, 256)
+    labels = torch.tensor([1.0])
+    flags = torch.tensor([1.0])
+    ds = TensorDataset(images, labels, flags)
+    loader = DataLoader(ds, batch_size=1)
+
+    logits, targets, valid = evaluator.predict_loader(loader)
+    assert len(logits) == 1
+    assert len(targets) == 1
+    assert len(valid) == 1
+    assert targets[0] == 1.0
+

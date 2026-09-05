@@ -50,9 +50,9 @@ class ModelEvaluator:
                     logits_flipped = self.model(images_flipped)
                     logits = (logits + logits_flipped) * 0.5
 
-            all_logits.extend(logits.cpu().squeeze(-1).tolist())
-            all_targets.extend(labels.cpu().squeeze(-1).tolist())
-            all_valid.extend(valid_flags.cpu().squeeze(-1).tolist())
+            all_logits.extend(logits.detach().cpu().reshape(-1).tolist())
+            all_targets.extend(labels.detach().cpu().reshape(-1).tolist())
+            all_valid.extend(valid_flags.detach().cpu().reshape(-1).tolist())
 
         return (
             np.array(all_logits, dtype=np.float32).flatten(),
