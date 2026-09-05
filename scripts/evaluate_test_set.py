@@ -7,7 +7,14 @@ import sys
 from typing import Optional
 
 import numpy as np
-from sklearn.metrics import classification_report, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import (
+    balanced_accuracy_score,
+    classification_report,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 import torch
 from torch.utils.data import DataLoader
 
@@ -82,14 +89,15 @@ def evaluate(
 
     thresholds = np.linspace(0.1, 0.9, 81)
     best_thresh = 0.5
-    best_f1 = 0.0
+    best_bal_acc = 0.0
     for t in thresholds:
         preds = (val_probs_cal >= t).astype(int)
-        score = f1_score(val_targets, preds, average="macro", zero_division=0)
-        if score > best_f1:
-            best_f1 = score
+        score = balanced_accuracy_score(val_targets, preds)
+        if score > best_bal_acc:
+            best_bal_acc = score
             best_thresh = t
-    print(f"Optimal Decision Threshold tau* = {best_thresh:.4f} (Val Macro F1 = {best_f1:.4f})")
+    youden_j = 2.0 * best_bal_acc - 1.0
+    print(f"Optimal Decision Threshold tau* = {best_thresh:.4f} (Val Balanced Acc = {best_bal_acc:.4f}, Youden's J = {youden_j:.4f})")
 
     print("\n--- Running Held-out Test Split Inference ---")
     test_logits, test_targets, test_valid = evaluator.predict_loader(test_loader)
@@ -116,11 +124,13 @@ def evaluate(
     print(f"  Test ECE (Calibrated):  {test_ece_cal:.4f}")
     print("-------------------------------------------------------")
     print("  Classification Metrics at Default Threshold (0.50):")
+    print(f"    Balanced Acc: {balanced_accuracy_score(test_targets, test_preds_default):.4f}")
     print(f"    Macro F1:   {f1_score(test_targets, test_preds_default, average='macro', zero_division=0):.4f}")
     print(f"    Fake F1:    {f1_score(test_targets, test_preds_default, zero_division=0):.4f}")
     print(f"    Precision:  {precision_score(test_targets, test_preds_default, zero_division=0):.4f}")
     print(f"    Recall:     {recall_score(test_targets, test_preds_default, zero_division=0):.4f}")
     print(f"  Classification Metrics at Optimal Threshold ({best_thresh:.2f}):")
+    print(f"    Balanced Acc: {balanced_accuracy_score(test_targets, test_preds_opt):.4f}")
     print(f"    Macro F1:   {f1_score(test_targets, test_preds_opt, average='macro', zero_division=0):.4f}")
     print(f"    Fake F1:    {f1_score(test_targets, test_preds_opt, zero_division=0):.4f}")
     print(f"    Precision:  {precision_score(test_targets, test_preds_opt, zero_division=0):.4f}")
