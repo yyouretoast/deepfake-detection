@@ -53,23 +53,29 @@ def run_subdomain_evaluation(data_dir: Optional[str] = None, weights_path: Optio
 
     evaluator = ModelEvaluator(model, device=device)
 
-    # Calibration parameters from val split
-    val_loader = DataLoader(FaceCropDataset(val_samples, data_root, is_train=False), batch_size=32, shuffle=False)
-    val_logits, val_targets, val_valid = evaluator.predict_loader(val_loader)
-    val_mask = val_valid > 0.0
-    val_logits, val_targets = val_logits[val_mask], val_targets[val_mask]
+    # Calibration parameters: extract from checkpoint if calibrated, or fit on val split
+    if "optimal_threshold" in checkpoint and "temperature" in checkpoint:
+        best_thresh = float(checkpoint["optimal_threshold"])
+        temp = float(checkpoint["temperature"])
+        print(f"Using calibrated parameters from checkpoint: tau* = {best_thresh:.4f}, T* = {temp:.4f}")
+    else:
+        val_loader = DataLoader(FaceCropDataset(val_samples, data_root, is_train=False), batch_size=32, shuffle=False)
+        val_logits, val_targets, val_valid = evaluator.predict_loader(val_loader)
+        val_mask = val_valid > 0.0
+        val_logits, val_targets = val_logits[val_mask], val_targets[val_mask]
 
-    temp = fit_temperature_log(val_logits, val_targets) if len(np.unique(val_targets)) > 1 else 1.0
-    val_probs = 1.0 / (1.0 + np.exp(-(val_logits / temp)))
+        temp = fit_temperature_log(val_logits, val_targets) if len(np.unique(val_targets)) > 1 else 1.0
+        val_probs = 1.0 / (1.0 + np.exp(-(val_logits / temp)))
 
-    thresholds = np.linspace(0.1, 0.9, 81)
-    best_thresh = 0.5
-    best_f1 = 0.0
-    for t in thresholds:
-        f1 = f1_score(val_targets, (val_probs >= t).astype(int), zero_division=0)
-        if f1 > best_f1:
-            best_f1 = f1
-            best_thresh = t
+        thresholds = np.linspace(0.1, 0.9, 81)
+        best_thresh = 0.5
+        best_f1 = 0.0
+        for t in thresholds:
+            f1 = f1_score(val_targets, (val_probs >= t).astype(int), average="macro", zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_thresh = t
+        print(f"Fitted calibration on val split: tau* = {best_thresh:.4f} (Macro F1 = {best_f1:.4f}), T* = {temp:.4f}")
 
     # Group test samples by domain using canonical DomainClassifier
     domain_buckets: dict[ManipulationDomain, list] = {d: [] for d in ManipulationDomain}
