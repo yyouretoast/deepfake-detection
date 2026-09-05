@@ -85,11 +85,11 @@ def evaluate(
     best_f1 = 0.0
     for t in thresholds:
         preds = (val_probs_cal >= t).astype(int)
-        score = f1_score(val_targets, preds, zero_division=0)
+        score = f1_score(val_targets, preds, average="macro", zero_division=0)
         if score > best_f1:
             best_f1 = score
             best_thresh = t
-    print(f"Optimal Decision Threshold tau* = {best_thresh:.4f} (Val F1 = {best_f1:.4f})")
+    print(f"Optimal Decision Threshold tau* = {best_thresh:.4f} (Val Macro F1 = {best_f1:.4f})")
 
     print("\n--- Running Held-out Test Split Inference ---")
     test_logits, test_targets, test_valid = evaluator.predict_loader(test_loader)
@@ -116,16 +116,33 @@ def evaluate(
     print(f"  Test ECE (Calibrated):  {test_ece_cal:.4f}")
     print("-------------------------------------------------------")
     print("  Classification Metrics at Default Threshold (0.50):")
-    print(f"    F1 Score:   {f1_score(test_targets, test_preds_default, zero_division=0):.4f}")
+    print(f"    Macro F1:   {f1_score(test_targets, test_preds_default, average='macro', zero_division=0):.4f}")
+    print(f"    Fake F1:    {f1_score(test_targets, test_preds_default, zero_division=0):.4f}")
     print(f"    Precision:  {precision_score(test_targets, test_preds_default, zero_division=0):.4f}")
     print(f"    Recall:     {recall_score(test_targets, test_preds_default, zero_division=0):.4f}")
     print(f"  Classification Metrics at Optimal Threshold ({best_thresh:.2f}):")
-    print(f"    F1 Score:   {f1_score(test_targets, test_preds_opt, zero_division=0):.4f}")
+    print(f"    Macro F1:   {f1_score(test_targets, test_preds_opt, average='macro', zero_division=0):.4f}")
+    print(f"    Fake F1:    {f1_score(test_targets, test_preds_opt, zero_division=0):.4f}")
     print(f"    Precision:  {precision_score(test_targets, test_preds_opt, zero_division=0):.4f}")
     print(f"    Recall:     {recall_score(test_targets, test_preds_opt, zero_division=0):.4f}")
     print("=======================================================\n")
-    print("Detailed Classification Report (Optimal Threshold):")
+    print("Detailed Classification Report (Full Test Set, Optimal Threshold):")
     print(classification_report(test_targets, test_preds_opt, target_names=["Real", "Fake"], digits=4))
+
+    real_indices = np.where(test_targets == 0)[0]
+    fake_indices = np.where(test_targets == 1)[0]
+    n_balanced = min(len(real_indices), len(fake_indices))
+    if n_balanced > 0 and len(real_indices) != len(fake_indices):
+        rng = np.random.default_rng(42)
+        sampled_fake_idx = rng.choice(fake_indices, size=n_balanced, replace=False)
+        balanced_idx = np.concatenate([real_indices[:n_balanced], sampled_fake_idx])
+        b_targets = test_targets[balanced_idx]
+        b_preds = test_preds_opt[balanced_idx]
+        b_probs = test_probs_cal[balanced_idx]
+        b_auc = roc_auc_score(b_targets, b_probs)
+        print(f"Balanced 1:1 Benchmark Subset ({n_balanced:,} Real vs {n_balanced:,} Fake):")
+        print(f"    Balanced ROC AUC: {b_auc:.4f}")
+        print(classification_report(b_targets, b_preds, target_names=["Real", "Fake"], digits=4))
 
     tau_real, tau_fake = compute_dual_thresholds(val_probs_cal, val_targets, min_precision=0.98)
     print("\nDual Bayesian High-Precision Thresholds (>=98% Precision):")
