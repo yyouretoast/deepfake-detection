@@ -56,7 +56,9 @@ class DualStreamTrainer:
 
     def train_one_epoch(self, epoch: int, total_epochs: int) -> dict[str, float]:
         """Runs a single training epoch with gradient accumulation and EMA updates."""
-        if hasattr(self.train_loader, "sampler") and hasattr(self.train_loader.sampler, "set_epoch"):
+        if hasattr(self.train_loader, "set_epoch"):
+            self.train_loader.set_epoch(epoch)
+        elif hasattr(self.train_loader, "sampler") and hasattr(self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(epoch)
 
         self.model.train()

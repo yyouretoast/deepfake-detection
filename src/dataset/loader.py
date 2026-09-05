@@ -214,22 +214,16 @@ def get_transforms(
         return None, None
 
     if hardened:
-        # Modern degradation-hardened augmentation pipeline
-        # Immunizes against social media compression (JPEG 35-95), blurring, downscaling, and feature masking
+        # Forensic-safe augmentation pipeline:
+        # Protects frequency-domain forensic features from artificial sinc-leakage (no CoarseDropout)
+        # and aliasing grids (no Downscale), while maintaining realistic compression and blur robustness.
         train_transform = A.Compose([
             A.Resize(img_size, img_size),
             A.HorizontalFlip(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.08, scale_limit=0.08, rotate_limit=15, p=0.25),
-            A.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15, hue=0.05, p=0.25),
-            A.ImageCompression(quality_range=(35, 95), p=0.35),
-            A.GaussianBlur(blur_limit=(3, 7), sigma_limit=(0.5, 2.5), p=0.30),
-            A.Downscale(scale_range=(0.5, 0.9), p=0.20),
-            A.CoarseDropout(
-                num_holes_range=(1, 4),
-                hole_height_range=(16, 48),
-                hole_width_range=(16, 48),
-                p=0.20,
-            ),
+            A.ShiftScaleRotate(shift_limit=0.06, scale_limit=0.06, rotate_limit=10, p=0.25),
+            A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.04, p=0.20),
+            A.ImageCompression(quality_range=(65, 95), p=0.30),
+            A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.3, 1.2), p=0.20),
             ToTensorV2(),
         ])
     else:

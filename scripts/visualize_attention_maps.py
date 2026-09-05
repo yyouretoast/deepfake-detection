@@ -29,8 +29,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
-DEFAULT_THRESHOLD = 0.01
-DEFAULT_TEMPERATURE = 1.4788
+DEFAULT_THRESHOLD = 0.50
+DEFAULT_TEMPERATURE = 1.0
 
 
 from src.utils.interpretability import ConvNeXtGradCAM

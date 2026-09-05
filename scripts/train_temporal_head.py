@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seq_len", type=int, default=8, help="Number of frames per video sequence.")
     parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate for Bi-GRU head.")
     parser.add_argument("--hidden_dim", type=int, default=256, help="Bi-GRU hidden dimension.")
+    parser.add_argument("--patience", type=int, default=2, help="Early stopping patience in epochs.")
     return parser.parse_args()
 
 
@@ -90,10 +91,11 @@ def main() -> None:
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
     temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=args.hidden_dim).to(device)
-    optimizer = torch.optim.AdamW(temporal_model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(temporal_model.parameters(), lr=args.lr, weight_decay=1e-2)
     criterion = nn.BCEWithLogitsLoss()
 
     best_auc = 0.0
+    epochs_no_improve = 0
     os.makedirs(os.path.dirname(os.path.abspath(args.save_path)), exist_ok=True)
 
     for epoch in range(args.epochs):
@@ -135,6 +137,7 @@ def main() -> None:
 
         if val_auc > best_auc:
             best_auc = val_auc
+            epochs_no_improve = 0
             torch.save({
                 "model_state_dict": temporal_model.state_dict(),
                 "val_auc": val_auc,
@@ -142,6 +145,12 @@ def main() -> None:
                 "seq_len": args.seq_len,
             }, args.save_path)
             logger.info("New best checkpoint saved to %s (AUC: %.4f)", args.save_path, best_auc)
+        else:
+            epochs_no_improve += 1
+            logger.info("No improvement in Val AUC for %d epoch(s).", epochs_no_improve)
+            if epochs_no_improve >= args.patience:
+                logger.info("Early stopping triggered after %d epochs (Best Val AUC: %.4f).", epoch + 1, best_auc)
+                break
 
 
 if __name__ == "__main__":

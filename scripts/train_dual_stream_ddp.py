@@ -10,7 +10,7 @@ import sys
 from accelerate import Accelerator
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 IMG_SIZE = 256
 BATCH_SIZE = 16
 ACCUMULATION_STEPS = 4
-EPOCHS = 5
+EPOCHS = 8
 BEST_MODEL_WEIGHTS_PATH = "./models/dual_stream_best.pth"
 CHECKPOINT_DIR = "./checkpoints_ddp"
 
@@ -90,10 +90,26 @@ def main() -> None:
     g = torch.Generator()
     g.manual_seed(42)
 
+    # 50/50 Balanced Sampling: Eliminates +1.455 Bayesian log-prior bias and equalizes gradient variance
+    labels = [int(s[1]) for s in train_samples]
+    num_fake = sum(labels)
+    num_real = len(labels) - num_fake
+    logger.info("Training Split: %d Real, %d Fake (Total: %d)", num_real, num_fake, len(labels))
+
+    weight_real = 1.0 / max(1, num_real)
+    weight_fake = 1.0 / max(1, num_fake)
+    sample_weights = [weight_fake if y == 1 else weight_real for y in labels]
+    train_sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True,
+        generator=g,
+    )
+
     train_loader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
-        shuffle=True,
+        sampler=train_sampler,
         num_workers=4,
         pin_memory=True,
         persistent_workers=True,
@@ -112,15 +128,11 @@ def main() -> None:
         generator=g,
     )
 
-    num_fake = sum(1 for s in train_samples if s[1] == 1)
-    num_real = len(train_samples) - num_fake
-    pos_weight_val = min(float(num_real / max(1, num_fake)), 3.0)
-    pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
-
     model = HybridDeepfakeDetector(pretrained=True, frequency_backbone=args.frequency_backbone)
     optimizer = torch.optim.AdamW(get_differential_param_groups(model))
     scheduler = create_scheduler(optimizer, warmup_epochs=1, total_epochs=args.epochs)
-    criterion = FocalLossWithLogits(gamma=2.0, pos_weight=pos_weight_tensor)
+    # With 50/50 balanced batches, pos_weight=None ensures symmetric gradient updates on hard examples
+    criterion = FocalLossWithLogits(gamma=2.0, pos_weight=None)
 
     if accelerator.num_processes > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
