@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import Any, Union
 import numpy as np
 from scipy.optimize import minimize
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, roc_curve
 
 
 def compute_roc_auc_safe(
@@ -90,3 +90,22 @@ def fit_temperature_log(logits: Any, labels: Any) -> float:
 
     res = minimize(nll_func, [0.0], method="L-BFGS-B")
     return float(np.exp(res.x[0]))
+
+
+def compute_eer(
+    y_true: Union[np.ndarray, Sequence[float]],
+    y_score: Union[np.ndarray, Sequence[float]],
+) -> tuple[float, float]:
+    """Computes Equal Error Rate (EER) and the corresponding decision threshold."""
+    y_true_arr = np.asarray(y_true).flatten()
+    y_score_arr = np.asarray(y_score).flatten()
+
+    if len(np.unique(y_true_arr)) < 2:
+        return 0.5, 0.5
+
+    fpr, tpr, thresholds = roc_curve(y_true_arr, y_score_arr)
+    fnr = 1.0 - tpr
+    idx = int(np.nanargmin(np.abs(fpr - fnr)))
+    eer = float((fpr[idx] + fnr[idx]) / 2.0)
+    thresh = float(thresholds[idx])
+    return eer, thresh

@@ -338,11 +338,6 @@ class SequenceVideoDataset(Dataset):
                 img_tensor = torch.from_numpy(img_rgb).permute(2, 0, 1).float() / 255.0
                 frames.append(img_tensor)
 
-        if n_pad > 0:
-            h = frames[0].shape[1] if frames else 256
-            w = frames[0].shape[2] if frames else 256
-            pad_frame = torch.zeros(3, h, w, dtype=torch.float32)
-            frames.extend([pad_frame] * n_pad)
 
         seq_tensor = torch.stack(frames, dim=0) if frames else torch.zeros(self.seq_len, 3, 256, 256)
 

@@ -124,7 +124,7 @@ def main() -> None:
     parser.add_argument("--data_root", default=None, help="Dataset root containing splits.json")
     parser.add_argument("--output_json", default="robustness_results.json", help="Output path for JSON results")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--max_samples", type=int, default=None, help="Cap test samples for fast local runs (e.g. 500)")
+    parser.add_argument("--max_samples", type=int, default=1512, help="Cap test samples for fast evaluation (default: 1512 = 756 Real / 756 Fake)")
     args = parser.parse_args()
 
     data_root = find_dataset_root(args.data_root)

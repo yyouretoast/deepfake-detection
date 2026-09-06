@@ -8,7 +8,7 @@ import sys
 from typing import Optional
 
 import numpy as np
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import balanced_accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 import torch
 from torch.utils.data import DataLoader
 
@@ -29,7 +29,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def run_subdomain_evaluation(data_dir: Optional[str] = None, weights_path: Optional[str] = None) -> None:
+def run_subdomain_evaluation(
+    data_dir: Optional[str] = None,
+    weights_path: Optional[str] = None,
+    output_json: Optional[str] = None,
+) -> None:
     data_root = find_dataset_root(data_dir)
     splits_path = resolve_splits_path(data_root=data_root)
 
@@ -98,14 +102,24 @@ def run_subdomain_evaluation(data_dir: Optional[str] = None, weights_path: Optio
             print(f"  {domain.value.upper():<20} Test Samples: {len(bucket)}")
     print("-" * 80)
 
+    results = {}
+
+    # Pre-evaluate real samples once to avoid redundant computation
+    real_loader = DataLoader(FaceCropDataset(real_samples, data_root, is_train=False), batch_size=32, shuffle=False)
+    real_logits, real_targets, real_valid = evaluator.predict_loader(real_loader)
+    mask_r = real_valid > 0.0
+    real_logits, real_targets = real_logits[mask_r], real_targets[mask_r]
+
     for domain, fake_items in domain_buckets.items():
         if not fake_items:
             continue
-        eval_group = fake_items + real_samples
-        loader = DataLoader(FaceCropDataset(eval_group, data_root, is_train=False), batch_size=32, shuffle=False)
-        logits, targets, valid = evaluator.predict_loader(loader)
-        mask = valid > 0.0
-        logits, targets = logits[mask], targets[mask]
+        fake_loader = DataLoader(FaceCropDataset(fake_items, data_root, is_train=False), batch_size=32, shuffle=False)
+        fake_logits, fake_targets, fake_valid = evaluator.predict_loader(fake_loader)
+        mask_f = fake_valid > 0.0
+        fake_logits, fake_targets = fake_logits[mask_f], fake_targets[mask_f]
+
+        logits = np.concatenate([fake_logits, real_logits])
+        targets = np.concatenate([fake_targets, real_targets])
 
         probs = 1.0 / (1.0 + np.exp(-(logits / temp)))
         preds = (probs >= best_thresh).astype(int)
@@ -115,23 +129,46 @@ def run_subdomain_evaluation(data_dir: Optional[str] = None, weights_path: Optio
         except (ValueError, TypeError, RuntimeError):
             auc_val = 0.5
 
-        f1 = f1_score(targets, preds, zero_division=0)
-        prec = precision_score(targets, preds, zero_division=0)
-        rec = recall_score(targets, preds, zero_division=0)
+        bal_acc = float(balanced_accuracy_score(targets, preds))
+        f1 = float(f1_score(targets, preds, zero_division=0))
+        prec = float(precision_score(targets, preds, zero_division=0))
+        rec = float(recall_score(targets, preds, zero_division=0))
 
         domain_display = domain.value.upper()
-        print(f"  {domain_display:<20} | Fakes: {len(fake_items):<5} | AUC: {auc_val:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
+        results[domain.value] = {
+            "display_name": domain_display,
+            "fakes_count": len(fake_items),
+            "real_count": len(real_samples),
+            "auc": auc_val,
+            "balanced_accuracy": bal_acc,
+            "f1": f1,
+            "precision": prec,
+            "recall": rec,
+        }
+        print(f"  {domain_display:<20} | Fakes: {len(fake_items):<5} | AUC: {auc_val:.4f} | BalAcc: {bal_acc:.4f} | F1: {f1:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f}")
 
     print("=" * 80 + "\n")
+
+    if output_json:
+        os.makedirs(os.path.dirname(os.path.abspath(output_json)), exist_ok=True)
+        with open(output_json, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"Saved subdomain breakdown results to: {output_json}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate fine-grained subdomain breakdown performance.")
     parser.add_argument("--data_dir", type=str, default=None, help="Directory containing dataset and splits.json")
     parser.add_argument("--weights_path", type=str, default=None, help="Path to dual_stream_best.pth")
+    parser.add_argument(
+        "--output_json",
+        type=str,
+        default="/kaggle/working/subdomain_results.json" if os.path.exists("/kaggle/working") else "subdomain_results.json",
+        help="Path to export subdomain results JSON",
+    )
     args = parser.parse_args()
 
-    run_subdomain_evaluation(data_dir=args.data_dir, weights_path=args.weights_path)
+    run_subdomain_evaluation(data_dir=args.data_dir, weights_path=args.weights_path, output_json=args.output_json)
 
 
 if __name__ == "__main__":

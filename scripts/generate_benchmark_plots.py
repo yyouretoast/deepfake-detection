@@ -74,24 +74,39 @@ def compute_ece(
 
 
 def plot_roc(
-    probs_raw: np.ndarray, probs_cal: np.ndarray, labels: np.ndarray, output_path: str
+    probs_raw: np.ndarray,
+    probs_cal: np.ndarray,
+    labels: np.ndarray,
+    output_path: str,
+    temporal_data: dict | None = None,
 ) -> None:
     apply_base_style()
     fig, ax = plt.subplots(figsize=(5.5, 5.0))
 
-    fpr_r, tpr_r, _ = roc_curve(labels, probs_raw)
     fpr_c, tpr_c, _ = roc_curve(labels, probs_cal)
-    auc_r = auc(fpr_r, tpr_r)
     auc_c = auc(fpr_c, tpr_c)
 
-    ax.plot(fpr_r, tpr_r, color=BLUE, lw=1.8, label=f"Raw       (AUC = {auc_r:.4f})")
-    ax.plot(fpr_c, tpr_c, color=GREEN, lw=1.8, linestyle="--", label=f"Calibrated (AUC = {auc_c:.4f})")
+    ax.plot(fpr_c, tpr_c, color=BLUE, lw=1.8, label=f"Single-Frame Spatial (AUC = {auc_c:.4f})")
+
+    if temporal_data and "probs_temporal" in temporal_data and "labels" in temporal_data:
+        t_probs = np.array(temporal_data["probs_temporal"])
+        t_labels = np.array(temporal_data["labels"])
+        if len(np.unique(t_labels)) > 1:
+            fpr_t, tpr_t, _ = roc_curve(t_labels, t_probs)
+            auc_t = auc(fpr_t, tpr_t)
+            ax.plot(fpr_t, tpr_t, color=GREEN, lw=2.0, linestyle="-", label=f"Video Bi-GRU (AUC = {auc_t:.4f})")
+            ax.fill_between(fpr_t, tpr_t, alpha=0.08, color=GREEN)
+    else:
+        fpr_r, tpr_r, _ = roc_curve(labels, probs_raw)
+        auc_r = auc(fpr_r, tpr_r)
+        ax.plot(fpr_r, tpr_r, color=GRAY, lw=1.2, linestyle="--", label=f"Raw Spatial (AUC = {auc_r:.4f})")
+        ax.fill_between(fpr_c, tpr_c, alpha=0.06, color=BLUE)
+
     ax.plot([0, 1], [0, 1], color=GRAY, lw=1.0, linestyle=":", label="Random")
-    ax.fill_between(fpr_r, tpr_r, alpha=0.06, color=BLUE)
 
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
-    ax.set_title("ROC Curve — Held-Out Test Set (10,528 crops)")
+    ax.set_title(f"ROC Curve — Held-Out Test Set ({len(labels):,} crops)")
     ax.legend(loc="lower right")
     ax.set_xlim(-0.01, 1.01)
     ax.set_ylim(-0.01, 1.01)
@@ -186,7 +201,7 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
         ax.set_title(sweep_name)
         ax.legend(loc="lower left", fontsize=8)
 
-    fig.suptitle("Robustness Under Image Degradation — Full Test Set (10,528 crops)", fontweight="bold", fontsize=12)
+    fig.suptitle("Robustness Under Image Degradation — Held-Out Test Set", fontweight="bold", fontsize=12)
     fig.tight_layout()
     fig.savefig(output_path)
     plt.close(fig)
@@ -255,15 +270,20 @@ def plot_loto(loto_data: list, output_path: str) -> None:
     logger.info("Saved LOTO plot -> %s", output_path)
 
 
-def plot_per_generator(output_path: str) -> None:
+def plot_per_generator(output_path: str, subdomain_data: dict | None = None) -> None:
     apply_base_style()
-    generators = [
-        ("Celeb-DF v2 Synthesis", 0.9992),
-        ("FF++ Face2Face", 0.9967),
-        ("FF++ Deepfakes", 0.9963),
-        ("FF++ FaceSwap", 0.9961),
-        ("FF++ NeuralTextures", 0.9940),
-    ]
+    generators = []
+    if subdomain_data and isinstance(subdomain_data, dict):
+        for key, val in subdomain_data.items():
+            if isinstance(val, dict):
+                name = val.get("display_name", key.upper())
+                auc_val = float(val.get("auc", 0.5))
+                generators.append((name, auc_val))
+
+    if not generators:
+        logger.warning("No subdomain breakdown data available. Skipping per-generator plot.")
+        return
+
     generators.sort(key=lambda x: x[1])
 
     names = [g[0] for g in generators]
@@ -271,17 +291,18 @@ def plot_per_generator(output_path: str) -> None:
 
     fig, ax = plt.subplots(figsize=(7.5, 4.0))
     ys = list(range(len(names)))
-    bar_colors = [BLUE if "Celeb" in n else GREEN for n in names]
+    bar_colors = [BLUE if "Celeb" in n or "CELEB" in n else GREEN for n in names]
 
     bars = ax.barh(ys, aucs, color=bar_colors, alpha=0.85, height=0.55, zorder=3)
 
     for bar, v in zip(bars, aucs):
-        ax.text(v + 0.0003, bar.get_y() + bar.get_height() / 2, f"{v:.4f}", va="center", fontsize=9)
+        ax.text(v + 0.005, bar.get_y() + bar.get_height() / 2, f"{v:.4f}", va="center", fontsize=9)
 
     ax.set_yticks(ys)
     ax.set_yticklabels(names, fontsize=9)
-    ax.set_xlim(0.985, 1.002)
-    ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
+    min_x = max(0.0, min(aucs) - 0.08)
+    ax.set_xlim(min_x, 1.05)
+    ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
     ax.set_xlabel("AUC")
     ax.set_title("Per-Generator Sub-Domain AUC (Held-Out Test Set)")
 
@@ -294,6 +315,8 @@ def plot_per_generator(output_path: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate benchmark plots.")
     parser.add_argument("--predictions", default="test_predictions.json")
+    parser.add_argument("--temporal_predictions", default="temporal_test_predictions.json")
+    parser.add_argument("--subdomain", default="subdomain_results.json")
     parser.add_argument("--robustness", default="robustness_results.json")
     parser.add_argument("--loto", default="loto_results.json")
     parser.add_argument("--output_dir", default="figures")
@@ -317,6 +340,26 @@ def main() -> None:
     probs_cal = np.array(preds["probs_cal"])
     labels = np.array(preds["labels"], dtype=np.int32)
 
+    temporal_data = None
+    temp_path = resolve_file(args.temporal_predictions)
+    if os.path.exists(temp_path):
+        try:
+            logger.info("Loading temporal predictions from %s", temp_path)
+            with open(temp_path) as f:
+                temporal_data = json.load(f)
+        except Exception as e:
+            logger.warning("Could not read temporal predictions: %s", e)
+
+    subdomain_data = None
+    sub_path = resolve_file(args.subdomain)
+    if os.path.exists(sub_path):
+        try:
+            logger.info("Loading subdomain results from %s", sub_path)
+            with open(sub_path) as f:
+                subdomain_data = json.load(f)
+        except Exception as e:
+            logger.warning("Could not read subdomain results: %s", e)
+
     rob_path = resolve_file(args.robustness)
     logger.info("Loading robustness results from %s", rob_path)
     with open(rob_path) as f:
@@ -327,11 +370,11 @@ def main() -> None:
     with open(loto_path) as f:
         loto = json.load(f)
 
-    plot_roc(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "roc_curve.png"))
+    plot_roc(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "roc_curve.png"), temporal_data=temporal_data)
     plot_ece(probs_raw, probs_cal, labels, os.path.join(args.output_dir, "ece_reliability.png"))
     plot_robustness(robustness, os.path.join(args.output_dir, "robustness_degradation.png"))
     plot_loto(loto, os.path.join(args.output_dir, "loto_generalization.png"))
-    plot_per_generator(os.path.join(args.output_dir, "per_generator_auc.png"))
+    plot_per_generator(os.path.join(args.output_dir, "per_generator_auc.png"), subdomain_data=subdomain_data)
 
     logger.info("All figures saved to %s/", args.output_dir)
 
