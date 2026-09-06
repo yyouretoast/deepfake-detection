@@ -59,7 +59,9 @@ def extract_features_and_logits(
     frames_flat = frames.view(b * t, c, h, w).to(device)
     with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
         feats = backbone.extract_features(frames_flat)
-        logits = backbone.classifier(feats)
+        logits = backbone(frames_flat)
+        if isinstance(logits, tuple):
+            logits = logits[0]
     return feats.view(b, t, -1), logits.view(b, t)
 
 
