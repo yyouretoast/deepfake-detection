@@ -36,6 +36,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seq_len", type=int, default=8, help="Number of frames per video sequence.")
     parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate for Bi-GRU head.")
     parser.add_argument("--hidden_dim", type=int, default=256, help="Bi-GRU hidden dimension.")
+    parser.add_argument("--stride", type=int, default=2, help="Temporal stride between sampled frames (default: 2).")
+    parser.add_argument("--no_deltas", action="store_true", help="Disable first-order velocity deltas.")
     parser.add_argument("--patience", type=int, default=2, help="Early stopping patience in epochs.")
     return parser.parse_args()
 
@@ -84,13 +86,15 @@ def main() -> None:
     logger.info("Found %d training video clips and %d validation video clips.", len(train_videos), len(val_videos))
 
     train_transform, eval_transform = get_transforms(img_size=256, hardened=True)
-    train_ds = SequenceVideoDataset(train_videos, transform=train_transform, seq_len=args.seq_len, is_train=True)
-    val_ds = SequenceVideoDataset(val_videos, transform=eval_transform, seq_len=args.seq_len, is_train=False)
+    train_ds = SequenceVideoDataset(train_videos, transform=train_transform, seq_len=args.seq_len, stride=args.stride, is_train=True)
+    val_ds = SequenceVideoDataset(val_videos, transform=eval_transform, seq_len=args.seq_len, stride=args.stride, is_train=False)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
-    temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=args.hidden_dim).to(device)
+    use_deltas = not args.no_deltas
+    logger.info("Initializing Bi-GRU detector: hidden_dim=%d, use_deltas=%s, stride=%d", args.hidden_dim, use_deltas, args.stride)
+    temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=args.hidden_dim, use_deltas=use_deltas).to(device)
     optimizer = torch.optim.AdamW(temporal_model.parameters(), lr=args.lr, weight_decay=1e-2)
 
     num_fake = sum(1 for _, lbl in train_videos if lbl == 1)
@@ -133,8 +137,8 @@ def main() -> None:
                 with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
                     logits, _ = temporal_model(embeddings)
                     probs = torch.sigmoid(logits)
-                val_preds.extend(probs.detach().cpu().reshape(-1).tolist())
-                val_targets.extend(labels.detach().cpu().reshape(-1).tolist())
+                val_preds.extend(probs.squeeze(-1).cpu().tolist())
+                val_targets.extend(labels.squeeze(-1).cpu().tolist())
 
         y_true = np.array(val_targets)
         y_score = np.array(val_preds)
@@ -149,6 +153,8 @@ def main() -> None:
                 "val_auc": val_auc,
                 "hidden_dim": args.hidden_dim,
                 "seq_len": args.seq_len,
+                "stride": args.stride,
+                "use_deltas": use_deltas,
             }, args.save_path)
             logger.info("New best checkpoint saved to %s (AUC: %.4f)", args.save_path, best_auc)
         else:

@@ -49,6 +49,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for video sequences.")
     parser.add_argument("--seq_len", type=int, default=8, help="Sequence length in frames.")
+    parser.add_argument("--stride", type=int, default=None, help="Temporal stride (auto-detected from checkpoint if None).")
     return parser.parse_args()
 
 
@@ -116,14 +117,29 @@ def main() -> None:
 
     # 2. Load Bi-GRU Temporal Head
     hidden_dim = 256
+    use_deltas = True
+    stride = 2
     if temporal_path and os.path.exists(temporal_path):
         t_ckpt = torch.load(temporal_path, map_location="cpu", weights_only=False)
         t_state = t_ckpt.get("model_state_dict", t_ckpt)
         hidden_dim = t_ckpt.get("hidden_dim", 256)
-        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim)
+        if "use_deltas" in t_ckpt:
+            use_deltas = bool(t_ckpt["use_deltas"])
+        else:
+            ih_weight = t_state.get("gru.weight_ih_l0", None)
+            use_deltas = (ih_weight is not None and ih_weight.shape[1] == 1024)
+        if args.stride is not None:
+            stride = args.stride
+        else:
+            stride = t_ckpt.get("stride", 2)
+        logger.info("Loaded Bi-GRU config: hidden_dim=%d, use_deltas=%s, stride=%d", hidden_dim, use_deltas, stride)
+        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim, use_deltas=use_deltas)
         temporal_model.load_state_dict(clean_state_dict(t_state), strict=False)
     else:
-        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim)
+        if args.stride is not None:
+            stride = args.stride
+        logger.info("Initializing fresh Bi-GRU detector: hidden_dim=%d, use_deltas=%s, stride=%d", hidden_dim, use_deltas, stride)
+        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim, use_deltas=use_deltas)
     temporal_model.to(device).eval()
 
     # 3. Load Splits
@@ -139,8 +155,8 @@ def main() -> None:
     logger.info("Loaded %d validation video clips, %d test video clips.", len(val_videos), len(test_videos))
 
     _, eval_transform = get_transforms(img_size=256, hardened=False)
-    val_ds = SequenceVideoDataset(val_videos, transform=eval_transform, seq_len=args.seq_len)
-    test_ds = SequenceVideoDataset(test_videos, transform=eval_transform, seq_len=args.seq_len)
+    val_ds = SequenceVideoDataset(val_videos, transform=eval_transform, seq_len=args.seq_len, stride=stride, is_train=False)
+    test_ds = SequenceVideoDataset(test_videos, transform=eval_transform, seq_len=args.seq_len, stride=stride, is_train=False)
 
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
@@ -230,6 +246,8 @@ def main() -> None:
         "eer_threshold": eer_thresh,
         "balanced_accuracy": bal_acc_opt,
         "balanced_accuracy_default": bal_acc_default,
+        "stride": stride,
+        "use_deltas": use_deltas,
         "n_samples": len(test_targets),
     }
     with open(output_path, "w") as f:

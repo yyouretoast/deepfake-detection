@@ -282,6 +282,7 @@ class SequenceVideoDataset(Dataset):
         video_samples: list[tuple[list[str], int]],
         transform: Optional[Any] = None,
         seq_len: int = 8,
+        stride: int = 1,
         is_train: bool = False,
     ) -> None:
         self.video_samples = video_samples
@@ -292,6 +293,7 @@ class SequenceVideoDataset(Dataset):
             ):
                 self.transform = A.ReplayCompose(self.transform.transforms)
         self.seq_len = seq_len
+        self.stride = max(1, stride)
         self.is_train = is_train
 
     def __len__(self) -> int:
@@ -300,8 +302,17 @@ class SequenceVideoDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         frame_paths, label = self.video_samples[idx]
         n_frames = len(frame_paths)
+        span = (self.seq_len - 1) * self.stride + 1
 
-        if n_frames >= self.seq_len:
+        if n_frames >= span:
+            if self.is_train and n_frames > span:
+                start_idx = int(np.random.randint(0, n_frames - span + 1))
+            else:
+                start_idx = max(0, (n_frames - span) // 2)
+            selected_paths = frame_paths[start_idx : start_idx + span : self.stride]
+            n_pad = 0
+        elif n_frames >= self.seq_len:
+            # Fallback to stride=1 if sequence is shorter than requested strided span
             if self.is_train and n_frames > self.seq_len:
                 start_idx = int(np.random.randint(0, n_frames - self.seq_len + 1))
             else:
