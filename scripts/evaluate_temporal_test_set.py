@@ -189,9 +189,25 @@ def main() -> None:
     print(f"    Balanced Accuracy:             {bal_acc_opt:.4f}")
     print(f"    Macro F1:                      {f1_score(test_targets, test_preds_opt, average='macro', zero_division=0):.4f}")
     print(f"    Fake Precision / Recall:       {precision_score(test_targets, test_preds_opt, zero_division=0):.4f} / {recall_score(test_targets, test_preds_opt, zero_division=0):.4f}")
-    print("=" * 70)
     print("\nDetailed Test Classification Report (Optimal Threshold):")
     print(classification_report(test_targets, test_preds_opt, target_names=["Real", "Fake"], digits=4))
+
+    real_indices = np.where(test_targets == 0)[0]
+    fake_indices = np.where(test_targets == 1)[0]
+    n_balanced = min(len(real_indices), len(fake_indices))
+    if n_balanced > 0 and len(real_indices) != len(fake_indices):
+        rng = np.random.default_rng(42)
+        sampled_fake_idx = rng.choice(fake_indices, size=n_balanced, replace=False)
+        balanced_idx = np.concatenate([real_indices, sampled_fake_idx])
+        b_targets = test_targets[balanced_idx]
+        b_preds = test_preds_opt[balanced_idx]
+        b_probs = test_probs[balanced_idx]
+        b_auc = float(roc_auc_score(b_targets, b_probs))
+        b_bal_acc = float(balanced_accuracy_score(b_targets, b_preds))
+        print(f"\nBalanced 1:1 Benchmark Subset ({n_balanced:,} Real vs {n_balanced:,} Fake):")
+        print(f"    Balanced ROC AUC:     {b_auc:.4f}")
+        print(f"    Balanced Accuracy:    {b_bal_acc:.4f}")
+        print(classification_report(b_targets, b_preds, target_names=["Real", "Fake"], digits=4))
 
     # 6. Save JSON
     output_path = args.output_json

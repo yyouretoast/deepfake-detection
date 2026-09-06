@@ -84,15 +84,21 @@ def main() -> None:
     logger.info("Found %d training video clips and %d validation video clips.", len(train_videos), len(val_videos))
 
     train_transform, eval_transform = get_transforms(img_size=256, hardened=True)
-    train_ds = SequenceVideoDataset(train_videos, transform=train_transform, seq_len=args.seq_len)
-    val_ds = SequenceVideoDataset(val_videos, transform=eval_transform, seq_len=args.seq_len)
+    train_ds = SequenceVideoDataset(train_videos, transform=train_transform, seq_len=args.seq_len, is_train=True)
+    val_ds = SequenceVideoDataset(val_videos, transform=eval_transform, seq_len=args.seq_len, is_train=False)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
     temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=args.hidden_dim).to(device)
     optimizer = torch.optim.AdamW(temporal_model.parameters(), lr=args.lr, weight_decay=1e-2)
-    criterion = nn.BCEWithLogitsLoss()
+
+    num_fake = sum(1 for _, lbl in train_videos if lbl == 1)
+    num_real = len(train_videos) - num_fake
+    pos_weight_val = min(float(num_real / max(1, num_fake)), 3.0)
+    pos_weight_tensor = torch.tensor([pos_weight_val], device=device)
+    logger.info("Training Split: %d Real clips, %d Fake clips (pos_weight: %.4f)", num_real, num_fake, pos_weight_val)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
 
     best_auc = 0.0
     epochs_no_improve = 0

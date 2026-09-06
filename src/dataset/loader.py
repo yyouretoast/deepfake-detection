@@ -282,6 +282,7 @@ class SequenceVideoDataset(Dataset):
         video_samples: list[tuple[list[str], int]],
         transform: Optional[Any] = None,
         seq_len: int = 8,
+        is_train: bool = False,
     ) -> None:
         self.video_samples = video_samples
         self.transform = transform
@@ -291,6 +292,7 @@ class SequenceVideoDataset(Dataset):
             ):
                 self.transform = A.ReplayCompose(self.transform.transforms)
         self.seq_len = seq_len
+        self.is_train = is_train
 
     def __len__(self) -> int:
         return len(self.video_samples)
@@ -300,7 +302,10 @@ class SequenceVideoDataset(Dataset):
         n_frames = len(frame_paths)
 
         if n_frames >= self.seq_len:
-            start_idx = max(0, (n_frames - self.seq_len) // 2)
+            if self.is_train and n_frames > self.seq_len:
+                start_idx = int(np.random.randint(0, n_frames - self.seq_len + 1))
+            else:
+                start_idx = max(0, (n_frames - self.seq_len) // 2)
             selected_paths = frame_paths[start_idx : start_idx + self.seq_len]
             n_pad = 0
         else:
