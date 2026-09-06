@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import numpy as np
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     balanced_accuracy_score,
@@ -72,8 +73,8 @@ def evaluate_loader(
     device: torch.device,
     desc: str = "Evaluating",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Evaluates video sequence loader, returning temporal probs, frame-avg probs, and targets."""
-    temporal_probs, naive_probs, targets = [], [], []
+    """Evaluates video sequence loader, returning temporal raw logits, frame-avg probs, and targets."""
+    temporal_logits, naive_probs, targets = [], [], []
 
     with torch.inference_mode():
         for frames, labels, _ in tqdm(loader, desc=desc):
@@ -82,14 +83,13 @@ def evaluate_loader(
 
             with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
                 logits_temporal, _ = temporal_model(embeddings)
-                p_temp = torch.sigmoid(logits_temporal).squeeze(-1)
                 p_frame = torch.sigmoid(frame_logits).mean(dim=-1)
 
-            temporal_probs.extend(p_temp.cpu().numpy().tolist())
+            temporal_logits.extend(logits_temporal.squeeze(-1).cpu().numpy().tolist())
             naive_probs.extend(p_frame.cpu().numpy().tolist())
             targets.extend(labels_np.tolist())
 
-    return np.array(temporal_probs), np.array(naive_probs), np.array(targets)
+    return np.array(temporal_logits), np.array(naive_probs), np.array(targets)
 
 
 def main() -> None:
@@ -145,22 +145,28 @@ def main() -> None:
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
-    # 4. Search Optimal Threshold on Validation Set via Youden's J
-    logger.info("Computing validation threshold via Youden's J...")
-    val_probs, _, val_targets = evaluate_loader(backbone, temporal_model, val_loader, device, desc="Val Sequence Eval")
+    # 4. Calibration on Validation Set via Balanced Platt Scaling
+    logger.info("Computing validation calibration via Balanced Platt Scaling...")
+    val_logits, _, val_targets = evaluate_loader(backbone, temporal_model, val_loader, device, desc="Val Sequence Eval")
+
+    calibrator = LogisticRegression(class_weight="balanced", solver="lbfgs")
+    calibrator.fit(val_logits.reshape(-1, 1), val_targets)
+    val_probs = calibrator.predict_proba(val_logits.reshape(-1, 1))[:, 1]
 
     fpr, tpr, thresholds = roc_curve(val_targets, val_probs)
     j_scores = tpr - fpr
     best_idx = int(np.nanargmax(j_scores))
     opt_thresh = float(thresholds[best_idx])
     val_bal_acc = float(balanced_accuracy_score(val_targets, (val_probs >= opt_thresh).astype(int)))
-    logger.info("Optimal Val Threshold tau* = %.4f (Val Balanced Acc: %.4f)", opt_thresh, val_bal_acc)
+    logger.info("Calibrated Val Threshold tau* = %.4f (Val Balanced Acc: %.4f)", opt_thresh, val_bal_acc)
 
     # 5. Evaluate Held-Out Test Set
     logger.info("Evaluating on held-out test video sequences...")
-    test_probs, test_naive_probs, test_targets = evaluate_loader(
+    test_logits, test_naive_probs, test_targets = evaluate_loader(
         backbone, temporal_model, test_loader, device, desc="Test Sequence Eval"
     )
+
+    test_probs = calibrator.predict_proba(test_logits.reshape(-1, 1))[:, 1]
 
     test_auc = float(roc_auc_score(test_targets, test_probs))
     test_pr_auc = float(average_precision_score(test_targets, test_probs))
