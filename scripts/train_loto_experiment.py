@@ -127,13 +127,13 @@ def main() -> None:
     g.manual_seed(42)
 
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True, drop_last=True, worker_init_fn=seed_worker, generator=g
+        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True, persistent_workers=False, drop_last=True, worker_init_fn=seed_worker, generator=g
     )
     val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True, worker_init_fn=seed_worker, generator=g
+        val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, worker_init_fn=seed_worker, generator=g
     )
     eval_loader = DataLoader(
-        eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True, worker_init_fn=seed_worker, generator=g
+        eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, worker_init_fn=seed_worker, generator=g
     )
 
     num_fake = sum(1 for s in train_loto_samples if s[1] == 1)
@@ -255,6 +255,7 @@ def main() -> None:
             except OSError:
                 pass
 
+    accelerator.wait_for_everyone()
     accelerator.end_training()
     if torch.distributed.is_initialized():
         torch.distributed.destroy_process_group()
