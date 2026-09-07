@@ -9,10 +9,15 @@ import sys
 import time
 
 from accelerate import Accelerator
+import cv2
 import numpy as np
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 import torch
 from torch.utils.data import DataLoader
+
+# Disable OpenCV multithreading to eliminate fork deadlocks in Linux containers (e.g. Kaggle)
+cv2.setNumThreads(0)
+cv2.ocl.setUseOpenCL(False)
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -65,6 +70,8 @@ def seed_worker(worker_id: int) -> None:
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+    cv2.setNumThreads(0)
+    cv2.ocl.setUseOpenCL(False)
 
 
 def main() -> None:
@@ -72,6 +79,7 @@ def main() -> None:
     parser.add_argument("--holdout", type=str, required=True, help="Holdout generator keyword (e.g. deepfakes, face2face, faceswap, neuraltextures, celeb)")
     parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size per GPU")
+    parser.add_argument("--num_workers", type=int, default=0, help="DataLoader workers (default 0 prevents fork deadlocks)")
     parser.add_argument("--data_dir", type=str, default=None, help="Directory containing dataset and splits.json")
     parser.add_argument(
         "--frequency_backbone",
@@ -127,7 +135,7 @@ def main() -> None:
     g.manual_seed(42)
 
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True, persistent_workers=False, drop_last=True, worker_init_fn=seed_worker, generator=g
+        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, persistent_workers=False, drop_last=True, worker_init_fn=seed_worker, generator=g
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, worker_init_fn=seed_worker, generator=g
