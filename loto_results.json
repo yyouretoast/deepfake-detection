@@ -1,14 +1,25 @@
 [
   {
+    "holdout": "deepfakes",
+    "threshold": 0.5,
+    "temperature": 0.950193210633219,
+    "zero_shot_auc": 0.9563354276895943,
+    "zero_shot_f1": 0.9233076263924593,
+    "precision": 0.9501763668430335,
+    "recall": 0.8979166666666667,
+    "n_samples": 3156,
+    "timestamp": "2026-09-06 18:08:28"
+  },
+  {
     "holdout": "face2face",
-    "threshold": 0.1,
-    "temperature": 2.4866,
-    "zero_shot_auc": 0.9749,
-    "zero_shot_f1": 0.9179,
-    "precision": 0.9183,
-    "recall": 0.9175,
-    "n_samples": 5289,
-    "timestamp": "2026-08-09 14:15:00"
+    "threshold": 0.5,
+    "temperature": 0.5486745304374717,
+    "zero_shot_auc": 0.9914722222222223,
+    "zero_shot_f1": 0.9530201342281879,
+    "precision": 0.922077922077922,
+    "recall": 0.9861111111111112,
+    "n_samples": 860,
+    "timestamp": "2026-09-07 17:36:37"
   },
   {
     "holdout": "faceswap",
@@ -23,35 +34,24 @@
   },
   {
     "holdout": "neuraltextures",
-    "threshold": 0.12,
-    "temperature": 2.393,
-    "zero_shot_auc": 0.9783,
-    "zero_shot_f1": 0.923,
-    "precision": 0.9244,
-    "recall": 0.9217,
-    "n_samples": 5289,
-    "timestamp": "2026-08-04 12:21:01"
+    "threshold": 0.5,
+    "temperature": 0.8343772468485976,
+    "zero_shot_auc": 0.9379166666666666,
+    "zero_shot_f1": 0.6081081081081081,
+    "precision": 0.5113636363636364,
+    "recall": 0.75,
+    "n_samples": 560,
+    "timestamp": "2026-09-07 19:04:36"
   },
   {
     "holdout": "celeb",
-    "threshold": 0.12,
-    "temperature": 3.1047,
-    "zero_shot_auc": 0.3234,
-    "zero_shot_f1": 0.1202,
-    "precision": 0.9542,
-    "recall": 0.0641,
-    "n_samples": 82549,
-    "timestamp": "2026-08-04 13:21:16"
-  },
-  {
-    "holdout": "deepfakes",
     "threshold": 0.5,
-    "temperature": 0.950193210633219,
-    "zero_shot_auc": 0.9563354276895943,
-    "zero_shot_f1": 0.9233076263924593,
-    "precision": 0.9501763668430335,
-    "recall": 0.8979166666666667,
-    "n_samples": 3156,
-    "timestamp": "2026-09-06 18:08:28"
+    "temperature": 69453.93276439093,
+    "zero_shot_auc": 0.700043304884032,
+    "zero_shot_f1": 0.4336036328251703,
+    "precision": 0.9763365468886941,
+    "recall": 0.27868579052701803,
+    "n_samples": 12748,
+    "timestamp": "2026-09-07 20:04:46"
   }
 ]
