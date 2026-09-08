@@ -327,6 +327,9 @@ def main() -> None:
     def resolve_file(path_str: str) -> str:
         if os.path.exists(path_str):
             return path_str
+        results_candidate = os.path.join("results", os.path.basename(path_str))
+        if os.path.exists(results_candidate):
+            return results_candidate
         kaggle_candidate = os.path.join("/kaggle/working", os.path.basename(path_str))
         if os.path.exists(kaggle_candidate):
             return kaggle_candidate
