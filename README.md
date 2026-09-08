@@ -38,9 +38,9 @@ Intermediate representations exposed across spatial, residual, and frequency dom
 
 * **Dual-Domain Feature Fusion**: Unifies deep semantic representations (ConvNeXt-Small) with sub-pixel noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a dedicated **4-Stage ResSE-Spectral Tower** (~2.98M parameters) with Squeeze-and-Excitation channel recalibration.
 * **Spectral SNR-Adaptive Gating**: Prevents high-frequency degradation cliffs under blur or compression by dynamically attenuating the frequency stream ($\gamma \to 0$) when noise residual power drops, smoothly falling back onto the robust spatial ConvNeXt backbone with zero added parameters.
-* **100% Zero Identity Leakage**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee $\text{Actors}_{\text{train}} \cap \text{Actors}_{\text{val}} \cap \text{Actors}_{\text{test}} = \emptyset$.
+* **100% Zero Identity Leakage**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity leakage ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
 * **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, lifting video sequence classification to **`0.8693` ROC AUC** (+4.45% over single-frame spatial detection) and catching transient 1-frame deepfake glitches.
-* **Bayesian 3-Zone Decision Bands**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes high-precision boundaries ($\tau_{\text{real}}, \tau_{\text{fake}}$), guaranteeing $\ge 98\%$ precision on confirmed synthetic verdicts while safely routing borderline media to manual inspection.
+* **Bayesian 3-Zone Decision Bands**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes high-precision boundaries ($\tau_{\text{real}}, \tau_{\text{fake}}$), guaranteeing $\ge$ 98% precision on confirmed synthetic verdicts while safely routing borderline media to manual inspection.
 * **Real-Time Video Engine**: 60.9 FPS inference on an NVIDIA Tesla T4 with dynamic batching and full ONNX Runtime support.
 
 ---
@@ -120,7 +120,7 @@ Evaluated across 13,444 facial crops (756 authentic real faces, 12,688 deepfakes
 | **Fake F1-Score** | **`0.8627`** | **`0.8765`** | **+0.0138** F1 balance |
 | **Macro F1-Score** | **`0.5631`** | **`0.5896`** | Balanced across real/fake classes |
 | **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3062` | Derived via Youden's $J$ statistic |
-| **Calibrated Temperature ($T^*$)**| `4.2880` | — | SciPy L-BFGS-B log-temperature scaling |
+| **Calibrated Temperature ($T^*$)**| `4.2880` | -- | SciPy L-BFGS-B log-temperature scaling |
 
 ![ROC Curve](figures/roc_curve.png)
 
@@ -270,7 +270,7 @@ $$
 $$
 
 $$
-\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \text{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \; \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
+\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \text{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \quad \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
 $$
 
 $$
@@ -293,17 +293,25 @@ $$
 Under severe image degradation (such as aggressive Gaussian blur or heavy compression), high-frequency steganographic cues degrade into pure noise. To prevent blur-induced performance cliffs, test-time **High-Frequency SNR-Adaptive Gating** modulates the frequency gate according to residual variance across the SRM and Bayar noise channels:
 
 $$
-\gamma = \text{clamp}\left( \frac{\sigma^2_{\text{noise}} - 0.005}{0.025 - 0.005}, \, 0.0, \, 1.0 \right), \quad \mathbf{g}_{\text{eff}} = \mathbf{g} \odot \gamma
+\gamma = \text{clamp}\left( \frac{\sigma^2_{\text{noise}} - 0.005}{0.025 - 0.005}, 0.0, 1.0 \right), \quad \mathbf{g}_{\text{eff}} = \mathbf{g} \odot \gamma
 $$
 
 $$
-\mathbf{f}_{\text{fused}} = \left[ \mathbf{f}_s \odot (1 - \mathbf{g}_{\text{eff}}) \;\parallel\; \mathbf{f}_f \odot \mathbf{g}_{\text{eff}} \right] \in \mathbb{R}^{1024}
+\mathbf{f}_{\text{fused}} = \left[ \mathbf{f}_s \odot (1 - \mathbf{g}_{\text{eff}}) \parallel \mathbf{f}_f \odot \mathbf{g}_{\text{eff}} \right] \in \mathbb{R}^{1024}
 $$
 
 For clean inputs ($\gamma = 1.0$), original multi-domain gating is preserved with bit-exact fidelity; under aggressive blur ($\gamma \to 0.0$), the model gracefully relies 100% on the intact spatial ConvNeXt backbone without requiring full retraining.
 
 ### 4. Spatiotemporal Sequence Modeling (Dual-Path Bi-GRU Head)
-For video inference, frozen 512-dimensional sequence embeddings $\mathbf{e}_t = \mathbf{f}_s \odot (1 - \mathbf{g}_{\text{eff}}) + \mathbf{f}_f \odot \mathbf{g}_{\text{eff}}$ are concatenated with first-order velocity deltas $\Delta \mathbf{e}_t = \mathbf{e}_t - \mathbf{e}_{t-1}$ to explicitly capture inter-frame synthesis discontinuities:
+For video inference, frozen 512-dimensional sequence embeddings are concatenated with first-order velocity deltas to explicitly capture inter-frame synthesis discontinuities:
+
+$$
+\mathbf{e}_t = \mathbf{f}_s \odot (1 - \mathbf{g}_{\text{eff}}) + \mathbf{f}_f \odot \mathbf{g}_{\text{eff}}
+$$
+
+$$
+\Delta \mathbf{e}_t = \mathbf{e}_t - \mathbf{e}_{t-1}
+$$
 
 $$
 \mathbf{x}_t = [\mathbf{e}_t \parallel \Delta \mathbf{e}_t] \in \mathbb{R}^{1024}
@@ -320,14 +328,14 @@ $$
 $$
 
 $$
-\mathbf{c}_{\text{attn}} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \mathbf{c}_{\max} = \max_{t \in \{1,\dots,T\}} \mathbf{h}_t \in \mathbb{R}^{2H}
+\mathbf{c}_{\text{attn}} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \mathbf{c}_{\max} = \max_{1 \le t \le T} \mathbf{h}_t \in \mathbb{R}^{2H}
 $$
 
 $$
 \mathbf{c}_{\text{fused}} = [\mathbf{c}_{\text{attn}} \parallel \mathbf{c}_{\max}] \in \mathbb{R}^{4H}, \quad \hat{y}_{\text{video}} = \text{Classifier}(\mathbf{c}_{\text{fused}})
 $$
 
-This dual-path pooling strategy achieves **`0.8693` ROC AUC** on held-out test sequences, lifting detection performance by $+4.45\%$ over single-frame detection.
+This dual-path pooling strategy achieves **`0.8693` ROC AUC** on held-out test sequences, lifting detection performance by +4.45% over single-frame detection.
 
 ### 5. Dual-Threshold Bayesian Confidence Bands
 Rather than enforcing a fixed 0.50 cutoff on ambiguous or compressed inputs, calibrated decision boundaries ($\tau_{\text{real}}, \tau_{\text{fake}}$) partition outputs into three certainty zones:
