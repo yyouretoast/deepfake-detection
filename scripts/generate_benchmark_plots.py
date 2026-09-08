@@ -21,6 +21,7 @@ RED = "#DC2626"
 GREEN = "#16A34A"
 ORANGE = "#D97706"
 GRAY = "#6B7280"
+PURPLE = "#7C3AED"
 DPI = 300
 
 
@@ -227,17 +228,22 @@ def plot_loto(loto_data: list, output_path: str) -> None:
             ho = entry.get("holdout", "").lower()
             label = name_map.get(ho, f"{ho.title()}")
             auc_val = float(entry.get("zero_shot_auc", 0.5))
-            color = RED if "celeb" in ho or auc_val < 0.5 else BLUE
+            if "celeb" in ho:
+                color = PURPLE
+            elif auc_val < 0.5:
+                color = RED
+            else:
+                color = BLUE
             note = f"{1.0 - auc_val:.4f} (1 - p)" if auc_val < 0.5 else None
             folds.append((label, auc_val, color, note))
 
     if not folds:
         folds = [
-            ("Fold 1\nDeepfakes\n(FF++)", 0.9691, BLUE, None),
-            ("Fold 2\nFace2Face\n(FF++)", 0.9749, BLUE, None),
+            ("Fold 1\nDeepfakes\n(FF++)", 0.9563, BLUE, None),
+            ("Fold 2\nFace2Face\n(FF++)", 0.9915, BLUE, None),
             ("Fold 3\nFaceSwap\n(FF++)", 0.9662, BLUE, None),
-            ("Fold 4\nNeuralTextures\n(FF++)", 0.9783, BLUE, None),
-            ("Fold 5\nCeleb-DF v2\nCross-Dataset", 0.3234, RED, "0.6766 (1 - p)"),
+            ("Fold 4\nNeuralTextures\n(FF++)", 0.9379, BLUE, None),
+            ("Fold 5\nCeleb-DF v2\nCross-Dataset", 0.7000, PURPLE, None),
         ]
 
     fig, ax = plt.subplots(figsize=(8.5, 4.8))
@@ -250,11 +256,12 @@ def plot_loto(loto_data: list, output_path: str) -> None:
 
     for bar, f_info in zip(bars, folds):
         v = f_info[1]
+        c = f_info[2]
         inv_note = f_info[3]
         if inv_note:
             ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"AUC = {v:.4f}\n[{inv_note}]", ha="center", va="bottom", fontsize=8.5, fontweight="bold", color=RED)
         else:
-            ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"AUC = {v:.4f}", ha="center", va="bottom", fontsize=9, fontweight="bold", color=BLUE)
+            ax.text(bar.get_x() + bar.get_width() / 2, v + 0.01, f"AUC = {v:.4f}", ha="center", va="bottom", fontsize=9, fontweight="bold", color=c)
 
     ax.axhline(0.5, color=GRAY, lw=1.0, linestyle=":", label="Random baseline (AUC=0.50)")
     ax.set_xticks(xs)
