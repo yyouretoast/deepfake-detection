@@ -7,8 +7,10 @@ import torch.nn as nn
 class BiGRUTemporalDetector(nn.Module):
     """
     Spatiotemporal video head on frozen dual-stream sequence embeddings.
-    Uses 2-layer Bidirectional GRU with first-order velocity deltas and
-    temporal self-attention to detect spatial and inter-frame synthesis anomalies.
+    Uses 2-layer Bidirectional GRU with first-order velocity deltas,
+    temporal self-attention, and dual-path extreme-value max pooling
+    to detect spatial and inter-frame synthesis anomalies (capturing both
+    global temporal consistency and transient 1-frame glitches).
     """
 
     def __init__(
@@ -17,11 +19,14 @@ class BiGRUTemporalDetector(nn.Module):
         hidden_dim: int = 256,
         dropout: float = 0.2,
         use_deltas: bool = True,
+        use_max_pool: bool = True,
     ) -> None:
         super().__init__()
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
+        self.dropout = dropout
         self.use_deltas = use_deltas
+        self.use_max_pool = use_max_pool
         input_size = embed_dim * 2 if use_deltas else embed_dim
 
         self.gru = nn.GRU(
@@ -37,12 +42,49 @@ class BiGRUTemporalDetector(nn.Module):
             nn.Tanh(),
             nn.Linear(64, 1),
         )
+        classifier_in = hidden_dim * 4 if use_max_pool else hidden_dim * 2
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_dim * 2, 128),
+            nn.Linear(classifier_in, 128),
             nn.ReLU(inplace=True),
             nn.Dropout(0.3),
             nn.Linear(128, 1),
         )
+
+    def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
+        """Auto-detects whether checkpoint was trained with or without max pooling and deltas."""
+        if "classifier.0.weight" in state_dict:
+            in_features = state_dict["classifier.0.weight"].shape[1]
+            if in_features == self.hidden_dim * 4 and not self.use_max_pool:
+                self.use_max_pool = True
+                self.classifier[0] = nn.Linear(self.hidden_dim * 4, 128)
+            elif in_features == self.hidden_dim * 2 and self.use_max_pool:
+                self.use_max_pool = False
+                self.classifier[0] = nn.Linear(self.hidden_dim * 2, 128)
+
+        if "gru.weight_ih_l0" in state_dict:
+            gru_in = state_dict["gru.weight_ih_l0"].shape[1]
+            if gru_in == self.embed_dim and self.use_deltas:
+                self.use_deltas = False
+                self.gru = nn.GRU(
+                    input_size=self.embed_dim,
+                    hidden_size=self.hidden_dim,
+                    num_layers=2,
+                    batch_first=True,
+                    bidirectional=True,
+                    dropout=self.dropout,
+                )
+            elif gru_in == self.embed_dim * 2 and not self.use_deltas:
+                self.use_deltas = True
+                self.gru = nn.GRU(
+                    input_size=self.embed_dim * 2,
+                    hidden_size=self.hidden_dim,
+                    num_layers=2,
+                    batch_first=True,
+                    bidirectional=True,
+                    dropout=self.dropout,
+                )
+
+        return super().load_state_dict(state_dict, strict=strict, assign=assign)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -59,6 +101,13 @@ class BiGRUTemporalDetector(nn.Module):
         gru_out, _ = self.gru(x_in)  # [Batch, T, hidden_dim * 2]
         attn_scores = self.attention(gru_out)  # [Batch, T, 1]
         attn_weights = torch.softmax(attn_scores, dim=1)  # [Batch, T, 1]
-        context = torch.sum(gru_out * attn_weights, dim=1)  # [Batch, hidden_dim * 2]
+        attn_context = torch.sum(gru_out * attn_weights, dim=1)  # [Batch, hidden_dim * 2]
+
+        if self.use_max_pool:
+            max_context, _ = torch.max(gru_out, dim=1)  # [Batch, hidden_dim * 2]
+            context = torch.cat([attn_context, max_context], dim=-1)  # [Batch, hidden_dim * 4]
+        else:
+            context = attn_context
+
         video_logit = self.classifier(context)  # [Batch, 1]
         return video_logit, attn_weights.squeeze(-1)

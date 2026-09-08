@@ -48,6 +48,7 @@ class HybridDeepfakeDetector(nn.Module):
         dropout: float = 0.3,
         config: Optional[dict[str, Any]] = None,
         frequency_backbone: str = "legacy",
+        enable_snr_gating: bool = True,
     ) -> None:
         super().__init__()
         if config is not None:
@@ -57,10 +58,12 @@ class HybridDeepfakeDetector(nn.Module):
             use_fft_branch = model_cfg.get("use_fft_branch", use_fft_branch)
             dropout = model_cfg.get("dropout", dropout)
             frequency_backbone = model_cfg.get("frequency_backbone", frequency_backbone)
+            enable_snr_gating = model_cfg.get("enable_snr_gating", enable_snr_gating)
 
         self.use_fft_branch = use_fft_branch
         self.backbone_name = backbone_name
         self.frequency_backbone = frequency_backbone
+        self.enable_snr_gating = enable_snr_gating
 
         weights = models.ConvNeXt_Small_Weights.DEFAULT if pretrained else None
         convnext = models.convnext_small(weights=weights)
@@ -172,7 +175,13 @@ class HybridDeepfakeDetector(nn.Module):
 
             concat_feat = torch.cat([f_s, f_f], dim=1)
             gate = self.gate_fc(concat_feat)
-            return (1.0 - gate) * f_s + gate * f_f
+            if self.enable_snr_gating:
+                noise_power = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+                gamma = torch.clamp((noise_power - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+                effective_gate = gate * gamma
+            else:
+                effective_gate = gate
+            return (1.0 - effective_gate) * f_s + effective_gate * f_f
         return f_s
 
     def forward(
@@ -215,7 +224,13 @@ class HybridDeepfakeDetector(nn.Module):
 
             concat_feat = torch.cat([f_s, f_f], dim=1)
             gate = self.gate_fc(concat_feat)
-            fused = torch.cat([f_s * (1.0 - gate), f_f * gate], dim=1)
+            if self.enable_snr_gating:
+                noise_power = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+                gamma = torch.clamp((noise_power - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+                effective_gate = gate * gamma
+            else:
+                effective_gate = gate
+            fused = torch.cat([f_s * (1.0 - effective_gate), f_f * effective_gate], dim=1)
         else:
             fused = f_s
             aux_logit = torch.zeros(x.shape[0], 1, device=x.device, dtype=x.dtype)

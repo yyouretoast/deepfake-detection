@@ -51,3 +51,38 @@ class TestTemporalHead:
         # Train dataset with seq_len=8, stride=2
         ds_train = SequenceVideoDataset(samples, seq_len=8, stride=2, is_train=True)
         assert ds_train.is_train is True
+
+    def test_temporal_detector_dual_path_max_pooling(self) -> None:
+        """Verifies dual-path (Attention + Max) pooling forward pass, shapes, and gradients."""
+        model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=128, use_deltas=True, use_max_pool=True)
+        seq = torch.randn(3, 8, 512, requires_grad=True)
+        video_logit, attn_weights = model(seq)
+
+        assert video_logit.shape == (3, 1)
+        assert attn_weights.shape == (3, 8)
+        assert model.classifier[0].in_features == 128 * 4  # 512 for hidden_dim=128
+
+        loss = video_logit.sum()
+        loss.backward()
+        assert seq.grad is not None and not torch.isnan(seq.grad).any()
+
+    def test_state_dict_backward_compatibility(self) -> None:
+        """Verifies seamless loading across legacy single-path and upgraded dual-path checkpoints."""
+        # 1. Single-path checkpoint (classifier in_features = 256)
+        legacy_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=128, use_deltas=True, use_max_pool=False)
+        legacy_sd = legacy_model.state_dict()
+
+        # Loading legacy into modern default (use_max_pool=True) should auto-adapt
+        new_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=128, use_deltas=True, use_max_pool=True)
+        new_model.load_state_dict(legacy_sd)
+        assert new_model.use_max_pool is False
+        assert new_model.classifier[0].in_features == 128 * 2
+
+        # 2. Dual-path checkpoint into legacy-configured model
+        dual_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=128, use_deltas=True, use_max_pool=True)
+        dual_sd = dual_model.state_dict()
+
+        adapting_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=128, use_deltas=True, use_max_pool=False)
+        adapting_model.load_state_dict(dual_sd)
+        assert adapting_model.use_max_pool is True
+        assert adapting_model.classifier[0].in_features == 128 * 4

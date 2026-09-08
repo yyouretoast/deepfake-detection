@@ -133,9 +133,83 @@ def benchmark_inference(
     }
 
 
+def benchmark_onnx_inference(
+    onnx_path: str,
+    img_size: int = 256,
+    batch_size: int = 32,
+    device_str: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    """Benchmark ONNX Runtime model inference latency and throughput."""
+    try:
+        import numpy as np
+        import onnxruntime as ort
+    except ImportError:
+        print("\n[2/2] onnxruntime not installed, skipping ONNX benchmark.")
+        return None
+
+    if not os.path.exists(onnx_path):
+        print(f"\n[2/2] ONNX model not found at {onnx_path}, skipping ONNX benchmark.")
+        return None
+
+    avail = ort.get_available_providers()
+    if device_str == "cuda" and "CUDAExecutionProvider" in avail:
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    elif device_str == "cpu":
+        providers = ["CPUExecutionProvider"]
+    else:
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if "CUDAExecutionProvider" in avail else ["CPUExecutionProvider"]
+
+    print(f"\n[2/2] Instantiating ONNX Runtime Session ({providers[0]})...")
+    session = ort.InferenceSession(onnx_path, providers=providers)
+    input_name = session.get_inputs()[0].name
+
+    bs1_input = np.random.randn(1, 3, img_size, img_size).astype(np.float32)
+    warmup_runs = 15 if "CUDA" in providers[0] else 3
+    for _ in range(warmup_runs):
+        _ = session.run(None, {input_name: bs1_input})
+
+    n_runs = 30 if "CUDA" in providers[0] else 5
+    t0 = time.perf_counter()
+    for _ in range(n_runs):
+        _ = session.run(None, {input_name: bs1_input})
+    total_time_s = time.perf_counter() - t0
+
+    latency_bs1_ms = (total_time_s / n_runs) * 1000.0
+    fps_bs1 = n_runs / total_time_s
+    print(f"  ONNX Single-frame (BS=1):  {latency_bs1_ms:.2f} ms/frame  ({fps_bs1:.1f} FPS)")
+
+    throughput_fps = None
+    latency_per_sample_ms = None
+    if batch_size > 1:
+        try:
+            bsN_input = np.random.randn(batch_size, 3, img_size, img_size).astype(np.float32)
+            for _ in range(warmup_runs):
+                _ = session.run(None, {input_name: bsN_input})
+
+            t0 = time.perf_counter()
+            for _ in range(n_runs):
+                _ = session.run(None, {input_name: bsN_input})
+            total_time_s = time.perf_counter() - t0
+
+            throughput_fps = (batch_size * n_runs) / total_time_s
+            latency_per_sample_ms = (total_time_s / (batch_size * n_runs)) * 1000.0
+            print(f"  ONNX Batched (BS={batch_size}):      {throughput_fps:.1f} FPS  ({latency_per_sample_ms:.2f} ms/frame)")
+        except Exception as e:
+            print(f"  ONNX Batched (BS={batch_size}) skipped (static batch-1 graph): {type(e).__name__}")
+
+    return {
+        "provider": providers[0],
+        "latency_bs1_ms": latency_bs1_ms,
+        "fps_bs1": fps_bs1,
+        "throughput_fps": throughput_fps,
+        "latency_per_sample_ms": latency_per_sample_ms,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark Dual-Stream detector inference latency and throughput.")
     parser.add_argument("--weights", type=str, default=None, help="Path to checkpoint weights")
+    parser.add_argument("--onnx_path", type=str, default="models/dual_stream_detector.onnx", help="Path to ONNX model")
     parser.add_argument("--img_size", type=int, default=256, help="Input resolution (default: 256)")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for throughput testing")
     parser.add_argument("--device", type=str, default=None, help="Device to use ('cuda', 'cpu')")
@@ -147,6 +221,14 @@ def main() -> None:
         batch_size=args.batch_size,
         device_str=args.device,
     )
+
+    if args.onnx_path:
+        benchmark_onnx_inference(
+            onnx_path=args.onnx_path,
+            img_size=args.img_size,
+            batch_size=args.batch_size,
+            device_str=args.device,
+        )
 
 
 if __name__ == "__main__":

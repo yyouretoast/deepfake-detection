@@ -33,19 +33,27 @@ def export_onnx(
     device = next(pytorch_model.parameters()).device
     dummy_input = torch.randn(1, 3, img_size, img_size, dtype=torch.float32, device=device)
 
+    export_kwargs = {
+        "export_params": True,
+        "opset_version": 18,
+        "do_constant_folding": True,
+        "input_names": ["input_rgb"],
+        "output_names": ["logits"],
+    }
+    try:
+        b_dim = torch.export.Dim("batch_size", min=1, max=64)
+        export_kwargs["dynamic_shapes"] = {"x": {0: b_dim}}
+    except (AttributeError, TypeError):
+        export_kwargs["dynamic_axes"] = {
+            "input_rgb": {0: "batch_size"},
+            "logits": {0: "batch_size"},
+        }
+
     torch.onnx.export(
         pytorch_model,
         dummy_input,
         abs_output_path,
-        export_params=True,
-        opset_version=18,
-        do_constant_folding=True,
-        input_names=["input_rgb"],
-        output_names=["logits"],
-        dynamic_axes={
-            "input_rgb": {0: "batch_size"},
-            "logits": {0: "batch_size"},
-        },
+        **export_kwargs,
     )
     print(f"ONNX model successfully exported to {abs_output_path}")
     return abs_output_path

@@ -20,8 +20,7 @@ class SEBlock(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, c, _, _ = x.shape
-        w = self.fc(x).view(b, c, 1, 1)
+        w = self.fc(x).unsqueeze(-1).unsqueeze(-1)
         return x * w
 
 

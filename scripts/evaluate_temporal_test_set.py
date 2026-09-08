@@ -118,6 +118,7 @@ def main() -> None:
     # 2. Load Bi-GRU Temporal Head
     hidden_dim = 256
     use_deltas = True
+    use_max_pool = True
     stride = 2
     if temporal_path and os.path.exists(temporal_path):
         t_ckpt = torch.load(temporal_path, map_location="cpu", weights_only=False)
@@ -128,18 +129,23 @@ def main() -> None:
         else:
             ih_weight = t_state.get("gru.weight_ih_l0", None)
             use_deltas = (ih_weight is not None and ih_weight.shape[1] == 1024)
+        if "use_max_pool" in t_ckpt:
+            use_max_pool = bool(t_ckpt["use_max_pool"])
+        else:
+            cls_weight = t_state.get("classifier.0.weight", None)
+            use_max_pool = (cls_weight is not None and cls_weight.shape[1] == hidden_dim * 4)
         if args.stride is not None:
             stride = args.stride
         else:
             stride = t_ckpt.get("stride", 2)
-        logger.info("Loaded Bi-GRU config: hidden_dim=%d, use_deltas=%s, stride=%d", hidden_dim, use_deltas, stride)
-        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim, use_deltas=use_deltas)
+        logger.info("Loaded Bi-GRU config: hidden_dim=%d, use_deltas=%s, use_max_pool=%s, stride=%d", hidden_dim, use_deltas, use_max_pool, stride)
+        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim, use_deltas=use_deltas, use_max_pool=use_max_pool)
         temporal_model.load_state_dict(clean_state_dict(t_state), strict=False)
     else:
         if args.stride is not None:
             stride = args.stride
-        logger.info("Initializing fresh Bi-GRU detector: hidden_dim=%d, use_deltas=%s, stride=%d", hidden_dim, use_deltas, stride)
-        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim, use_deltas=use_deltas)
+        logger.info("Initializing fresh Bi-GRU detector: hidden_dim=%d, use_deltas=%s, use_max_pool=%s, stride=%d", hidden_dim, use_deltas, use_max_pool, stride)
+        temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim, use_deltas=use_deltas, use_max_pool=use_max_pool)
     temporal_model.to(device).eval()
 
     # 3. Load Splits
@@ -248,6 +254,7 @@ def main() -> None:
         "balanced_accuracy_default": bal_acc_default,
         "stride": stride,
         "use_deltas": use_deltas,
+        "use_max_pool": use_max_pool,
         "n_samples": len(test_targets),
     }
     with open(output_path, "w") as f:

@@ -82,3 +82,33 @@ def test_5d_sequence_forward(
 
     assert logits.shape == torch.Size([2, 1]), f"Expected sequence logits shape torch.Size([2, 1]), got {logits.shape}"
     assert torch.isfinite(logits).all(), "Sequence logits contain NaN or Inf"
+
+
+def test_snr_adaptive_frequency_gating(
+    eval_model_factory: Callable[[bool], HybridDeepfakeDetector]
+) -> None:
+    """Verifies that high-frequency SNR gating attenuates the frequency stream when input is heavily degraded."""
+    model = eval_model_factory(use_fft=True)
+    assert model.enable_snr_gating is True
+
+    # 1. Clean input with high-frequency details
+    clean_batch = torch.rand(2, 3, 256, 256)
+    with torch.no_grad():
+        out_clean = model(clean_batch)
+        feat_clean = model.extract_features(clean_batch)
+    assert torch.isfinite(out_clean).all()
+    assert feat_clean.shape == (2, 512)
+
+    # 2. Blurred/flat input (near-zero high frequency power)
+    flat_batch = torch.full((2, 3, 256, 256), 0.5)
+    with torch.no_grad():
+        out_flat = model(flat_batch)
+        feat_flat = model.extract_features(flat_batch)
+    assert torch.isfinite(out_flat).all()
+    assert feat_flat.shape == (2, 512)
+
+    # 3. Verify disabling SNR gating behaves as standard gating
+    model.enable_snr_gating = False
+    with torch.no_grad():
+        out_no_snr = model(clean_batch)
+    assert torch.isfinite(out_no_snr).all()

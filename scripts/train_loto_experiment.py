@@ -210,19 +210,50 @@ def main() -> None:
         zero_shot_prec = float(precision_score(eval_targets, eval_preds, zero_division=0))
         zero_shot_rec = float(recall_score(eval_targets, eval_preds, zero_division=0))
 
+        # Youden's J optimal threshold calibration
+        opt_thresh = 0.5
+        opt_f1 = zero_shot_f1
+        opt_prec = zero_shot_prec
+        opt_rec = zero_shot_rec
+        if len(np.unique(eval_targets)) > 1:
+            try:
+                from sklearn.metrics import roc_curve
+                fpr, tpr, thresholds = roc_curve(eval_targets, eval_probs)
+                valid_idx = np.isfinite(thresholds)
+                if np.any(valid_idx):
+                    j_scores = tpr[valid_idx] - fpr[valid_idx]
+                    best_j_idx = np.argmax(j_scores)
+                    opt_thresh = float(thresholds[valid_idx][best_j_idx])
+                    opt_preds = (eval_probs >= opt_thresh).astype(int)
+                    opt_f1 = float(f1_score(eval_targets, opt_preds, zero_division=0))
+                    opt_prec = float(precision_score(eval_targets, opt_preds, zero_division=0))
+                    opt_rec = float(recall_score(eval_targets, opt_preds, zero_division=0))
+            except Exception as e:
+                logger.warning("Error computing Youden optimal threshold: %s", e)
+
         logger.info(
-            "Holdout [%s] Final Metrics -> AUC: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f",
+            "Holdout [%s] Default (tau=0.50) -> AUC: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f",
             args.holdout,
             zero_shot_auc,
             zero_shot_f1,
             zero_shot_prec,
             zero_shot_rec,
         )
+        logger.info(
+            "Holdout [%s] Optimal (tau*=%.4f) -> F1: %.4f | Precision: %.4f | Recall: %.4f",
+            args.holdout,
+            opt_thresh,
+            opt_f1,
+            opt_prec,
+            opt_rec,
+        )
 
         candidates = [
             "/kaggle/working/loto_results.json",
             "/kaggle/working/repo/loto_results.json",
+            os.path.join(REPO_ROOT, "results", "loto_results.json"),
             os.path.join(REPO_ROOT, "loto_results.json"),
+            "./results/loto_results.json",
             "./loto_results.json",
         ]
         results = []
@@ -241,22 +272,30 @@ def main() -> None:
         results.append({
             "holdout": args.holdout,
             "threshold": 0.5,
+            "optimal_threshold": float(opt_thresh),
             "temperature": float(optimal_temp),
             "zero_shot_auc": float(zero_shot_auc),
             "zero_shot_f1": float(zero_shot_f1),
             "precision": float(zero_shot_prec),
             "recall": float(zero_shot_rec),
+            "optimal_f1": float(opt_f1),
+            "optimal_precision": float(opt_prec),
+            "optimal_recall": float(opt_rec),
             "n_samples": len(eval_target_samples),
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         })
 
-        save_paths = [os.path.join(REPO_ROOT, "loto_results.json")]
+        save_paths = [
+            os.path.join(REPO_ROOT, "loto_results.json"),
+            os.path.join(REPO_ROOT, "results", "loto_results.json"),
+        ]
         if os.path.exists("/kaggle/working"):
             save_paths.append("/kaggle/working/loto_results.json")
             save_paths.append("/kaggle/working/repo/loto_results.json")
 
         for p in save_paths:
             try:
+                os.makedirs(os.path.dirname(os.path.abspath(p)), exist_ok=True)
                 with open(p, "w") as f:
                     json.dump(results, f, indent=2)
                 logger.info("Saved LOTO result entry to %s", p)

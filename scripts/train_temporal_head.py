@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hidden_dim", type=int, default=256, help="Bi-GRU hidden dimension.")
     parser.add_argument("--stride", type=int, default=2, help="Temporal stride between sampled frames (default: 2).")
     parser.add_argument("--no_deltas", action="store_true", help="Disable first-order velocity deltas.")
+    parser.add_argument("--no_max_pool", action="store_true", help="Disable dual-path max pooling (revert to attention-only).")
     parser.add_argument("--patience", type=int, default=2, help="Early stopping patience in epochs.")
     return parser.parse_args()
 
@@ -93,8 +94,9 @@ def main() -> None:
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
     use_deltas = not args.no_deltas
-    logger.info("Initializing Bi-GRU detector: hidden_dim=%d, use_deltas=%s, stride=%d", args.hidden_dim, use_deltas, args.stride)
-    temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=args.hidden_dim, use_deltas=use_deltas).to(device)
+    use_max_pool = not args.no_max_pool
+    logger.info("Initializing Bi-GRU detector: hidden_dim=%d, use_deltas=%s, use_max_pool=%s, stride=%d", args.hidden_dim, use_deltas, use_max_pool, args.stride)
+    temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=args.hidden_dim, use_deltas=use_deltas, use_max_pool=use_max_pool).to(device)
     optimizer = torch.optim.AdamW(temporal_model.parameters(), lr=args.lr, weight_decay=1e-2)
 
     num_fake = sum(1 for _, lbl in train_videos if lbl == 1)
@@ -155,6 +157,7 @@ def main() -> None:
                 "seq_len": args.seq_len,
                 "stride": args.stride,
                 "use_deltas": use_deltas,
+                "use_max_pool": use_max_pool,
             }, args.save_path)
             logger.info("New best checkpoint saved to %s (AUC: %.4f)", args.save_path, best_auc)
         else:
