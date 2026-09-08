@@ -67,9 +67,11 @@ def load_prediction_engine(
     if weights_path is None:
         candidate_paths = [
             "models/dual_stream_calibrated.pth",
+            "results/dual_stream_calibrated.pth",
             "weights/dual_stream_calibrated.pth",
             "dual_stream_calibrated.pth",
             "models/dual_stream_best.pth",
+            "results/dual_stream_best.pth",
             "weights/dual_stream_best.pth",
             "dual_stream_best.pth",
         ]
@@ -170,6 +172,7 @@ def load_temporal_engine(
     if weights_path is None:
         candidate_paths = [
             "models/temporal_head_best.pth",
+            "results/temporal_head_best.pth",
             "weights/temporal_head_best.pth",
             "temporal_head_best.pth",
         ]
