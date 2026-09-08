@@ -37,10 +37,10 @@ Intermediate representations exposed across spatial, residual, and frequency dom
 ## Key Architectural Differentiators
 
 * **Dual-Domain Feature Fusion**: Unifies deep semantic representations (ConvNeXt-Small) with sub-pixel noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a dedicated **4-Stage ResSE-Spectral Tower** (~2.98M parameters) with Squeeze-and-Excitation channel recalibration.
-* **Spectral SNR-Adaptive Gating**: Prevents high-frequency degradation cliffs under blur or compression by dynamically attenuating the frequency stream ($\\gamma \\to 0$) when noise residual power drops, smoothly falling back onto the robust spatial ConvNeXt backbone with zero added parameters.
-* **100% Zero Identity Leakage**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee $\\text{Actors}_{\\text{train}} \\cap \\text{Actors}_{\\text{val}} \\cap \\text{Actors}_{\\text{test}} = \\emptyset$.
-* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\\Delta \\mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, lifting video sequence classification to **`0.8693` ROC AUC** (+4.45% over single-frame spatial detection) and catching transient 1-frame deepfake glitches.
-* **Bayesian 3-Zone Decision Bands**: Post-hoc probability calibration ($T^* = 4.288$, $\\tau^* = 0.4200$) establishes high-precision boundaries ($\\tau_{\\text{real}}, \\tau_{\\text{fake}}$), guaranteeing $\\ge 98\\%$ precision on confirmed synthetic verdicts while safely routing borderline media to manual inspection.
+* **Spectral SNR-Adaptive Gating**: Prevents high-frequency degradation cliffs under blur or compression by dynamically attenuating the frequency stream ($\gamma \to 0$) when noise residual power drops, smoothly falling back onto the robust spatial ConvNeXt backbone with zero added parameters.
+* **100% Zero Identity Leakage**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee $\text{Actors}_{\text{train}} \cap \text{Actors}_{\text{val}} \cap \text{Actors}_{\text{test}} = \emptyset$.
+* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, lifting video sequence classification to **`0.8693` ROC AUC** (+4.45% over single-frame spatial detection) and catching transient 1-frame deepfake glitches.
+* **Bayesian 3-Zone Decision Bands**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes high-precision boundaries ($\tau_{\text{real}}, \tau_{\text{fake}}$), guaranteeing $\ge 98\%$ precision on confirmed synthetic verdicts while safely routing borderline media to manual inspection.
 * **Real-Time Video Engine**: 60.9 FPS inference on an NVIDIA Tesla T4 with dynamic batching and full ONNX Runtime support.
 
 ---
@@ -57,7 +57,7 @@ python -m venv venv
 # Linux / macOS:
 source venv/bin/activate
 # Windows:
-venv\\Scripts\\activate
+venv\Scripts\activate
 
 pip install -r requirements.txt
 ```
@@ -119,7 +119,7 @@ Evaluated across 13,444 facial crops (756 authentic real faces, 12,688 deepfakes
 | **Overall Accuracy** | **`76.85%`** | **`79.02%`** | **+2.17%** top-line classification rate |
 | **Fake F1-Score** | **`0.8627`** | **`0.8765`** | **+0.0138** F1 balance |
 | **Macro F1-Score** | **`0.5631`** | **`0.5896`** | Balanced across real/fake classes |
-| **Optimal Threshold ($\\tau^*$)** | `0.4200` | `0.3062` | Derived via Youden's $J$ statistic |
+| **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3062` | Derived via Youden's $J$ statistic |
 | **Calibrated Temperature ($T^*$)**| `4.2880` | — | SciPy L-BFGS-B log-temperature scaling |
 
 ![ROC Curve](figures/roc_curve.png)
@@ -185,11 +185,11 @@ Evaluated across 4 real-world distortion families on the held-out test split:
 | **Spatial Downscale** | Scale = 0.75× | `0.7660` | `0.7028` | 97.8% |
 | **Spatial Downscale** | Scale = 0.50× | `0.7449` | `0.7192` | 95.1% |
 | **Spatial Downscale** | Scale = 0.25× | `0.5358` | `0.6723` | 68.4% |
-| **Gaussian Blur** | $\\sigma = 0.5$ | `0.7746` | `0.7143` | 98.9% |
-| **Gaussian Blur** | $\\sigma = 1.0$ | `0.7307` | `0.6911` | 93.3% |
-| **Gaussian Blur** | $\\sigma = 1.5$ | `0.6351` | `0.6766` | 81.1% |
-| **Gaussian Noise** | $\\sigma = 5$ | `0.6441` | `0.6780` | 82.2% |
-| **Gaussian Noise** | $\\sigma = 15$ | `0.5484` | `0.6735` | 70.0% |
+| **Gaussian Blur** | $\sigma = 0.5$ | `0.7746` | `0.7143` | 98.9% |
+| **Gaussian Blur** | $\sigma = 1.0$ | `0.7307` | `0.6911` | 93.3% |
+| **Gaussian Blur** | $\sigma = 1.5$ | `0.6351` | `0.6766` | 81.1% |
+| **Gaussian Noise** | $\sigma = 5$ | `0.6441` | `0.6780` | 82.2% |
+| **Gaussian Noise** | $\sigma = 15$ | `0.5484` | `0.6735` | 70.0% |
 
 ---
 
@@ -247,93 +247,93 @@ Evaluated across 4 real-world distortion families on the held-out test split:
 ```
 
 ### 1. Spatial Stream
-* **Backbone**: ConvNeXt-Small pre-trained on ImageNet-1K, outputting a 768-dimensional feature representation normalized via `LayerNorm2d` and projected to a 512-dimensional spatial embedding $\\mathbf{f}_s \\in \\mathbb{R}^{512}$.
-* **Alignment**: Faces are dynamically localized using OpenCV's YuNet detector, expanded by $1.50\\times$ to capture blending boundaries around the hairline and jaw, and aligned using 5-point facial landmark similarity transformations.
+* **Backbone**: ConvNeXt-Small pre-trained on ImageNet-1K, outputting a 768-dimensional feature representation normalized via `LayerNorm2d` and projected to a 512-dimensional spatial embedding $\mathbf{f}_s \in \mathbb{R}^{512}$.
+* **Alignment**: Faces are dynamically localized using OpenCV's YuNet detector, expanded by $1.50\times$ to capture blending boundaries around the hairline and jaw, and aligned using 5-point facial landmark similarity transformations.
 
 ### 2. Frequency Stream: SRM, Bayar-Stamm, and ResSE-Spectral Tower
-Noise residuals from 3 fixed $5\\times5$ Steganographic Rich Model (SRM) kernels (9 channels) and 1 learnable Bayar-Stamm constrained convolution (1 channel) isolate high-frequency spatial discrepancies:
+Noise residuals from 3 fixed $5\times5$ Steganographic Rich Model (SRM) kernels (9 channels) and 1 learnable Bayar-Stamm constrained convolution (1 channel) isolate high-frequency spatial discrepancies:
 
 $$
-\\mathcal{F}_{\\text{norm}} = \\ln\\left( \\left| \\mathcal{F}_{\\text{ortho}}(I_{\\text{SRM+Bayar}}) \\right| + 1 \\right)
+\mathcal{F}_{\text{norm}} = \ln\left( \left| \mathcal{F}_{\text{ortho}}(I_{\text{SRM+Bayar}}) \right| + 1 \right)
 $$
 
 Phase angles are computed with sub-epsilon magnitude autograd masking to eliminate infinite gradient singularities:
 
 $$
-\\theta = \\frac{1}{\\pi} \\text{atan2}(I_{\\text{imag}}, I_{\\text{real}}) \\quad \\text{where} \\quad |z| \\ge 10^{-6}
+\theta = \frac{1}{\pi} \text{atan2}(I_{\text{imag}}, I_{\text{real}}) \quad \text{where} \quad |z| \ge 10^{-6}
 $$
 
-The resulting 20-channel representation (10 log-magnitude + 10 phase maps) is processed by the **ResSE-Spectral Tower**: a 4-stage residual network ($48 \\to 96 \\to 192 \\to 384$ channels, 2.98M parameters) with Squeeze-and-Excitation (`SEBlock`) channel attention:
+The resulting 20-channel representation (10 log-magnitude + 10 phase maps) is processed by the **ResSE-Spectral Tower**: a 4-stage residual network ($48 \to 96 \to 192 \to 384$ channels, 2.98M parameters) with Squeeze-and-Excitation (`SEBlock`) channel attention:
 
 $$
-\\mathbf{z} = \\text{AdaptiveAvgPool2d}(\\mathbf{X}) \\in \\mathbb{R}^C
-$$
-
-$$
-\\mathbf{s} = \\sigma\\left(\\mathbf{W}_2 \\cdot \\text{ReLU}(\\mathbf{W}_1 \\mathbf{z})\\right) \\quad \\text{where} \\quad \\mathbf{W}_1 \\in \\mathbb{R}^{\\frac{C}{r} \\times C}, \\; \\mathbf{W}_2 \\in \\mathbb{R}^{C \\times \\frac{C}{r}}
+\mathbf{z} = \text{AdaptiveAvgPool2d}(\mathbf{X}) \in \mathbb{R}^C
 $$
 
 $$
-\\widetilde{\\mathbf{X}} = \\mathbf{s} \\odot \\mathbf{X}
+\mathbf{s} = \sigma\left(\mathbf{W}_2 \cdot \text{ReLU}(\mathbf{W}_1 \mathbf{z})\right) \quad \text{where} \quad \mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}, \; \mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}
+$$
+
+$$
+\widetilde{\mathbf{X}} = \mathbf{s} \odot \mathbf{X}
 $$
 
 To prevent the spatial stream from dominating gradient updates during training, an auxiliary linear head supervises the frequency representation directly:
 
 $$
-\\mathcal{L}_{\\text{total}} = \\mathcal{L}_{\\text{fused}} + 0.3 \\cdot \\mathcal{L}_{\\text{freq}}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{fused}} + 0.3 \cdot \mathcal{L}_{\text{freq}}
 $$
 
 ### 3. Symmetric Gated Residual Fusion & High-Frequency SNR Gating
 Both streams are symmetrically gated:
 
 $$
-\\mathbf{g} = \\sigma\\left(\\mathbf{W}_g [\\mathbf{f}_s \\parallel \\mathbf{f}_f] + \\mathbf{b}_g\\right) \\in \\mathbb{R}^{512}
+\mathbf{g} = \sigma\left(\mathbf{W}_g [\mathbf{f}_s \parallel \mathbf{f}_f] + \mathbf{b}_g\right) \in \mathbb{R}^{512}
 $$
 
 Under severe image degradation (such as aggressive Gaussian blur or heavy compression), high-frequency steganographic cues degrade into pure noise. To prevent blur-induced performance cliffs, test-time **High-Frequency SNR-Adaptive Gating** modulates the frequency gate according to residual variance across the SRM and Bayar noise channels:
 
 $$
-\\gamma = \\operatorname{clamp}\\left( \\frac{\\sigma^2_{\\text{noise}} - 0.005}{0.025 - 0.005}, \\, 0.0, \\, 1.0 \\right), \\quad \\mathbf{g}_{\\text{eff}} = \\mathbf{g} \\odot \\gamma
+\gamma = \text{clamp}\left( \frac{\sigma^2_{\text{noise}} - 0.005}{0.025 - 0.005}, \, 0.0, \, 1.0 \right), \quad \mathbf{g}_{\text{eff}} = \mathbf{g} \odot \gamma
 $$
 
 $$
-\\mathbf{f}_{\\text{fused}} = \\left[ \\mathbf{f}_s \\odot (1 - \\mathbf{g}_{\\text{eff}}) \\;\\parallel\\; \\mathbf{f}_f \\odot \\mathbf{g}_{\\text{eff}} \\right] \\in \\mathbb{R}^{1024}
+\mathbf{f}_{\text{fused}} = \left[ \mathbf{f}_s \odot (1 - \mathbf{g}_{\text{eff}}) \;\parallel\; \mathbf{f}_f \odot \mathbf{g}_{\text{eff}} \right] \in \mathbb{R}^{1024}
 $$
 
-For clean inputs ($\\gamma = 1.0$), original multi-domain gating is preserved with bit-exact fidelity; under aggressive blur ($\\gamma \\to 0.0$), the model gracefully relies 100% on the intact spatial ConvNeXt backbone without requiring full retraining.
+For clean inputs ($\gamma = 1.0$), original multi-domain gating is preserved with bit-exact fidelity; under aggressive blur ($\gamma \to 0.0$), the model gracefully relies 100% on the intact spatial ConvNeXt backbone without requiring full retraining.
 
 ### 4. Spatiotemporal Sequence Modeling (Dual-Path Bi-GRU Head)
-For video inference, frozen 512-dimensional sequence embeddings $\\mathbf{e}_t = \\mathbf{f}_s \\odot (1 - \\mathbf{g}_{\\text{eff}}) + \\mathbf{f}_f \\odot \\mathbf{g}_{\\text{eff}}$ are concatenated with first-order velocity deltas $\\Delta \\mathbf{e}_t = \\mathbf{e}_t - \\mathbf{e}_{t-1}$ to explicitly capture inter-frame synthesis discontinuities:
+For video inference, frozen 512-dimensional sequence embeddings $\mathbf{e}_t = \mathbf{f}_s \odot (1 - \mathbf{g}_{\text{eff}}) + \mathbf{f}_f \odot \mathbf{g}_{\text{eff}}$ are concatenated with first-order velocity deltas $\Delta \mathbf{e}_t = \mathbf{e}_t - \mathbf{e}_{t-1}$ to explicitly capture inter-frame synthesis discontinuities:
 
 $$
-\\mathbf{x}_t = [\\mathbf{e}_t \\parallel \\Delta \\mathbf{e}_t] \\in \\mathbb{R}^{1024}
+\mathbf{x}_t = [\mathbf{e}_t \parallel \Delta \mathbf{e}_t] \in \mathbb{R}^{1024}
 $$
 
 The representations are processed by a 2-layer Bidirectional GRU ($H=256$) with **Dual-Path (Attention + Extreme-Value Max) Pooling** to prevent 1-frame transient glitches from being diluted by sequence attention averaging:
 
 $$
-\\mathbf{h}_t = [\\text{GRU}_{\\text{fwd}}(\\mathbf{x}_t) \\parallel \\text{GRU}_{\\text{bwd}}(\\mathbf{x}_t)] \\in \\mathbb{R}^{2H}
+\mathbf{h}_t = [\text{GRU}_{\text{fwd}}(\mathbf{x}_t) \parallel \text{GRU}_{\text{bwd}}(\mathbf{x}_t)] \in \mathbb{R}^{2H}
 $$
 
 $$
-\\alpha_t = \\frac{\\exp\\left(\\mathbf{w}^T \\tanh(\\mathbf{W}_a \\mathbf{h}_t)\\right)}{\\sum_{j=1}^T \\exp\\left(\\mathbf{w}^T \\tanh(\\mathbf{W}_a \\mathbf{h}_j)\\right)} \\quad \\text{where} \\quad \\sum_{t=1}^T \\alpha_t = 1.0
+\alpha_t = \frac{\exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_t)\right)}{\sum_{j=1}^T \exp\left(\mathbf{w}^T \tanh(\mathbf{W}_a \mathbf{h}_j)\right)} \quad \text{where} \quad \sum_{t=1}^T \alpha_t = 1.0
 $$
 
 $$
-\\mathbf{c}_{\\text{attn}} = \\sum_{t=1}^T \\alpha_t \\mathbf{h}_t \\in \\mathbb{R}^{2H}, \\quad \\mathbf{c}_{\\max} = \\max_{t \\in \\{1,\\dots,T\\}} \\mathbf{h}_t \\in \\mathbb{R}^{2H}
+\mathbf{c}_{\text{attn}} = \sum_{t=1}^T \alpha_t \mathbf{h}_t \in \mathbb{R}^{2H}, \quad \mathbf{c}_{\max} = \max_{t \in \{1,\dots,T\}} \mathbf{h}_t \in \mathbb{R}^{2H}
 $$
 
 $$
-\\mathbf{c}_{\\text{fused}} = [\\mathbf{c}_{\\text{attn}} \\parallel \\mathbf{c}_{\\max}] \\in \\mathbb{R}^{4H}, \\quad \\hat{y}_{\\text{video}} = \\text{Classifier}(\\mathbf{c}_{\\text{fused}})
+\mathbf{c}_{\text{fused}} = [\mathbf{c}_{\text{attn}} \parallel \mathbf{c}_{\max}] \in \mathbb{R}^{4H}, \quad \hat{y}_{\text{video}} = \text{Classifier}(\mathbf{c}_{\text{fused}})
 $$
 
-This dual-path pooling strategy achieves **`0.8693` ROC AUC** on held-out test sequences, lifting detection performance by $+4.45\\%$ over single-frame detection.
+This dual-path pooling strategy achieves **`0.8693` ROC AUC** on held-out test sequences, lifting detection performance by $+4.45\%$ over single-frame detection.
 
 ### 5. Dual-Threshold Bayesian Confidence Bands
-Rather than enforcing a fixed 0.50 cutoff on ambiguous or compressed inputs, calibrated decision boundaries ($\\tau_{\\text{real}}, \\tau_{\\text{fake}}$) partition outputs into three certainty zones:
-* **Confirmed Authentic**: $p \\le \\tau_{\\text{real}}$ (Precision $\\ge$ 98%)
-* **Inconclusive / Perturbation Detected**: $\\tau_{\\text{real}} < p < \\tau_{\\text{fake}}$ (Flagged for manual inspection)
-* **Confirmed Synthetic**: $p \\ge \\tau_{\\text{fake}}$ (Precision $\\ge$ 98%)
+Rather than enforcing a fixed 0.50 cutoff on ambiguous or compressed inputs, calibrated decision boundaries ($\tau_{\text{real}}, \tau_{\text{fake}}$) partition outputs into three certainty zones:
+* **Confirmed Authentic**: $p \le \tau_{\text{real}}$ (Precision $\ge$ 98%)
+* **Inconclusive / Perturbation Detected**: $\tau_{\text{real}} < p < \tau_{\text{fake}}$ (Flagged for manual inspection)
+* **Confirmed Synthetic**: $p \ge \tau_{\text{fake}}$ (Precision $\ge$ 98%)
 
 ---
 
@@ -342,7 +342,7 @@ Rather than enforcing a fixed 0.50 cutoff on ambiguous or compressed inputs, cal
 To guarantee **100% zero identity leakage**, actor IDs (`id0_id16`) are partitioned using `networkx.Graph` connected components:
 
 $$
-\\text{Actors}_{\\text{train}} \\cap \\text{Actors}_{\\text{val}} \\cap \\text{Actors}_{\\text{test}} = \\emptyset
+\text{Actors}_{\text{train}} \cap \text{Actors}_{\text{val}} \cap \text{Actors}_{\text{test}} = \emptyset
 $$
 
 | Split | Total Samples | % of Dataset | Real Faces | Fake Faces | Fake:Real Ratio |
