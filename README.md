@@ -113,14 +113,23 @@ Evaluated across 13,444 facial crops (756 authentic real faces, 12,688 deepfakes
 
 | Metric | Single-Frame Spatial Model | Video Spatiotemporal Bi-GRU | Delta / Impact |
 | :--- | :---: | :---: | :--- |
-| **ROC AUC** | **`0.8248`** | **`0.8693`** | **+4.45%** discriminative improvement |
-| **Fake Precision** | **`98.00%`** | **`98.58%`** | **+0.58%** false alarm suppression |
-| **Fake Recall** | **`77.04%`** | **`78.90%`** | **+1.86%** detection coverage |
-| **Overall Accuracy** | **`76.85%`** | **`79.02%`** | **+2.17%** top-line classification rate |
-| **Fake F1-Score** | **`0.8627`** | **`0.8765`** | **+0.0138** F1 balance |
-| **Macro F1-Score** | **`0.5631`** | **`0.5896`** | Balanced across real/fake classes |
-| **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3062` | Derived via Youden's $J$ statistic |
+| **ROC AUC** | **`0.8248`** | **`0.8719`** | **+4.71%** discriminative improvement |
+| **PR AUC** | **`0.8115`** | **`0.9904`** | Precision-recall area under curve |
+| **Equal Error Rate (EER)** | `24.10%` | **`18.98%`** | **-5.12%** biometric verification error drop |
+| **Fake Precision** | **`98.00%`** | **`98.60%`** | **+0.60%** false alarm suppression |
+| **Fake Recall** | **`77.04%`** | **`79.75%`** | **+2.71%** detection coverage |
+| **Overall Accuracy** | **`76.85%`** | **`79.82%`** | **+2.97%** classification rate |
+| **Balanced Accuracy** | **`76.12%`** | **`80.35%`** | **+4.23%** balanced accuracy gain |
+| **Fake F1-Score** | **`0.8627`** | **`0.8818`** | **+0.0191** F1 balance |
+| **Macro F1-Score** | **`0.5631`** | **`0.5964`** | Balanced across real/fake classes |
+| **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3895` | Derived via Youden's $J$ statistic |
 | **Calibrated Temperature ($T^*$)**| `4.2880` | -- | SciPy L-BFGS-B log-temperature scaling |
+
+#### Balanced 1:1 Prevalence-Invariant Test Benchmark (63 Real vs 63 Fake Sequences)
+To account for the $16.8:1$ test class imbalance, the model was evaluated on a prevalence-normalized $1:1$ subset:
+* **Balanced ROC AUC:** `0.8610` | **Balanced Accuracy:** `76.98%`
+* **Real Class Performance:** Precision: `75.00%` | Recall: `80.95%` | F1-Score: `0.7786`
+* **Fake Class Performance:** Precision: `79.31%` | Recall: `73.02%` | F1-Score: `0.7603`
 
 ![ROC Curve](figures/roc_curve.png)
 
