@@ -131,6 +131,12 @@ def main() -> None:
         gradient_accumulation_steps=args.gradient_accumulation_steps,
     )
 
+    if accelerator.is_main_process:
+        logger.info("Initializing HybridDeepfakeDetector model (%s backbone)...", args.frequency_backbone)
+    model = HybridDeepfakeDetector(frequency_backbone=args.frequency_backbone)
+    optimizer = torch.optim.AdamW(get_differential_param_groups(model))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
+
     data_root = find_dataset_root(args.data_dir)
     splits_path = resolve_splits_path(data_root=data_root)
 
@@ -161,6 +167,10 @@ def main() -> None:
         ]
     real_test_samples = [s for s in test_samples if s and len(s) >= 2 and s[1] == 0]
     eval_target_samples.extend(real_test_samples[: min(len(real_test_samples), max(500, len(eval_target_samples)))])
+
+    del splits, train_samples, val_samples, test_samples
+    import gc
+    gc.collect()
 
     if accelerator.is_main_process:
         logger.info(
@@ -206,10 +216,6 @@ def main() -> None:
     num_real = len(train_loto_samples) - num_fake
     pos_weight_val = min(float(num_real / max(1, num_fake)), 3.0)
     pos_weight_tensor = torch.tensor([pos_weight_val], device=accelerator.device)
-
-    model = HybridDeepfakeDetector(frequency_backbone=args.frequency_backbone)
-    optimizer = torch.optim.AdamW(get_differential_param_groups(model))
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
     criterion = FocalLossWithLogits(gamma=2.0, pos_weight=pos_weight_tensor)
 
     if accelerator.num_processes > 1:
