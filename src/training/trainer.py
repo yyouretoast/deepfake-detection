@@ -76,20 +76,21 @@ class DualStreamTrainer:
             total_failures += num_corrupt
 
             with self.accelerator.accumulate(self.model):
-                unwrapped = self.accelerator.unwrap_model(self.model)
-                has_aux = (
-                    getattr(unwrapped, "frequency_backbone", None) == "resse"
-                    and getattr(unwrapped, "use_fft_branch", False)
-                )
+                with self.accelerator.autocast():
+                    unwrapped = self.accelerator.unwrap_model(self.model)
+                    has_aux = (
+                        getattr(unwrapped, "frequency_backbone", None) == "resse"
+                        and getattr(unwrapped, "use_fft_branch", False)
+                    )
 
-                if has_aux:
-                    outputs, aux_outputs = self.model(images, return_aux=True)
-                    loss_main = self._compute_loss(outputs, labels, valid_flags)
-                    loss_aux = self._compute_loss(aux_outputs, labels, valid_flags)
-                    loss = loss_main + self.aux_loss_weight * loss_aux
-                else:
-                    outputs = self.model(images)
-                    loss = self._compute_loss(outputs, labels, valid_flags)
+                    if has_aux:
+                        outputs, aux_outputs = self.model(images, return_aux=True)
+                        loss_main = self._compute_loss(outputs, labels, valid_flags)
+                        loss_aux = self._compute_loss(aux_outputs, labels, valid_flags)
+                        loss = loss_main + self.aux_loss_weight * loss_aux
+                    else:
+                        outputs = self.model(images)
+                        loss = self._compute_loss(outputs, labels, valid_flags)
 
                 self.accelerator.backward(loss)
 
@@ -123,21 +124,22 @@ class DualStreamTrainer:
         backup = self.ema.apply_shadow(unwrapped) if self.ema is not None else None
 
         try:
-            for images, labels, valid_flags in eval_loader:
-                labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
-                valid_flags = valid_flags.unsqueeze(1) if valid_flags.ndim == 1 else valid_flags
+            with self.accelerator.autocast():
+                for images, labels, valid_flags in eval_loader:
+                    labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
+                    valid_flags = valid_flags.unsqueeze(1) if valid_flags.ndim == 1 else valid_flags
 
-                val_failures_tensor += (valid_flags == 0.0).sum()
+                    val_failures_tensor += (valid_flags == 0.0).sum()
 
-                outputs = self.model(images)
-                loss = self._compute_loss(outputs, labels, valid_flags)
-                val_loss_tensor += loss.detach()
+                    outputs = self.model(images)
+                    loss = self._compute_loss(outputs, labels, valid_flags)
+                    val_loss_tensor += loss.detach()
 
-                probs = torch.sigmoid(outputs)
-                gathered_probs, gathered_labels = self.accelerator.gather_for_metrics((probs, labels))
+                    probs = torch.sigmoid(outputs)
+                    gathered_probs, gathered_labels = self.accelerator.gather_for_metrics((probs, labels))
 
-                all_preds.extend(gathered_probs.cpu().reshape(-1).tolist())
-                all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
+                    all_preds.extend(gathered_probs.cpu().reshape(-1).tolist())
+                    all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
         finally:
             if self.ema is not None and backup is not None:
                 self.ema.restore(unwrapped, backup)

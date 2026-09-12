@@ -78,7 +78,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run Leave-One-Technology-Out (LOTO) experiment.")
     parser.add_argument("--holdout", type=str, required=True, help="Holdout generator keyword (e.g. deepfakes, face2face, faceswap, neuraltextures, celeb)")
     parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size per GPU")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size per GPU (default: 8)")
     parser.add_argument("--num_workers", type=int, default=0, help="DataLoader workers (default 0 prevents fork deadlocks)")
     parser.add_argument("--data_dir", type=str, default=None, help="Directory containing dataset and splits.json")
     parser.add_argument(
@@ -135,11 +135,14 @@ def main() -> None:
 
     if accelerator.is_main_process:
         logger.info(
-            "LOTO Experiment [Holdout: %s] | Train: %d, Val: %d, Zero-Shot Test: %d",
+            "LOTO Experiment [Holdout: %s] | Train: %d, Val: %d, Zero-Shot Test: %d | BatchSize: %d | GradAccum: %d | MixedPrec: %s",
             args.holdout,
             len(train_loto_samples),
             len(val_loto_samples),
             len(eval_target_samples),
+            args.batch_size,
+            args.gradient_accumulation_steps,
+            args.mixed_precision,
         )
 
     train_transform, eval_transform = get_transforms(img_size=256, hardened=args.hardened)
@@ -202,12 +205,13 @@ def main() -> None:
     model.eval()
     all_logits, all_targets = [], []
     with torch.no_grad():
-        for images, labels, valid_flags in eval_loader:
-            labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
-            outputs = model(images)
-            gathered_logits, gathered_labels = accelerator.gather_for_metrics((outputs, labels))
-            all_logits.extend(gathered_logits.cpu().reshape(-1).tolist())
-            all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
+        with accelerator.autocast():
+            for images, labels, valid_flags in eval_loader:
+                labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
+                outputs = model(images)
+                gathered_logits, gathered_labels = accelerator.gather_for_metrics((outputs, labels))
+                all_logits.extend(gathered_logits.cpu().reshape(-1).tolist())
+                all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
 
     if accelerator.is_main_process:
         eval_logits = np.array(all_logits).flatten()
