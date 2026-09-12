@@ -1,12 +1,24 @@
 """Leave-One-Technology-Out (LOTO) cross-generator domain generalization experiment."""
 
 import argparse
+import faulthandler
 import json
 import logging
 import os
 import random
 import sys
 import time
+
+try:
+    faulthandler.enable()
+except Exception:
+    pass
+
+for cache_dir in ["/root/.cache/torch/kernels", os.path.expanduser("~/.cache/torch/kernels")]:
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except Exception:
+        pass
 
 from accelerate import Accelerator
 import cv2
@@ -124,13 +136,25 @@ def main() -> None:
     val_samples = splits["val"]
     test_samples = splits.get("test", [])
 
-    train_loto_samples = [s for s in train_samples if not DomainClassifier.matches_holdout(s[0], args.holdout)]
-    val_loto_samples = [s for s in val_samples if not DomainClassifier.matches_holdout(s[0], args.holdout)]
+    train_loto_samples = [
+        s for s in train_samples
+        if s and len(s) >= 2 and s[0] and not DomainClassifier.matches_holdout(s[0], args.holdout)
+    ]
+    val_loto_samples = [
+        s for s in val_samples
+        if s and len(s) >= 2 and s[0] and not DomainClassifier.matches_holdout(s[0], args.holdout)
+    ]
 
-    eval_target_samples = [s for s in test_samples if DomainClassifier.matches_holdout(s[0], args.holdout)]
+    eval_target_samples = [
+        s for s in test_samples
+        if s and len(s) >= 2 and s[0] and DomainClassifier.matches_holdout(s[0], args.holdout)
+    ]
     if not eval_target_samples:
-        eval_target_samples = [s for s in val_samples if DomainClassifier.matches_holdout(s[0], args.holdout)]
-    real_test_samples = [s for s in test_samples if s[1] == 0]
+        eval_target_samples = [
+            s for s in val_samples
+            if s and len(s) >= 2 and s[0] and DomainClassifier.matches_holdout(s[0], args.holdout)
+        ]
+    real_test_samples = [s for s in test_samples if s and len(s) >= 2 and s[1] == 0]
     eval_target_samples.extend(real_test_samples[: min(len(real_test_samples), max(500, len(eval_target_samples)))])
 
     if accelerator.is_main_process:
@@ -148,19 +172,29 @@ def main() -> None:
     train_transform, eval_transform = get_transforms(img_size=256, hardened=args.hardened)
     train_ds = FaceCropDataset(train_loto_samples, data_root, is_train=True, transform=train_transform)
     val_ds = FaceCropDataset(val_loto_samples, data_root, is_train=False, transform=eval_transform)
-    eval_ds = FaceCropDataset(eval_target_samples, data_root, is_train=False, transform=eval_transform)
 
-    g = torch.Generator()
-    g.manual_seed(42)
+    fold_seed = 42 + sum(ord(c) for c in args.holdout)
+    g_train = torch.Generator()
+    g_train.manual_seed(fold_seed)
 
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=False, persistent_workers=False, drop_last=True, worker_init_fn=seed_worker, generator=g
+        train_ds,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=False,
+        persistent_workers=False,
+        drop_last=True,
+        worker_init_fn=seed_worker,
+        generator=g_train,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=False, worker_init_fn=seed_worker, generator=g
-    )
-    eval_loader = DataLoader(
-        eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=False, worker_init_fn=seed_worker, generator=g
+        val_ds,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=False,
+        worker_init_fn=seed_worker,
     )
 
     num_fake = sum(1 for s in train_loto_samples if s[1] == 1)
@@ -176,8 +210,8 @@ def main() -> None:
     if accelerator.num_processes > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
-    model, optimizer, train_loader, val_loader, eval_loader, scheduler = accelerator.prepare(
-        model, optimizer, train_loader, val_loader, eval_loader, scheduler
+    model, optimizer, train_loader, val_loader, scheduler = accelerator.prepare(
+        model, optimizer, train_loader, val_loader, scheduler
     )
 
     ema = (
@@ -201,7 +235,13 @@ def main() -> None:
     save_path = f"./models/dual_stream_loto_{args.holdout}.pth"
     trainer.fit(num_epochs=args.epochs, save_path=save_path, checkpoint_dir="./checkpoints_loto", patience=3)
 
-    # Zero-shot evaluation on holdout domain
+    # Zero-shot evaluation on holdout domain (deferred preparation prevents DDP / RNG interference)
+    eval_ds = FaceCropDataset(eval_target_samples, data_root, is_train=False, transform=eval_transform)
+    eval_loader = DataLoader(
+        eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=False, worker_init_fn=seed_worker
+    )
+    eval_loader = accelerator.prepare(eval_loader)
+
     model.eval()
     all_logits, all_targets = [], []
     with torch.no_grad():

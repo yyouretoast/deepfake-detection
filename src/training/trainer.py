@@ -1,9 +1,15 @@
 """Reusable Distributed Data Parallel (DDP) Trainer for Dual-Stream Deepfake Detectors."""
 
+import faulthandler
 import logging
 import os
 import time
 from typing import Any, Optional
+
+try:
+    faulthandler.enable()
+except Exception:
+    pass
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
@@ -68,7 +74,18 @@ class DualStreamTrainer:
         desc = f"Epoch [{epoch + 1}/{total_epochs}]"
         train_iter = tqdm(self.train_loader, desc=desc, disable=not self.accelerator.is_main_process)
 
-        for images, labels, valid_flags in train_iter:
+        for batch_idx, (images, labels, valid_flags) in enumerate(train_iter):
+            if batch_idx == 0 and self.accelerator.is_main_process:
+                logger.info(
+                    "[DIAGNOSTIC] Batch 0 successfully yielded! Images: %s (min=%.2f, max=%.2f), Labels: %s, Valid: %d/%d",
+                    images.shape,
+                    float(images.min().item()),
+                    float(images.max().item()),
+                    labels.shape,
+                    int(valid_flags.sum().item()),
+                    len(valid_flags),
+                )
+
             labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
             valid_flags = valid_flags.unsqueeze(1) if valid_flags.ndim == 1 else valid_flags
 
@@ -83,16 +100,30 @@ class DualStreamTrainer:
                         and getattr(unwrapped, "use_fft_branch", False)
                     )
 
-                    if has_aux:
-                        outputs, aux_outputs = self.model(images, return_aux=True)
-                        loss_main = self._compute_loss(outputs, labels, valid_flags)
-                        loss_aux = self._compute_loss(aux_outputs, labels, valid_flags)
-                        loss = loss_main + self.aux_loss_weight * loss_aux
-                    else:
-                        outputs = self.model(images)
-                        loss = self._compute_loss(outputs, labels, valid_flags)
+                    try:
+                        if has_aux:
+                            outputs, aux_outputs = self.model(images, return_aux=True)
+                            loss_main = self._compute_loss(outputs, labels, valid_flags)
+                            loss_aux = self._compute_loss(aux_outputs, labels, valid_flags)
+                            loss = loss_main + self.aux_loss_weight * loss_aux
+                        else:
+                            outputs = self.model(images)
+                            loss = self._compute_loss(outputs, labels, valid_flags)
+                    except Exception as e:
+                        logger.error(
+                            "[CRITICAL] Forward pass exception on batch %d: %s | images: %s",
+                            batch_idx, e, images.shape, exc_info=True
+                        )
+                        raise
 
-                self.accelerator.backward(loss)
+                try:
+                    self.accelerator.backward(loss)
+                except Exception as e:
+                    logger.error(
+                        "[CRITICAL] Backward pass exception on batch %d: %s | loss: %s",
+                        batch_idx, e, loss, exc_info=True
+                    )
+                    raise
 
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=self.max_grad_norm)

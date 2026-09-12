@@ -189,3 +189,45 @@ def test_evaluator_single_sample_batch_no_scalar_collapse() -> None:
     assert len(valid) == 1
     assert targets[0] == 1.0
 
+
+def test_facecropdataset_uncrashable_on_corrupt_or_missing_files() -> None:
+    """Verifies FaceCropDataset gracefully handles missing, corrupt, or truncated files via PIL/zero-tensor fallback."""
+    from PIL import Image
+    from src.dataset.datasets import FaceCropDataset
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        valid_img_path = os.path.join(tmpdir, "valid.png")
+        Image.new("RGB", (100, 100), color="blue").save(valid_img_path)
+
+        corrupt_img_path = os.path.join(tmpdir, "corrupt.webp")
+        with open(corrupt_img_path, "wb") as f:
+            f.write(b"RIFF\x00\x00\x00\x00WEBPVP8 \x00\x00\x00\x00INVALID_HEADER")
+
+        missing_img_path = os.path.join(tmpdir, "missing.png")
+
+        samples = [
+            (valid_img_path, 1.0),
+            (corrupt_img_path, 0.0),
+            (missing_img_path, 1.0),
+        ]
+
+        ds = FaceCropDataset(samples, root_dir=tmpdir, is_train=False, img_size=256)
+        assert len(ds) == 3
+
+        # Sample 0: valid image
+        t0, l0, v0 = ds[0]
+        assert t0.shape == (3, 256, 256)
+        assert v0.item() == 1.0
+        assert l0.item() == 1.0
+
+        # Sample 1: corrupt file (must not segfault or throw uncaught exception)
+        t1, l1, v1 = ds[1]
+        assert t1.shape == (3, 256, 256)
+        assert v1.item() == 0.0
+
+        # Sample 2: missing file
+        t2, l2, v2 = ds[2]
+        assert t2.shape == (3, 256, 256)
+        assert v2.item() == 0.0
+
+

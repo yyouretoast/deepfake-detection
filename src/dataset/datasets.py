@@ -59,16 +59,29 @@ class FaceCropDataset(Dataset):
             else rel_or_abs_path
         )
         valid_flag = 1.0
+        rgb = None
+
+        # Primary decoder: OpenCV
         try:
             bgr = cv2.imread(full_path, cv2.IMREAD_COLOR)
-            if bgr is None:
-                raise ValueError(f"cv2.imread failed for {full_path}")
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            if rgb.shape[0] != self.img_size or rgb.shape[1] != self.img_size:
-                rgb = cv2.resize(rgb, (self.img_size, self.img_size), interpolation=cv2.INTER_AREA)
-        except (OSError, ValueError, cv2.error):
-            valid_flag = 0.0
-            rgb = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
+            if bgr is not None and bgr.size > 0 and bgr.ndim == 3:
+                rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                if rgb.shape[0] != self.img_size or rgb.shape[1] != self.img_size:
+                    rgb = cv2.resize(rgb, (self.img_size, self.img_size), interpolation=cv2.INTER_AREA)
+        except Exception:
+            rgb = None
+
+        # Secondary fallback: PIL Image (handles images where OpenCV libwebp/libjpeg decoders fail)
+        if rgb is None:
+            try:
+                with Image.open(full_path) as pil_img:
+                    pil_rgb = pil_img.convert("RGB")
+                    if pil_rgb.size != (self.img_size, self.img_size):
+                        pil_rgb = pil_rgb.resize((self.img_size, self.img_size), Image.Resampling.BILINEAR)
+                    rgb = np.array(pil_rgb, dtype=np.uint8)
+            except Exception:
+                valid_flag = 0.0
+                rgb = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
 
         return rgb, valid_flag
 
@@ -87,23 +100,33 @@ class FaceCropDataset(Dataset):
                 valid_flag = 0.0
 
         if self.transform is not None and valid_flag > 0.0:
-            if HAS_ALBUMENTATIONS and isinstance(self.transform, A.Compose):
-                augmented = self.transform(image=rgb)
-                tensor_img = augmented["image"].float()
-                if augmented["image"].dtype == torch.uint8:
-                    tensor_img = tensor_img / 255.0
-            else:
-                img_pil = Image.fromarray(rgb)
-                tensor_img = self.transform(img_pil)
+            try:
+                if HAS_ALBUMENTATIONS and isinstance(self.transform, A.Compose):
+                    augmented = self.transform(image=rgb)
+                    tensor_img = augmented["image"].float()
+                    if augmented["image"].dtype == torch.uint8:
+                        tensor_img = tensor_img / 255.0
+                else:
+                    img_pil = Image.fromarray(rgb)
+                    tensor_img = self.transform(img_pil)
+            except Exception as e:
+                logger.warning("Transform failed for sample '%s': %s (masking as corrupt)", path_rel, e)
+                valid_flag = 0.0
+                tensor_img = torch.zeros(3, self.img_size, self.img_size, dtype=torch.float32)
         else:
             tensor_img = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
 
-        label_tensor = torch.tensor(label_val, dtype=torch.float32)
+        try:
+            label_float = float(label_val)
+        except (ValueError, TypeError):
+            label_float = 0.0
+
+        label_tensor = torch.tensor(label_float, dtype=torch.float32)
         valid_tensor = torch.tensor(valid_flag, dtype=torch.float32)
 
         if self.return_valid_flag:
             return tensor_img, label_tensor, valid_tensor
-        return tensor_img, int(label_val)
+        return tensor_img, int(label_float)
 
 
 class DeepfakeDataset(FaceCropDataset):
