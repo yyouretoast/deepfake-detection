@@ -125,13 +125,14 @@ class DatasetResolver:
             if p and os.path.exists(p):
                 return os.path.abspath(p)
 
-        if os.path.exists("/kaggle/working"):
-            for root, _, files in os.walk("/kaggle/working"):
-                for name in ("dual_stream_best.pth", "dual_stream_calibrated.pth"):
-                    if name in files:
-                        return os.path.abspath(os.path.join(root, name))
+        for search_dir in ("/kaggle/working", "/kaggle/input"):
+            if os.path.exists(search_dir):
+                for root, _, files in os.walk(search_dir):
+                    for name in ("dual_stream_calibrated.pth", "dual_stream_best.pth"):
+                        if name in files:
+                            return os.path.abspath(os.path.join(root, name))
 
-        raise FileNotFoundError(f"Could not locate model weights. Checked: {candidates}")
+        raise FileNotFoundError(f"Could not locate model weights. Checked: {candidates} and /kaggle/working, /kaggle/input")
 
 
 find_dataset_root = DatasetResolver.find_dataset_root
