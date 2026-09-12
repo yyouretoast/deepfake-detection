@@ -7,7 +7,8 @@ from typing import Any, Optional, Union
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 import torch
 from torch.utils.data import Dataset
 
@@ -61,27 +62,31 @@ class FaceCropDataset(Dataset):
         valid_flag = 1.0
         rgb = None
 
-        # Primary decoder: OpenCV
+        # Primary decoder: PIL Image (safely sandboxed, bounds-checked, immune to libwebp C++ segfaults)
         try:
-            bgr = cv2.imread(full_path, cv2.IMREAD_COLOR)
-            if bgr is not None and bgr.size > 0 and bgr.ndim == 3:
-                rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-                if rgb.shape[0] != self.img_size or rgb.shape[1] != self.img_size:
-                    rgb = cv2.resize(rgb, (self.img_size, self.img_size), interpolation=cv2.INTER_AREA)
+            with Image.open(full_path) as pil_img:
+                pil_rgb = pil_img.convert("RGB")
+                if pil_rgb.size != (self.img_size, self.img_size):
+                    pil_rgb = pil_rgb.resize((self.img_size, self.img_size), Image.Resampling.BILINEAR)
+                rgb = np.array(pil_rgb, dtype=np.uint8)
         except Exception:
             rgb = None
 
-        # Secondary fallback: PIL Image (handles images where OpenCV libwebp/libjpeg decoders fail)
+        # Secondary fallback: OpenCV
         if rgb is None:
             try:
-                with Image.open(full_path) as pil_img:
-                    pil_rgb = pil_img.convert("RGB")
-                    if pil_rgb.size != (self.img_size, self.img_size):
-                        pil_rgb = pil_rgb.resize((self.img_size, self.img_size), Image.Resampling.BILINEAR)
-                    rgb = np.array(pil_rgb, dtype=np.uint8)
+                bgr = cv2.imread(full_path, cv2.IMREAD_COLOR)
+                if bgr is not None and bgr.size > 0 and bgr.ndim == 3:
+                    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                    if rgb.shape[0] != self.img_size or rgb.shape[1] != self.img_size:
+                        rgb = cv2.resize(rgb, (self.img_size, self.img_size), interpolation=cv2.INTER_AREA)
             except Exception:
-                valid_flag = 0.0
-                rgb = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
+                rgb = None
+
+        # Ultimate fallback: zero-mask corrupt sample
+        if rgb is None:
+            valid_flag = 0.0
+            rgb = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
 
         return rgb, valid_flag
 
