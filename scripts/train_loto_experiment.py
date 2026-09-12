@@ -94,9 +94,25 @@ def main() -> None:
         default=True,
         help="Use degradation-hardened augmentations",
     )
+    parser.add_argument(
+        "--mixed_precision",
+        type=str,
+        default="fp16",
+        choices=["no", "fp16", "bf16"],
+        help="Mixed precision mode (default: fp16)",
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=2,
+        help="Gradient accumulation steps (default: 2)",
+    )
     args = parser.parse_args()
 
-    accelerator = Accelerator()
+    accelerator = Accelerator(
+        mixed_precision=args.mixed_precision,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+    )
 
     data_root = find_dataset_root(args.data_dir)
     splits_path = resolve_splits_path(data_root=data_root)
@@ -135,13 +151,13 @@ def main() -> None:
     g.manual_seed(42)
 
     train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, persistent_workers=False, drop_last=True, worker_init_fn=seed_worker, generator=g
+        train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=False, persistent_workers=False, drop_last=True, worker_init_fn=seed_worker, generator=g
     )
     val_loader = DataLoader(
-        val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, worker_init_fn=seed_worker, generator=g
+        val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=False, worker_init_fn=seed_worker, generator=g
     )
     eval_loader = DataLoader(
-        eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=True, worker_init_fn=seed_worker, generator=g
+        eval_ds, batch_size=args.batch_size, shuffle=False, num_workers=0, pin_memory=False, worker_init_fn=seed_worker, generator=g
     )
 
     num_fake = sum(1 for s in train_loto_samples if s[1] == 1)
