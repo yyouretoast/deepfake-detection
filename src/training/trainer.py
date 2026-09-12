@@ -116,6 +116,9 @@ class DualStreamTrainer:
                         )
                         raise
 
+                if batch_idx < 2 and self.accelerator.is_main_process:
+                    logger.info("[DIAGNOSTIC] Batch %d: forward pass completed (loss=%.4f), starting backward pass...", batch_idx, float(loss.detach().item()))
+
                 try:
                     self.accelerator.backward(loss)
                 except Exception as e:
@@ -125,12 +128,18 @@ class DualStreamTrainer:
                     )
                     raise
 
+                if batch_idx < 2 and self.accelerator.is_main_process:
+                    logger.info("[DIAGNOSTIC] Batch %d: backward pass completed (sync_gradients=%s)...", batch_idx, self.accelerator.sync_gradients)
+
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=self.max_grad_norm)
                     self.optimizer.step()
                     self.optimizer.zero_grad(set_to_none=True)
                     if self.ema is not None:
                         self.ema.update(self.accelerator.unwrap_model(self.model))
+
+            if batch_idx < 2 and self.accelerator.is_main_process:
+                logger.info("[DIAGNOSTIC] Batch %d step finished! Loading next batch...", batch_idx)
 
             running_loss += loss.detach()
 
