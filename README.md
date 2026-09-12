@@ -124,6 +124,7 @@ Evaluated across 13,444 facial crops (756 authentic real faces, 12,688 deepfakes
 | **Macro F1-Score** | **`0.5631`** | **`0.5964`** | Balanced across real/fake classes |
 | **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3895` | Derived via Youden's $J$ statistic |
 | **Calibrated Temperature ($T^*$)**| `4.2880` | -- | SciPy L-BFGS-B log-temperature scaling |
+| **Expected Calibration Error (ECE)** | **`0.0050`** | -- | Platt-calibrated ($98.9\%$ error drop from raw $0.4525$) |
 
 #### Balanced 1:1 Prevalence-Invariant Test Benchmark (63 Real vs 63 Fake Sequences)
 To account for the $16.8:1$ test class imbalance, the model was evaluated on a prevalence-normalized $1:1$ subset:
