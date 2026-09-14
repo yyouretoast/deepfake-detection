@@ -30,29 +30,29 @@ license: mit
 
 ## 4-Panel Interpretability Diagnostics (Authentic vs. Deepfake)
 
-Our engine exposes intermediate representations across the spatial, residual steganographic, and Fourier spectral domains simultaneously:
+Intermediate representations extracted across the spatial, residual steganographic, and Fourier spectral domains:
 
 | Authentic Face (Real) | Manipulated Face (Deepfake) |
 | :---: | :---: |
 | ![Authentic Diagnostics](figures/attention_maps/attention_map_05_real.png) | ![Deepfake Diagnostics](figures/attention_maps/attention_map_05_fake.png) |
 | *Continuous natural camera PRNU sensor noise, smooth $1/f$ Fourier power decay, and anatomically uniform spatial attention.* | *Suppression of sensor noise along blending boundaries, periodic grid lattice peaks in 2D FFT, and localized manipulation contours in Grad-CAM.* |
 
-### How to Read the 4-Panel Forensic Quad:
+### 4-Panel Forensic Interpretation:
 1. **Panel A (RGB Face Crop)**: Normalized facial crop aligned using OpenCV YuNet 5-point facial landmark similarity affine warping ($1.50\times$ canonical expansion with cosine edge tapering).
 2. **Panel B (SRM High-Pass Residual)**: 9-filter Steganographic Rich Model (SRM) high-pass convolutions isolating sub-pixel sensor Photo Response Non-Uniformity (PRNU) noise and manipulation boundary blending seams.
 3. **Panel C (2D Real FFT Log-Magnitude Spectrum)**: Orthonormal centered 2D Real Fourier Transform exposing upsampling artifacts and frequency anomalies characteristic of GAN generators and diffusion latents (Frank et al., ICML 2020; Durall et al., CVPR 2020).
-4. **Panel D (Spatial Grad-CAM Overlay)**: Gradient-weighted class activation mapping identifying the exact spatial regions of ConvNeXt driving the forensic classification decision.
+4. **Panel D (Spatial Grad-CAM Overlay)**: Gradient-weighted class activation mapping identifying spatial regions driving the classification decision.
 
 ---
 
-## Key Architectural Differentiators
+## Technical Methodology & Core Components
 
-* **Dual-Domain Gated Fusion**: Fuses high-level semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a dedicated **4-Stage ResSE-Spectral Tower** (~2.98M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
-* **Spectral SNR-Adaptive Gating**: Prevents high-frequency degradation cliffs under heavy spatial blur ($\sigma \ge 1.5$) or compression by dynamically attenuating the spectral branch ($\gamma \to 0$) when noise residual power drops, smoothly falling back onto the spatial ConvNeXt stream with zero added parameters.
-* **100% Zero Identity Leakage**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity leakage ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
-* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, lifting video sequence classification to **`0.8719` ROC AUC** (+4.71% over single-frame spatial detection) and catching transient 1-frame deepfake glitches.
-* **Bayesian 3-Zone Decision Bands**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes high-certainty boundaries ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), guaranteeing $\ge$ 98% precision on confirmed synthetic verdicts while routing ambiguous inputs to manual inspection.
-* **Real-Time Video Engine**: 60.9 FPS inference on an NVIDIA Tesla T4 with dynamic batching and full ONNX Runtime support.
+* **Dual-Domain Gated Fusion**: Fuses semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a dedicated **4-Stage ResSE-Spectral Tower** (~2.98M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
+* **Spectral SNR-Adaptive Gating**: Mitigates high-frequency degradation under spatial blur ($\sigma \ge 1.5$) or compression by attenuating the spectral branch ($\gamma \to 0$) when noise residual power decreases, reverting to the spatial ConvNeXt stream with zero added parameters.
+* **Disjoint Identity Graph Partitioning**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity overlap ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
+* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8719` ROC AUC** (+4.71% over the single-frame baseline) and capturing single-frame manipulation artifacts that can be diluted under sequence averaging.
+* **Bayesian 3-Zone Decision Bands**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes decision boundaries ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving $\ge$ 98% empirical precision on confirmed synthetic samples while routing borderline inputs to manual review.
+* **Inference Latency**: 60.9 FPS inference throughput on an NVIDIA Tesla T4 with dynamic batching.
 
 ---
 
@@ -208,11 +208,11 @@ To evaluate whether the detector memorizes generator-specific signatures or lear
 
 | LOTO Fold | Excluded Holdout Generator | Zero-Shot AUC | Zero-Shot F1 (τ=0.50) | Precision | Recall | Generalization Transfer Assessment |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9563`** | **`0.9233`** | 95.02% | 89.79% | Robust zero-shot transfer across autoencoders |
-| **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9915`** | **`0.9530`** | 92.21% | 98.61% | Near-perfect cross-manipulation transfer |
-| **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.8972`** | **`0.7220`** | 63.69% | 83.33% | High resilience to classical graphic warping |
-| **Fold 4** | `FF++ NeuralTextures` (Pairs 600–799) | **`0.9379`** | **`0.6081`** | 51.14% | 75.00% | Successfully detects unseen neural rendering |
-| **Fold 5** | `Celeb-DF v2` (Cross-Dataset) | **`0.7000`** | **`0.4336`** | 97.63% | 27.87% | Outperforms Xception (0.6550) by **+4.5%** |
+| **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9563`** | **`0.9233`** | 95.02% | 89.79% | Zero-shot transfer across autoencoder manipulations |
+| **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9915`** | **`0.9530`** | 92.21% | 98.61% | Cross-manipulation transfer on facial reenactment (0.9915 AUC) |
+| **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.8972`** | **`0.7220`** | 63.69% | 83.33% | Resilience to graphic face swapping (0.8972 AUC) |
+| **Fold 4** | `FF++ NeuralTextures` (Pairs 600–799) | **`0.9379`** | **`0.6081`** | 51.14% | 75.00% | Transfer on neural texture rendering (0.9379 AUC) |
+| **Fold 5** | `Celeb-DF v2` (Cross-Dataset) | **`0.7000`** | **`0.4336`** | 97.63% | 27.87% | Cross-dataset transfer on unseen Celeb-DF v2 (+4.5% vs. Xception) |
 
 <div align="center">
   <img src="figures/loto_generalization.png" width="75%" alt="LOTO Generalization" />
