@@ -213,6 +213,18 @@ def plot_loto(loto_data: list, output_path: str) -> None:
     apply_base_style()
     folds = []
     if isinstance(loto_data, list) and len(loto_data) > 0:
+        fold_order = {
+            "deepfakes": 1,
+            "df": 1,
+            "face2face": 2,
+            "f2f": 2,
+            "faceswap": 3,
+            "fs": 3,
+            "neuraltextures": 4,
+            "nt": 4,
+            "celeb": 5,
+        }
+        sorted_loto = sorted(loto_data, key=lambda entry: fold_order.get(entry.get("holdout", "").lower(), 99))
         name_map = {
             "deepfakes": "Fold 1\nDeepfakes\n(FF++)",
             "df": "Fold 1\nDeepfakes\n(FF++)",
@@ -224,7 +236,7 @@ def plot_loto(loto_data: list, output_path: str) -> None:
             "nt": "Fold 4\nNeuralTextures\n(FF++)",
             "celeb": "Fold 5\nCeleb-DF v2\nCross-Dataset",
         }
-        for entry in loto_data:
+        for entry in sorted_loto:
             ho = entry.get("holdout", "").lower()
             label = name_map.get(ho, f"{ho.title()}")
             auc_val = float(entry.get("zero_shot_auc", 0.5))
@@ -241,7 +253,7 @@ def plot_loto(loto_data: list, output_path: str) -> None:
         folds = [
             ("Fold 1\nDeepfakes\n(FF++)", 0.9563, BLUE, None),
             ("Fold 2\nFace2Face\n(FF++)", 0.9915, BLUE, None),
-            ("Fold 3\nFaceSwap\n(FF++)", 0.9662, BLUE, None),
+            ("Fold 3\nFaceSwap\n(FF++)", 0.8972, BLUE, None),
             ("Fold 4\nNeuralTextures\n(FF++)", 0.9379, BLUE, None),
             ("Fold 5\nCeleb-DF v2\nCross-Dataset", 0.7000, PURPLE, None),
         ]

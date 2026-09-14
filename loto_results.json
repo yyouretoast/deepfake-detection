@@ -23,14 +23,18 @@
   },
   {
     "holdout": "faceswap",
-    "threshold": 0.11,
-    "temperature": 3.6684,
-    "zero_shot_auc": 0.9662,
-    "zero_shot_f1": 0.8969,
-    "precision": 0.9337,
-    "recall": 0.8629,
-    "n_samples": 5289,
-    "timestamp": "2026-08-09 16:29:24"
+    "threshold": 0.5,
+    "optimal_threshold": 0.4195216918236057,
+    "temperature": 1.275069503808392,
+    "zero_shot_auc": 0.89725,
+    "zero_shot_f1": 0.7220216606498195,
+    "precision": 0.6369426751592356,
+    "recall": 0.8333333333333334,
+    "optimal_f1": 0.7167235494880546,
+    "optimal_precision": 0.6069364161849711,
+    "optimal_recall": 0.875,
+    "n_samples": 620,
+    "timestamp": "2026-09-14 15:58:18"
   },
   {
     "holdout": "neuraltextures",

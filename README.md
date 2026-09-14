@@ -30,7 +30,7 @@ Intermediate representations exposed across spatial, residual, and frequency dom
 
 ![4-Panel Forensic Diagnostics](figures/attention_maps/attention_map_05_fake.png)
 
-*Figure 1: Dual-domain forensic diagnosis on a Celeb-DF v2 synthesized face crop ($p = 1.0000$, logit $z = +26.72$). (a) Aligned RGB facial crop via YuNet 5-point landmark similarity transform. (b) 9-filter Steganographic Rich Model (SRM) high-pass noise residual map isolating boundary blending seams. (c) 2D Real FFT log-magnitude spectrum exposing periodic Fourier upsampling harmonics (gating weight $g = 0.207$). (d) ConvNeXt-Small Grad-CAM overlay localizing spatial mask manipulation on facial contours.*
+*Figure 1: Dual-domain forensic diagnosis on a FaceForensics++ synthesized face crop ($p = 0.9942$, logit $z = +11.32$, $T^* = 2.2018$). (a) Aligned RGB facial crop via YuNet 5-point landmark similarity transform ($256\times256$). (b) 9-filter Steganographic Rich Model (SRM) high-pass noise residual map isolating boundary blending seams and subtle facial texture discrepancies. (c) 2D Real FFT log-magnitude spectrum exposing periodic Fourier upsampling harmonics (gating weight $g = 0.682$). (d) ConvNeXt-Small Grad-CAM overlay localizing spatial mask manipulation on facial contours.*
 
 ---
 
@@ -168,13 +168,13 @@ To evaluate whether the detector memorizes generator-specific signatures or lear
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
 | **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9563`** | **`0.9233`** | 95.02% | 89.79% | Robust zero-shot transfer across autoencoders |
 | **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9915`** | **`0.9530`** | 92.21% | 98.61% | Near-perfect cross-manipulation transfer |
-| **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.9662`** | **`0.8969`** | 93.37% | 86.29% | High resilience to classical graphic warping |
+| **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.8972`** | **`0.7220`** | 63.69% | 83.33% | High resilience to classical graphic warping |
 | **Fold 4** | `FF++ NeuralTextures` (Pairs 600–799) | **`0.9379`** | **`0.6081`** | 51.14% | 75.00% | Successfully detects unseen neural rendering |
 | **Fold 5** | `Celeb-DF v2` (Cross-Dataset) | **`0.7000`** | **`0.4336`** | 97.63% | 27.87% | Outperforms Xception (0.6550) by **+4.5%** |
 
 ![LOTO Generalization](figures/loto_generalization.png)
 
-*Figure 5: Zero-shot cross-generator generalization performance across all 5 LOTO folds. Within-dataset FaceForensics++ holdouts average `0.9630` AUC, while cross-dataset Celeb-DF v2 achieves `0.7000` AUC under the ResSE architecture.*
+*Figure 5: Zero-shot cross-generator generalization performance across all 5 LOTO folds. Within-dataset FaceForensics++ holdouts average `0.9457` AUC, while cross-dataset Celeb-DF v2 achieves `0.7000` AUC under the ResSE architecture (overall 5-fold macro-average: `0.8966` AUC).*
 
 ---
 

@@ -78,14 +78,18 @@ def generate_4panel_figure(
         calibrated_prob = float(torch.sigmoid(logits / temperature).item())
         pred_label = "FAKE" if calibrated_prob > threshold else "REAL"
 
-    cam_map = grad_cam.generate_heatmap(img_tensor.clone())
+    h, w = rgb_uint8.shape[:2]
+    cam_map = grad_cam.generate_heatmap(img_tensor.clone(), img_size=h)
+    if cam_map.shape[:2] != (h, w):
+        cam_map = cv2.resize(cam_map, (w, h), interpolation=cv2.INTER_LINEAR)
 
     srm_map = srm_out[0].abs().mean(dim=0).cpu().numpy()
-    srm_norm = (srm_map - srm_map.min()) / max(srm_map.max() - srm_map.min(), 1e-6)
+    p_low = np.percentile(srm_map, 1.0)
+    p_high = np.percentile(srm_map, 99.5)
+    srm_norm = np.clip((srm_map - p_low) / max(p_high - p_low, 1e-6), 0.0, 1.0)
 
     mag_maps = freq_maps[0, :10].cpu().numpy()
-    mean_mag = np.mean(mag_maps, axis=0)
-    fft_centered = np.fft.fftshift(mean_mag)
+    fft_centered = np.mean(mag_maps, axis=0)
 
     cam_uint8 = np.uint8(255 * cam_map)
     heatmap_bgr = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)
@@ -158,13 +162,20 @@ def main() -> None:
     threshold = DEFAULT_THRESHOLD
     temperature = DEFAULT_TEMPERATURE
 
-    if os.path.exists(args.checkpoint):
-        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    ckpt_path = args.checkpoint
+    if not os.path.exists(ckpt_path):
+        for cand in [os.path.join("models", os.path.basename(ckpt_path)), os.path.join("results", os.path.basename(ckpt_path))]:
+            if os.path.exists(cand):
+                ckpt_path = cand
+                break
+
+    if os.path.exists(ckpt_path):
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
         state_dict = checkpoint.get("model_state_dict", checkpoint)
         model.load_state_dict(clean_state_dict(state_dict), strict=False)
         threshold = float(checkpoint.get("optimal_threshold", DEFAULT_THRESHOLD))
         temperature = float(checkpoint.get("temperature", DEFAULT_TEMPERATURE))
-        logger.info("Loaded checkpoint '%s' (Threshold=%.4f, Temp=%.4f)", args.checkpoint, threshold, temperature)
+        logger.info("Loaded checkpoint '%s' (Threshold=%.4f, Temp=%.4f)", ckpt_path, threshold, temperature)
     else:
         logger.warning("Checkpoint '%s' not found. Running with initial model weights.", args.checkpoint)
 
