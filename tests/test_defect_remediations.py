@@ -28,8 +28,8 @@ def test_gradient_accumulation_order() -> None:
 
     model, opt = acc.prepare(model, opt)
 
-    x0 = torch.tensor([[1.0, 1.0, 1.0, 1.0]])
-    x1 = torch.tensor([[2.0, 2.0, 2.0, 2.0]])
+    x0 = torch.tensor([[1.0, 1.0, 1.0, 1.0]], device=acc.device)
+    x1 = torch.tensor([[2.0, 2.0, 2.0, 2.0]], device=acc.device)
 
     for i, x in enumerate([x0, x1]):
         with acc.accumulate(model):
@@ -40,7 +40,7 @@ def test_gradient_accumulation_order() -> None:
                 opt.zero_grad(set_to_none=True)
 
     # Expected: x0 contributes 0.5, x1 contributes 1.0 -> total grad 1.5 -> w = 1.0 - 0.1 * 1.5 = 0.85
-    expected = torch.tensor([[0.85, 0.85, 0.85, 0.85]])
+    expected = torch.tensor([[0.85, 0.85, 0.85, 0.85]], device=model.weight.device)
     assert torch.allclose(model.weight.data, expected, atol=1e-5), f"Expected {expected}, got {model.weight.data}"
 
 

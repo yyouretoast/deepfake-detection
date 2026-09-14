@@ -98,11 +98,15 @@ class DynamicFaceCropper:
         else:
             self.detector = None
 
-        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        if os.path.exists(cascade_path):
-            self.haar_cascade = cv2.CascadeClassifier(cascade_path)
-        else:
-            self.haar_cascade = None
+        self.haar_cascade = None
+        if hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades") and hasattr(cv2, "CascadeClassifier"):
+            try:
+                cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+                if os.path.exists(cascade_path):
+                    self.haar_cascade = cv2.CascadeClassifier(cascade_path)
+            except Exception as e:
+                logger.debug("Haar cascade initialization exception: %s", e)
+                self.haar_cascade = None
 
     def _get_thread_yunet(self) -> Optional[Any]:
         """Fetch or instantiate thread-isolated YuNet detector."""

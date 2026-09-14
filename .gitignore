@@ -48,3 +48,8 @@ scratch/
 study_guide/
 rerun_pipeline.ipynb
 results/
+archive.zip
+deepfake_crops_512/
+.virtual_documents/
+repo/
+

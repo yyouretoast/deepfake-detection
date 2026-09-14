@@ -1,4 +1,4 @@
-"""Visualization utilities for Deepfake Detector Engine."""
+from typing import Optional
 
 import matplotlib
 
@@ -11,6 +11,7 @@ def render_temporal_anomaly_timeline(
     timestamps: list[float],
     probs: list[float],
     threshold: float,
+    attention_weights: Optional[list[float]] = None,
 ) -> matplotlib.figure.Figure:
     """Renders dark glassmorphism timeline graph of frame-by-frame confidence scores."""
     fig, ax = plt.subplots(figsize=(10, 3.2), facecolor="#0b0f19")
@@ -37,7 +38,7 @@ def render_temporal_anomaly_timeline(
             color="#ef4444",
             linestyle="--",
             linewidth=1.5,
-            label=f"Threshold (T*={threshold:.2f})",
+            label=f"Decision Threshold (τ*={threshold:.2f})",
         )
 
         # Shaded anomaly regions
@@ -81,6 +82,23 @@ def render_temporal_anomaly_timeline(
                 zorder=5,
                 label="Authentic Frame (Real)",
             )
+
+        # Bi-GRU Temporal Attention Focus Highlight (alpha_t > 1 / T)
+        if attention_weights is not None and len(attention_weights) == len(timestamps) and len(timestamps) > 0:
+            attn_arr = np.array(attention_weights)
+            uniform_w = 1.0 / len(attention_weights)
+            high_attn_mask = attn_arr > uniform_w
+            if np.any(high_attn_mask):
+                ax.scatter(
+                    times[high_attn_mask],
+                    scores[high_attn_mask],
+                    facecolors="none",
+                    edgecolors="#f59e0b",
+                    s=140,
+                    linewidths=2.2,
+                    zorder=6,
+                    label="Temporal Attention Focus (α > 1/T)",
+                )
 
         ax.set_ylim(-0.05, 1.05)
         ax.set_xlabel("Video Timestamp (seconds)", color="#94a3b8", fontsize=10, fontweight="bold")

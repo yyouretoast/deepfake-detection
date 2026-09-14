@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import cv2
 import numpy as np
@@ -181,6 +181,21 @@ def load_temporal_engine(
                 weights_path = p
                 break
 
+    if weights_path is None:
+        try:
+            from huggingface_hub import hf_hub_download
+
+            logger.info("Attempting to download temporal head from HuggingFace Hub...")
+            downloaded = hf_hub_download(
+                repo_id="yyouretoast/deepfake-detector",
+                filename="temporal_head_best.pth",
+            )
+            if downloaded and os.path.exists(downloaded):
+                weights_path = downloaded
+                logger.info("Downloaded temporal head to %s", weights_path)
+        except Exception as e:
+            logger.debug("HuggingFace Hub temporal head download skipped: %s", e)
+
     if weights_path and os.path.exists(weights_path):
         try:
             ckpt = torch.load(weights_path, map_location=DEVICE, weights_only=False)
@@ -240,6 +255,11 @@ def process_video_frames(
 
     if temporal_model is None:
         temporal_model = load_temporal_engine()
+
+    if pytorch_model is not None:
+        pytorch_model = pytorch_model.to(DEVICE)
+    if temporal_model is not None:
+        temporal_model = temporal_model.to(DEVICE)
 
     try:
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -371,4 +391,166 @@ def process_video_frames(
         "tau_real": effective_tau_real,
         "tau_fake": effective_tau_fake,
     }
+
+
+def process_single_image(
+    image_input: Union[str, bytes, np.ndarray, Any],
+    pytorch_model: Optional[torch.nn.Module] = None,
+    cropper: Optional[DynamicFaceCropper] = None,
+    classification_threshold: Optional[float] = None,
+    temperature: Optional[float] = None,
+    tau_real: Optional[float] = None,
+    tau_fake: Optional[float] = None,
+) -> Optional[dict[str, Any]]:
+    """
+    Forensic inference engine for a single static image input.
+    Performs YuNet 5-point face alignment, dual-stream feature extraction,
+    SNR-adaptive spectral gating telemetry, and generates the 4-panel diagnostic quad.
+    """
+    # 1. Parse input into RGB numpy array
+    if isinstance(image_input, bytes):
+        arr = np.frombuffer(image_input, dtype=np.uint8)
+        img_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img_bgr is None:
+            return None
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    elif isinstance(image_input, str):
+        if not os.path.exists(image_input):
+            return None
+        img_bgr = cv2.imread(image_input)
+        if img_bgr is None:
+            return None
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    elif hasattr(image_input, "convert"):  # PIL Image
+        img_rgb = np.array(image_input.convert("RGB"))
+    elif isinstance(image_input, np.ndarray):
+        img_rgb = image_input
+    else:
+        return None
+
+    if img_rgb.ndim != 3 or img_rgb.shape[2] != 3:
+        return None
+
+    # 2. Resolve default engine components if not provided
+    effective_tau_real = 0.40
+    effective_tau_fake = 0.60
+    if pytorch_model is None or cropper is None or classification_threshold is None or temperature is None:
+        engine = load_prediction_engine()
+        p_model, c_crop, _, threshold, temp = engine
+        pytorch_model = pytorch_model or p_model
+        cropper = cropper or c_crop
+        classification_threshold = (
+            classification_threshold if classification_threshold is not None else threshold
+        )
+        temperature = temperature if temperature is not None else temp
+        effective_tau_real = getattr(engine, "tau_real", 0.40)
+        effective_tau_fake = getattr(engine, "tau_fake", 0.60)
+
+    if tau_real is not None:
+        effective_tau_real = tau_real
+    if tau_fake is not None:
+        effective_tau_fake = tau_fake
+
+    # 3. Crop face using YuNet with 5-point landmark similarity warp
+    face_crop = cropper.crop_face(img_rgb, target_size=IMG_SIZE, fallback_on_empty=True)
+    if face_crop is None:
+        return None
+
+    if pytorch_model is not None:
+        pytorch_model = pytorch_model.to(DEVICE)
+
+    from src.utils.interpretability import MODEL_INFERENCE_LOCK, generate_face_diagnostics
+
+    unwrapped_model = (
+        pytorch_model.module
+        if isinstance(pytorch_model, torch.nn.DataParallel)
+        else pytorch_model
+    )
+
+    # 4. Convert face crop to tensor [1, 3, H, W] in [0, 1]
+    _, img_tensor = preprocess_tensors_batch([face_crop], device=DEVICE)
+
+    # 5. Model forward pass with TTA
+    spectral_gate = 0.5
+    snr_attenuator = 1.0
+    noise_power = 0.0
+
+    with MODEL_INFERENCE_LOCK:
+        with torch.inference_mode():
+            with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
+                raw_logit_t = unwrapped_model(img_tensor).float()
+                p1 = torch.sigmoid(raw_logit_t / temperature).item()
+                p2 = torch.sigmoid(unwrapped_model(torch.flip(img_tensor, dims=[-1])).float() / temperature).item()
+                prob = float((p1 + p2) / 2.0)
+                raw_logit = float(raw_logit_t.squeeze().item())
+
+                # Dual-stream telemetry
+                if getattr(unwrapped_model, "use_fft_branch", False):
+                    srm_out = unwrapped_model.srm(img_tensor)
+                    bayar_out = unwrapped_model.bayar(img_tensor)
+                    noise_combined = torch.cat([srm_out, bayar_out], dim=1)
+                    freq_maps = unwrapped_model.fft(noise_combined)
+                    if hasattr(unwrapped_model, "freq_tower"):
+                        f_f, _ = unwrapped_model.freq_tower(freq_maps)
+                    else:
+                        f_f = unwrapped_model.freq_conv(freq_maps).flatten(1)
+                        f_f = unwrapped_model.freq_fc(f_f)
+
+                    mean = unwrapped_model.imagenet_mean.to(dtype=img_tensor.dtype, device=img_tensor.device)
+                    std = unwrapped_model.imagenet_std.to(dtype=img_tensor.dtype, device=img_tensor.device)
+                    feat_maps = unwrapped_model.spatial_backbone((img_tensor - mean) / std)
+                    feat_maps = unwrapped_model.spatial_norm(feat_maps)
+                    f_s = unwrapped_model.spatial_fc(unwrapped_model.spatial_pool(feat_maps).flatten(1))
+
+                    concat_feat = torch.cat([f_s, f_f], dim=1)
+                    raw_gate = unwrapped_model.gate_fc(concat_feat)
+
+                    if getattr(unwrapped_model, "enable_snr_gating", False):
+                        noise_power_t = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+                        gamma = torch.clamp((noise_power_t - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+                        effective_gate = raw_gate * gamma
+                        snr_attenuator = float(gamma.item())
+                        noise_power = float(noise_power_t.item())
+                    else:
+                        effective_gate = raw_gate
+                        snr_attenuator = 1.0
+                        noise_power = float(noise_combined.pow(2).mean().item())
+
+                    spectral_gate = float(effective_gate.mean().item())
+
+    # High-frequency Laplacian variance on grayscale face crop
+    gray_face = cv2.cvtColor(face_crop, cv2.COLOR_RGB2GRAY)
+    laplacian_var = float(cv2.Laplacian(gray_face, cv2.CV_64F).var())
+
+    # 6. Generate 4-panel diagnostic quad
+    diagnostics = generate_face_diagnostics(
+        unwrapped_model,
+        face_crop,
+        device=DEVICE,
+        temperature=temperature,
+    )
+
+    # 7. Bayesian 3-zone verdict
+    three_zone = classify_three_zone(
+        prob,
+        tau_real=effective_tau_real,
+        tau_fake=effective_tau_fake,
+    )
+
+    return {
+        "face_crop": face_crop,
+        "prob": prob,
+        "raw_logit": raw_logit,
+        "threshold": float(classification_threshold),
+        "three_zone": three_zone,
+        "spectral_gate": spectral_gate,
+        "spatial_gate": 1.0 - spectral_gate,
+        "snr_attenuator": snr_attenuator,
+        "noise_power": noise_power,
+        "laplacian_var": laplacian_var,
+        "diagnostics": diagnostics,
+        "tau_real": effective_tau_real,
+        "tau_fake": effective_tau_fake,
+    }
+
 
