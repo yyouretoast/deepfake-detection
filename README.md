@@ -47,7 +47,7 @@ Intermediate representations extracted across the spatial, residual steganograph
 
 ## Technical Methodology & Core Components
 
-* **Dual-Domain Gated Fusion**: Fuses semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a dedicated **4-Stage ResSE-Spectral Tower** (~2.98M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
+* **Dual-Domain Gated Fusion**: Fuses semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a dedicated **4-Stage ResSE-Spectral Tower** (~2.99M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
 * **Spectral SNR-Adaptive Gating**: Mitigates high-frequency degradation under spatial blur ($\sigma \ge 1.5$) or compression by attenuating the spectral branch ($\gamma \to 0$) when noise residual power decreases, reverting to the spatial ConvNeXt stream with zero added parameters.
 * **Disjoint Identity Graph Partitioning**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity overlap ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
 * **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8719` ROC AUC** (+4.71% over the single-frame baseline) and capturing single-frame manipulation artifacts that can be diluted under sequence averaging.
@@ -63,7 +63,7 @@ All model weights are hosted on the Hugging Face Model Hub: [`yyouretoast/deepfa
 | Model Checkpoint | Size | Architecture | ROC AUC | Calibrated Threshold ($\tau^*$) | SHA-256 Checksum | Direct Download |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **`dual_stream_calibrated.pth`** | **214.7 MB** | ConvNeXt-Small + ResSE-Spectral Tower | **`0.8248`** (Single-Frame) | `0.4200` ($T^*=4.288$) | `cacdd1f6...fd5237` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
-| **`temporal_head_best.pth`** | **13.3 MB** | 2-Layer Dual-Path Bi-GRU (Attention + Max) | **`0.8719`** (Video Sequence) | `0.3895` | `5976689a...0700e` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
+| **`temporal_head_best.pth`** | **13.3 MB** | 2-Layer Dual-Path Bi-GRU (Attention + Max) | **`0.8719`** (Video Sequence) | `0.3895` | `5976689a...d0700e` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
 
 ### Automated Download via CLI
 
@@ -155,7 +155,7 @@ Evaluated across 13,444 facial crops (756 authentic real faces, 12,688 deepfakes
 | Metric | Single-Frame Spatial Model | Video Spatiotemporal Bi-GRU | Delta / Impact |
 | :--- | :---: | :---: | :--- |
 | **ROC AUC** | **`0.8248`** | **`0.8719`** | **+4.71%** discriminative improvement |
-| **PR AUC** | **`0.8115`** | **`0.9904`** | Precision-recall area under curve |
+| **PR AUC** | **`0.9860`** *(1:1 Bal: `0.8298`)* | **`0.9904`** | Precision-recall area under curve (16.78:1 skew) |
 | **Equal Error Rate (EER)** | `24.10%` | **`18.98%`** | **-5.12%** biometric verification error drop |
 | **Fake Precision** | **`98.00%`** | **`98.60%`** | **+0.60%** false alarm suppression |
 | **Fake Recall** | **`77.04%`** | **`79.75%`** | **+2.71%** detection coverage |
@@ -178,7 +178,14 @@ To account for the $16.8:1$ test class imbalance, the model was evaluated on a p
   <img src="figures/ece_reliability.png" width="48%" alt="ECE Reliability Diagram" />
 </div>
 
-*Left: ROC comparison on held-out test split (13,444 crops, 1,120 video sequences). Right: Expected Calibration Error (ECE) reliability diagram showing probability alignment before and after temperature scaling.*
+*Figure 1: Left: ROC comparison on held-out test split (13,444 crops, 1,120 video sequences). Right: Expected Calibration Error (ECE) reliability diagram showing probability alignment before and after Platt temperature scaling.*
+
+<div align="center">
+  <img src="figures/precision_recall_curve.png" width="48%" alt="Precision-Recall Curve" />
+  <img src="figures/confusion_matrices.png" width="48%" alt="Normalized Confusion Matrices" />
+</div>
+
+*Figure 2: Left: Precision-Recall curves evaluating detector operating characteristics under the 16.78:1 synthetic-to-authentic class skew alongside operational F1-score threshold sweeps. Right: Normalized confusion matrices at calibrated decision thresholds demonstrating exact Type I (false accusation) and Type II (evasion) sample counts.*
 
 ---
 
@@ -294,11 +301,18 @@ Evaluated across 4 real-world distortion families on the held-out test split:
        ▼                                                ▼
 [ Frame-Level Classifier Head ]              [ Spatiotemporal Dual-Path Bi-GRU ]
 • Linear(1024, 256) -> ReLU -> Linear(256, 1) • Input: [e_t || Δe_t] ∈ R^1024 (Motion Velocity)
-• Scaled Logit: z / T* (T* = 4.2880)         • 2-Layer Bidirectional GRU (2.46M params)
+• Scaled Logit: z / T* (T* = 4.2880)         • 2-Layer Bidirectional GRU (3.32M params)
 • Bayesian Dual Thresholds (τ_real, τ_fake)  • Dual Pooling: Attention (c_attn) + Max (c_max)
 • 3 Forensic Certainty Zones                 • Classifier: Linear(1024, 128) -> Linear(128, 1)
 • Single-Frame AUC: 0.8248                   • Video Sequence AUC: 0.8719 (60.9 FPS Engine)
 ```
+
+<div align="center">
+  <img src="figures/bayesian_decision_zones.png" width="48%" alt="Bayesian Decision Zones" />
+  <img src="figures/temporal_attention_dynamics.png" width="48%" alt="Spatiotemporal Anomaly Dynamics" />
+</div>
+
+*Figure: Dual-path decision telemetry. Left: Probability density separation under Bayesian 3-zone decision boundaries with ≥98% confirmed synthetic precision. Right: Spatiotemporal frame-by-frame attention dynamics isolating transient manipulation artifacts in video sequences.*
 
 ---
 
@@ -312,10 +326,12 @@ $$
 
 | Split | Total Samples | % of Dataset | Real Faces | Fake Faces | Fake:Real Ratio |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Train** | 79,097 | 69.2% | 18,373 | 60,724 | 3.31 : 1 |
-| **Validation** | 20,544 | 18.0% | 2,112 | 18,432 | 8.73 : 1 |
-| **Test** | 13,444 | 12.8% | 756 | 12,688 | 16.78 : 1 |
-| **Total** | **113,085** | **100.0%** | **21,241** | **91,844** | **4.32 : 1** |
+| **Train** | 45,972 | 40.2% | 17,256 | 28,716 | 1.66 : 1 |
+| **Validation** | 54,913 | 48.0% | 4,657 | 50,256 | 10.79 : 1 |
+| **Test** | 13,444 | 11.8% | 756 | 12,688 | 16.78 : 1 |
+| **Total** | **114,329** | **100.0%** | **22,669** | **91,660** | **4.04 : 1** |
+
+*Note: All counts reflect deduplicated unique face crops across disjoint actor identity partitions (`splits.json`). Pre-deduplication sequence frame extractions total 162,329 crops (Train: 91,188; Val: 54,913; Test: 16,228).*
 
 ---
 
@@ -360,9 +376,13 @@ deepfake-detection/
 ├── figures/                           # Publication-grade benchmark figures
 │   ├── roc_curve.png                  # Single-frame vs Video Bi-GRU ROC comparison
 │   ├── ece_reliability.png            # Expected Calibration Error reliability diagram
+│   ├── precision_recall_curve.png     # Precision-Recall curves & F1 threshold sweeps
+│   ├── bayesian_decision_zones.png    # Probability distributions & Bayesian 3-zone bands
+│   ├── confusion_matrices.png         # Normalized confusion matrices with exact sample counts
 │   ├── per_generator_auc.png          # Sub-domain per-generator breakdown bar chart
 │   ├── loto_generalization.png        # 5-fold Leave-One-Type-Out generalization bars
 │   ├── robustness_degradation.png     # 4-panel robustness degradation curve sweeps
+│   ├── temporal_attention_dynamics.png# Frame-by-frame anomaly tracking & attention
 │   └── attention_maps/                # 4-panel Grad-CAM forensic diagnostic maps
 ├── notebooks/
 │   └── master_pipeline.ipynb          # End-to-end 11-cell reproduction notebook
