@@ -10,13 +10,10 @@ import tempfile
 import time
 from typing import Any, Optional
 
-import cv2
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
-from PIL import Image
 import streamlit as st
 import torch
 
@@ -25,7 +22,6 @@ REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from src.dataset.preprocess import preprocess_tensors_batch  # noqa: F401
 from src.services.ui_components import render_diagnostic_quad
 from src.services.video_engine import (
     DEVICE,
@@ -34,7 +30,7 @@ from src.services.video_engine import (
     process_single_image,
     process_video_frames,
 )
-from src.utils.checkpoint import clean_state_dict, normalize_confidence  # noqa: F401
+from src.utils.checkpoint import normalize_confidence
 from src.utils.interpretability import generate_face_diagnostics
 from src.utils.visualization import render_temporal_anomaly_timeline
 
@@ -42,11 +38,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "render_ui",
-    "clean_state_dict",
-    "normalize_confidence",
-    "preprocess_tensors_batch",
-    "process_video_frames",
-    "process_single_image",
     "safe_remove_file",
 ]
 

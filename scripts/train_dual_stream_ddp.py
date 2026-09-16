@@ -36,10 +36,6 @@ BEST_MODEL_WEIGHTS_PATH = "./models/dual_stream_best.pth"
 CHECKPOINT_DIR = "./checkpoints_ddp"
 
 __all__ = [
-    "find_dataset_root",
-    "get_differential_param_groups",
-    "ExponentialMovingAverage",
-    "FocalLossWithLogits",
     "seed_worker",
     "main",
 ]
@@ -141,11 +137,7 @@ def main() -> None:
         model, optimizer, train_loader, val_loader, scheduler
     )
 
-    ema = (
-        ExponentialMovingAverage(accelerator.unwrap_model(model), decay=0.999)
-        if accelerator.is_main_process
-        else None
-    )
+    ema = ExponentialMovingAverage(accelerator.unwrap_model(model), decay=0.999)
 
     trainer = DualStreamTrainer(
         model=model,

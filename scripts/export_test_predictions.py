@@ -16,10 +16,9 @@ if REPO_ROOT not in sys.path:
 
 from src.dataset.datasets import FaceCropDataset
 from src.dataset.loader import dedupe_split
-from src.dataset.resolver import find_dataset_root, find_weights_path, resolve_splits_path
+from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.evaluation.evaluator import ModelEvaluator
-from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict
+from src.utils.checkpoint import load_detector_checkpoint
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -36,7 +35,6 @@ def main() -> None:
     args = parser.parse_args()
 
     data_root = find_dataset_root(args.data_root)
-    checkpoint_path = find_weights_path(args.checkpoint, data_root)
 
     splits_path = resolve_splits_path(data_root=data_root)
     with open(splits_path, "r") as f:
@@ -45,16 +43,10 @@ def main() -> None:
     logger.info("Loaded %d test samples from %s", len(test_samples), splits_path)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-    temperature = float(ckpt.get("temperature", 1.0))
-    threshold = float(ckpt.get("optimal_threshold", 0.50))
+    model, temperature, threshold = load_detector_checkpoint(
+        weights_path=args.checkpoint, device=device, data_root=data_root
+    )
     logger.info("Using temperature=%.4f, threshold=%.4f from checkpoint", temperature, threshold)
-
-    model = HybridDeepfakeDetector(pretrained=False).to(device)
-    state = ckpt.get("model_state_dict", ckpt)
-    model.load_state_dict(clean_state_dict(state), strict=False)
-    model.eval()
 
     dataset = FaceCropDataset(test_samples, data_root, is_train=False)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)

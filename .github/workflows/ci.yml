@@ -27,7 +27,7 @@ jobs:
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
       - name: Run Ruff Linter
-        run: ruff check src scripts tests app.py --fix --unsafe-fixes || true
+        run: ruff check src scripts tests app.py
 
       - name: Run Pytest Suite
         run: python -m pytest tests/ -v

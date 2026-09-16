@@ -88,8 +88,10 @@ def fit_temperature_log(logits: Any, labels: Any) -> float:
         loss = np.log1p(np.exp(-np.clip(margin, -50.0, 50.0)))
         return float(np.mean(loss))
 
-    res = minimize(nll_func, [0.0], method="L-BFGS-B")
-    return float(np.exp(res.x[0]))
+    bounds = [(float(np.log(0.05)), float(np.log(10.0)))]
+    res = minimize(nll_func, [0.0], method="L-BFGS-B", bounds=bounds)
+    fitted_t = float(np.exp(res.x[0]))
+    return float(np.clip(fitted_t, 0.05, 10.0))
 
 
 def compute_eer(
@@ -109,3 +111,61 @@ def compute_eer(
     eer = float((fpr[idx] + fnr[idx]) / 2.0)
     thresh = float(thresholds[idx])
     return eer, thresh
+
+
+def find_optimal_threshold(
+    y_true: Union[np.ndarray, Sequence[float]],
+    y_prob: Union[np.ndarray, Sequence[float]],
+    criterion: str = "balanced_accuracy",
+    n_thresholds: int = 81,
+) -> tuple[float, float]:
+    """
+    Finds the optimal decision threshold tau* maximizing a chosen performance criterion.
+
+    Supported criteria:
+    - 'balanced_accuracy' / 'youden_grid': Grid search maximizing Balanced Accuracy (Youden's J = 2*BA - 1).
+    - 'macro_f1': Grid search maximizing macro-averaged F1 score.
+    - 'f1': Grid search maximizing positive-class binary F1 score.
+    - 'youden_roc': Continuous ROC-based Youden's J statistic (TPR - FPR).
+
+    Returns:
+        (optimal_threshold, best_score)
+    """
+    from sklearn.metrics import balanced_accuracy_score
+
+    y_true_arr = np.asarray(y_true).flatten().astype(int)
+    y_prob_arr = np.asarray(y_prob).flatten().astype(float)
+
+    if len(np.unique(y_true_arr)) < 2:
+        return 0.5, 0.5
+
+    if criterion == "youden_roc":
+        fpr, tpr, thresholds = roc_curve(y_true_arr, y_prob_arr)
+        valid_idx = np.isfinite(thresholds)
+        if not np.any(valid_idx):
+            return 0.5, 0.0
+        j_scores = tpr[valid_idx] - fpr[valid_idx]
+        best_idx = int(np.argmax(j_scores))
+        best_thresh = float(np.clip(thresholds[valid_idx][best_idx], 0.01, 0.99))
+        return best_thresh, float(j_scores[best_idx])
+
+    threshold_grid = np.linspace(0.1, 0.9, n_thresholds)
+    best_thresh = 0.5
+    best_score = -1.0
+
+    for t in threshold_grid:
+        preds = (y_prob_arr >= t).astype(int)
+        if criterion in ("balanced_accuracy", "youden_grid"):
+            score = float(balanced_accuracy_score(y_true_arr, preds))
+        elif criterion == "macro_f1":
+            score = float(f1_score(y_true_arr, preds, average="macro", zero_division=0))
+        elif criterion == "f1":
+            score = float(f1_score(y_true_arr, preds, zero_division=0))
+        else:
+            raise ValueError(f"Unknown threshold optimization criterion: {criterion}")
+
+        if score > best_score:
+            best_score = score
+            best_thresh = float(t)
+
+    return best_thresh, best_score

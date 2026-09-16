@@ -50,7 +50,7 @@
   {
     "holdout": "celeb",
     "threshold": 0.5,
-    "temperature": 69453.93276439093,
+    "temperature": 1.0,
     "zero_shot_auc": 0.700043304884032,
     "zero_shot_f1": 0.4336036328251703,
     "precision": 0.9763365468886941,

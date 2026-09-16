@@ -8,12 +8,10 @@ import torch
 import torch.nn as nn
 from accelerate import Accelerator
 
-from scripts.train_dual_stream_ddp import (
-    ExponentialMovingAverage,
-    FocalLossWithLogits,
-    find_dataset_root,
-)
-from scripts.train_loto_experiment import matches_holdout_domain
+from src.dataset.domains import DomainClassifier
+from src.dataset.resolver import find_dataset_root
+from src.training.ema import ExponentialMovingAverage
+from src.training.loss import FocalLossWithLogits
 from src.dataset.preprocess import DynamicFaceCropper
 from src.models.hybrid_detector import RealFFT2DModule
 from src.utils.interpretability import MODEL_INFERENCE_LOCK
@@ -135,23 +133,23 @@ def test_focal_loss_and_ema_integration() -> None:
 
 
 def test_loto_path_invariant_matching() -> None:
-    """Verifies matches_holdout_domain handles flat, nested, and Kaggle path prefixes correctly."""
-    assert matches_holdout_domain("fake/400_403/frame_001.webp", "faceswap") is True
-    assert matches_holdout_domain("fake/ff_c23/400_403/frame_001.webp", "faceswap") is True
-    assert matches_holdout_domain("/kaggle/input/deepfake-face-crops-256/deepfake_crops_512/fake/400_403/frame_001.webp", "faceswap") is True
-    assert matches_holdout_domain("fake/250_253/frame_001.webp", "face2face") is True
-    assert matches_holdout_domain("fake/250_253/frame_001.webp", "faceswap") is False
-    assert matches_holdout_domain("fake/450_453/frame_001.webp", "faceswap") is True
+    """Verifies DomainClassifier.matches_holdout handles flat, nested, and Kaggle path prefixes correctly."""
+    assert DomainClassifier.matches_holdout("fake/400_403/frame_001.webp", "faceswap") is True
+    assert DomainClassifier.matches_holdout("fake/ff_c23/400_403/frame_001.webp", "faceswap") is True
+    assert DomainClassifier.matches_holdout("/kaggle/input/deepfake-face-crops-256/deepfake_crops_512/fake/400_403/frame_001.webp", "faceswap") is True
+    assert DomainClassifier.matches_holdout("fake/250_253/frame_001.webp", "face2face") is True
+    assert DomainClassifier.matches_holdout("fake/250_253/frame_001.webp", "faceswap") is False
+    assert DomainClassifier.matches_holdout("fake/450_453/frame_001.webp", "faceswap") is True
 
-    assert matches_holdout_domain("fake/600_603/frame_001.webp", "neuraltextures") is True
-    assert matches_holdout_domain("fake/ff_c23/600_603/frame_001.webp", "neuraltextures") is True
-    assert matches_holdout_domain("/kaggle/input/deepfake-face-crops-256/deepfake_crops_512/fake/600_603/frame_001.webp", "neuraltextures") is True
-    assert matches_holdout_domain("fake/350_355/frame_001.webp", "face2face") is True
-    assert matches_holdout_domain("fake/350_355/frame_001.webp", "neuraltextures") is False
-    assert matches_holdout_domain("fake/650_653/frame_001.webp", "neuraltextures") is True
+    assert DomainClassifier.matches_holdout("fake/600_603/frame_001.webp", "neuraltextures") is True
+    assert DomainClassifier.matches_holdout("fake/ff_c23/600_603/frame_001.webp", "neuraltextures") is True
+    assert DomainClassifier.matches_holdout("/kaggle/input/deepfake-face-crops-256/deepfake_crops_512/fake/600_603/frame_001.webp", "neuraltextures") is True
+    assert DomainClassifier.matches_holdout("fake/350_355/frame_001.webp", "face2face") is True
+    assert DomainClassifier.matches_holdout("fake/350_355/frame_001.webp", "neuraltextures") is False
+    assert DomainClassifier.matches_holdout("fake/650_653/frame_001.webp", "neuraltextures") is True
 
-    assert matches_holdout_domain("fake/400_403/frame_001.webp", "deepfakes") is False
-    assert matches_holdout_domain("fake/400_403/frame_001.webp", "face2face") is False
+    assert DomainClassifier.matches_holdout("fake/400_403/frame_001.webp", "deepfakes") is False
+    assert DomainClassifier.matches_holdout("fake/400_403/frame_001.webp", "face2face") is False
 
 
 def test_find_dataset_root_filters_empty_code_repo() -> None:

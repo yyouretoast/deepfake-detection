@@ -1,9 +1,7 @@
 """Dataset loading, domain classification, and preprocessing public API."""
 
-from src.dataset.datasets import (
-    DeepfakeDataset,
-    FaceCropDataset,
-)
+from src.dataset.datasets import FaceCropDataset
+from src.dataset.degradations import blur_fn, downscale_fn, jpeg_fn, noise_fn
 from src.dataset.domains import DomainClassifier, DomainInfo, ManipulationDomain
 from src.dataset.loader import (
     SequenceVideoDataset,
@@ -22,8 +20,11 @@ from src.dataset.resolver import (
 )
 
 __all__ = [
-    "DeepfakeDataset",
     "FaceCropDataset",
+    "jpeg_fn",
+    "blur_fn",
+    "noise_fn",
+    "downscale_fn",
     "DomainClassifier",
     "DomainInfo",
     "ManipulationDomain",

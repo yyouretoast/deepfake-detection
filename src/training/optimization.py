@@ -17,25 +17,36 @@ def get_differential_param_groups(
       Group 1: Head & Frequency branch weights with standard weight decay.
       Group 2: Biases and normalization layers with zero weight decay.
     """
-    decay_params: list[nn.Parameter] = []
-    no_decay_params: list[nn.Parameter] = []
-    backbone_params: list[nn.Parameter] = []
+    backbone_decay: list[nn.Parameter] = []
+    backbone_no_decay: list[nn.Parameter] = []
+    head_decay: list[nn.Parameter] = []
+    head_no_decay: list[nn.Parameter] = []
 
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
+        is_no_decay = name.endswith(".bias") or "norm" in name.lower() or "bn" in name.lower()
         if "spatial_backbone" in name:
-            backbone_params.append(param)
-        elif name.endswith(".bias") or "norm" in name.lower() or "bn" in name.lower():
-            no_decay_params.append(param)
+            if is_no_decay:
+                backbone_no_decay.append(param)
+            else:
+                backbone_decay.append(param)
         else:
-            decay_params.append(param)
+            if is_no_decay:
+                head_no_decay.append(param)
+            else:
+                head_decay.append(param)
 
-    return [
-        {"params": backbone_params, "lr": lr_backbone, "weight_decay": weight_decay},
-        {"params": decay_params, "lr": lr_head, "weight_decay": weight_decay},
-        {"params": no_decay_params, "lr": lr_head, "weight_decay": 0.0},
-    ]
+    groups = []
+    if backbone_decay:
+        groups.append({"params": backbone_decay, "lr": lr_backbone, "weight_decay": weight_decay})
+    if backbone_no_decay:
+        groups.append({"params": backbone_no_decay, "lr": lr_backbone, "weight_decay": 0.0})
+    if head_decay:
+        groups.append({"params": head_decay, "lr": lr_head, "weight_decay": weight_decay})
+    if head_no_decay:
+        groups.append({"params": head_no_decay, "lr": lr_head, "weight_decay": 0.0})
+    return groups
 
 
 def create_scheduler(

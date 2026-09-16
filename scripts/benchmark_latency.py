@@ -13,9 +13,8 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from src.dataset.resolver import find_weights_path
 from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict
+from src.utils.checkpoint import load_detector_checkpoint
 
 
 def benchmark_inference(
@@ -33,16 +32,12 @@ def benchmark_inference(
     device_name = torch.cuda.get_device_name(0) if device.type == "cuda" else "CPU Multi-thread"
     print(f"[1/2] Instantiating PyTorch Model on {device_name} (Resolution: {img_size}x{img_size})...")
 
-    model = HybridDeepfakeDetector(pretrained=False).to(device)
-    model.eval()
-
     try:
-        resolved_weights = find_weights_path(weights_path)
-        ckpt = torch.load(resolved_weights, map_location=device, weights_only=False)
-        state_dict = ckpt.get("model_state_dict", ckpt)
-        model.load_state_dict(clean_state_dict(state_dict), strict=False)
-        print(f" Loaded weights from {resolved_weights}")
+        model, _, _ = load_detector_checkpoint(weights_path=weights_path, device=device)
+        print(" Loaded trained weights from checkpoint.")
     except FileNotFoundError:
+        model = HybridDeepfakeDetector(pretrained=False).to(device)
+        model.eval()
         print(" Running with uninitialized random weights (dry-run mode).")
 
     use_amp = device.type == "cuda"

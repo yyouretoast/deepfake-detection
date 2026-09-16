@@ -87,7 +87,7 @@ def aggregate_video_predictions(
     k: int = 5,
     alpha: float = 0.3,
     tau: float = 1.0,
-    threshold: float = 0.01,
+    threshold: float = 0.50,
     frame_indices: Optional[list[int]] = None,
 ) -> dict[str, Any]:
     """Unified production dispatcher for video-level score aggregation."""

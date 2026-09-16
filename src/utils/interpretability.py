@@ -80,30 +80,34 @@ def generate_face_diagnostics(
     img_tensor = torch.from_numpy(face_rgb).permute(2, 0, 1).float().unsqueeze(0) / 255.0
     img_tensor = img_tensor.to(device)
 
-    with torch.no_grad():
-        srm_out = model.srm(img_tensor)
-        bayar_out = model.bayar(img_tensor)
-        noise_combined = torch.cat([srm_out, bayar_out], dim=1)
-        freq_maps = model.fft(noise_combined)
+    if getattr(model, "use_fft_branch", True) and getattr(model, "srm", None) is not None:
+        with torch.no_grad():
+            srm_out = model.srm(img_tensor)
+            bayar_out = model.bayar(img_tensor)
+            noise_combined = torch.cat([srm_out, bayar_out], dim=1)
+            freq_maps = model.fft(noise_combined)
 
-    # Panel B: SRM High-Pass Residual Noise Map
-    srm_map = srm_out[0].abs().mean(dim=0).cpu().numpy()
-    srm_denom = max(float(srm_map.max() - srm_map.min()), 1e-6)
-    srm_norm = (srm_map - srm_map.min()) / srm_denom
-    srm_uint8 = (srm_norm * 255.0).astype(np.uint8)
-    srm_colored = cv2.applyColorMap(srm_uint8, cv2.COLORMAP_VIRIDIS)
-    srm_rgb = cv2.cvtColor(srm_colored, cv2.COLOR_BGR2RGB)
+        # Panel B: SRM High-Pass Residual Noise Map
+        srm_map = srm_out[0].abs().mean(dim=0).cpu().numpy()
+        srm_denom = max(float(srm_map.max() - srm_map.min()), 1e-6)
+        srm_norm = (srm_map - srm_map.min()) / srm_denom
+        srm_uint8 = (srm_norm * 255.0).astype(np.uint8)
+        srm_colored = cv2.applyColorMap(srm_uint8, cv2.COLORMAP_VIRIDIS)
+        srm_rgb = cv2.cvtColor(srm_colored, cv2.COLOR_BGR2RGB)
 
-    # Panel C: Centered 2D Real FFT Log-Magnitude Spectrum
-    # RealFFT2DModule already shifted the DC component to center; do NOT call np.fft.fftshift again.
-    mag_maps = freq_maps[0, :10].cpu().numpy()
-    mean_mag = np.mean(mag_maps, axis=0)
-    fft_centered = mean_mag
-    fft_denom = max(float(fft_centered.max() - fft_centered.min()), 1e-6)
-    fft_norm = (fft_centered - fft_centered.min()) / fft_denom
-    fft_uint8 = (fft_norm * 255.0).astype(np.uint8)
-    fft_colored = cv2.applyColorMap(fft_uint8, cv2.COLORMAP_MAGMA)
-    fft_rgb = cv2.cvtColor(fft_colored, cv2.COLOR_BGR2RGB)
+        # Panel C: Centered 2D Real FFT Log-Magnitude Spectrum
+        # RealFFT2DModule already shifted the DC component to center; do NOT call np.fft.fftshift again.
+        mag_maps = freq_maps[0, :10].cpu().numpy()
+        mean_mag = np.mean(mag_maps, axis=0)
+        fft_centered = mean_mag
+        fft_denom = max(float(fft_centered.max() - fft_centered.min()), 1e-6)
+        fft_norm = (fft_centered - fft_centered.min()) / fft_denom
+        fft_uint8 = (fft_norm * 255.0).astype(np.uint8)
+        fft_colored = cv2.applyColorMap(fft_uint8, cv2.COLORMAP_MAGMA)
+        fft_rgb = cv2.cvtColor(fft_colored, cv2.COLOR_BGR2RGB)
+    else:
+        srm_rgb = np.zeros((img_size, img_size, 3), dtype=np.uint8)
+        fft_rgb = np.zeros((img_size, img_size, 3), dtype=np.uint8)
 
     # Panel D: Grad-CAM Heatmap Overlay
     # Hooks are registered on model creation and MUST always be removed, even if an

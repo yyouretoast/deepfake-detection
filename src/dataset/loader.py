@@ -266,13 +266,18 @@ def group_video_sequences(
     return grouped
 
 
-def load_image_rgb(path: str) -> np.ndarray:
-    """Load image from disk and return RGB numpy array of shape [H, W, 3]."""
-    if os.path.exists(path):
-        img_bgr = cv2.imread(path)
-        if img_bgr is not None:
-            return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    return np.zeros((256, 256, 3), dtype=np.uint8)
+def load_image_rgb(path: str, img_size: int = 256) -> np.ndarray:
+    """Load image from disk robustly via PIL with corrupt WebP error recovery, returning RGB array [H, W, 3]."""
+    if path and os.path.exists(path):
+        try:
+            with Image.open(path) as img:
+                pil_rgb = img.convert("RGB")
+                if pil_rgb.size != (img_size, img_size):
+                    pil_rgb = pil_rgb.resize((img_size, img_size), Image.Resampling.BILINEAR)
+                return np.array(pil_rgb, dtype=np.uint8)
+        except Exception as e:
+            logger.debug("Image loading error on %s: %s", path, e)
+    return np.zeros((img_size, img_size, 3), dtype=np.uint8)
 
 
 class SequenceVideoDataset(Dataset):

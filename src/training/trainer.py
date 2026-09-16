@@ -70,13 +70,14 @@ class DualStreamTrainer:
         self.model.train()
         running_loss = torch.tensor(0.0, device=self.accelerator.device)
         total_failures = torch.tensor(0.0, device=self.accelerator.device)
+        total_samples = torch.tensor(0.0, device=self.accelerator.device)
 
         desc = f"Epoch [{epoch + 1}/{total_epochs}]"
         train_iter = tqdm(self.train_loader, desc=desc, disable=not self.accelerator.is_main_process)
 
         for batch_idx, (images, labels, valid_flags) in enumerate(train_iter):
             if batch_idx == 0 and self.accelerator.is_main_process:
-                logger.info(
+                logger.debug(
                     "[DIAGNOSTIC] Batch 0 successfully yielded! Images: %s (min=%.2f, max=%.2f), Labels: %s, Valid: %d/%d",
                     images.shape,
                     float(images.min().item()),
@@ -117,7 +118,7 @@ class DualStreamTrainer:
                         raise
 
                 if batch_idx < 2 and self.accelerator.is_main_process:
-                    logger.info("[DIAGNOSTIC] Batch %d: forward pass completed (loss=%.4f), starting backward pass...", batch_idx, float(loss.detach().item()))
+                    logger.debug("[DIAGNOSTIC] Batch %d: forward pass completed (loss=%.4f), starting backward pass...", batch_idx, float(loss.detach().item()))
 
                 try:
                     self.accelerator.backward(loss)
@@ -129,7 +130,7 @@ class DualStreamTrainer:
                     raise
 
                 if batch_idx < 2 and self.accelerator.is_main_process:
-                    logger.info("[DIAGNOSTIC] Batch %d: backward pass completed (sync_gradients=%s)...", batch_idx, self.accelerator.sync_gradients)
+                    logger.debug("[DIAGNOSTIC] Batch %d: backward pass completed (sync_gradients=%s)...", batch_idx, self.accelerator.sync_gradients)
 
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=self.max_grad_norm)
@@ -139,13 +140,14 @@ class DualStreamTrainer:
                         self.ema.update(self.accelerator.unwrap_model(self.model))
 
             if batch_idx < 2 and self.accelerator.is_main_process:
-                logger.info("[DIAGNOSTIC] Batch %d step finished! Loading next batch...", batch_idx)
+                logger.debug("[DIAGNOSTIC] Batch %d step finished! Loading next batch...", batch_idx)
 
-            running_loss += loss.detach()
+            running_loss += loss.detach() * images.size(0)
+            total_samples += images.size(0)
 
-        epoch_loss = float(self.accelerator.reduce(running_loss, reduction="sum").item()) / len(
-            self.train_loader.dataset
-        )
+        total_loss = float(self.accelerator.reduce(running_loss, reduction="sum").item())
+        total_count = float(self.accelerator.reduce(total_samples, reduction="sum").item())
+        epoch_loss = total_loss / max(1.0, total_count)
         failures = int(self.accelerator.reduce(total_failures, reduction="sum").item())
         return {"train_loss": epoch_loss, "failures": failures}
 
@@ -157,6 +159,7 @@ class DualStreamTrainer:
 
         val_loss_tensor = torch.tensor(0.0, device=self.accelerator.device)
         val_failures_tensor = torch.tensor(0.0, device=self.accelerator.device)
+        val_samples_tensor = torch.tensor(0.0, device=self.accelerator.device)
         all_preds = []
         all_targets = []
 
@@ -173,7 +176,8 @@ class DualStreamTrainer:
 
                     outputs = self.model(images)
                     loss = self._compute_loss(outputs, labels, valid_flags)
-                    val_loss_tensor += loss.detach()
+                    val_loss_tensor += loss.detach() * images.size(0)
+                    val_samples_tensor += images.size(0)
 
                     probs = torch.sigmoid(outputs)
                     gathered_probs, gathered_labels = self.accelerator.gather_for_metrics((probs, labels))
@@ -185,7 +189,8 @@ class DualStreamTrainer:
                 self.ema.restore(unwrapped, backup)
 
         total_val_loss = float(self.accelerator.reduce(val_loss_tensor, reduction="sum").item())
-        val_loss = total_val_loss / max(1, len(eval_loader.dataset))
+        total_val_samples = float(self.accelerator.reduce(val_samples_tensor, reduction="sum").item())
+        val_loss = total_val_loss / max(1.0, total_val_samples)
         failures = int(self.accelerator.reduce(val_failures_tensor, reduction="sum").item())
 
         preds_arr = np.array(all_preds).flatten()

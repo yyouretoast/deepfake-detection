@@ -24,11 +24,10 @@ if REPO_ROOT not in sys.path:
 
 from src.dataset.datasets import FaceCropDataset
 from src.dataset.loader import dedupe_split
-from src.dataset.resolver import find_dataset_root, find_weights_path, resolve_splits_path
+from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.evaluation.evaluator import ModelEvaluator
-from src.evaluation.metrics import compute_ece, fit_temperature_log
-from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict, compute_dual_thresholds
+from src.evaluation.metrics import compute_ece, find_optimal_threshold, fit_temperature_log
+from src.utils.checkpoint import compute_dual_thresholds, load_detector_checkpoint
 
 
 def evaluate(
@@ -60,15 +59,7 @@ def evaluate(
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = HybridDeepfakeDetector().to(device)
-
-    resolved_weights = find_weights_path(weights_path, data_root)
-    print(f"Loading weights from: {resolved_weights}")
-
-    checkpoint = torch.load(resolved_weights, map_location=device, weights_only=False)
-    state_dict = checkpoint.get("model_state_dict", checkpoint)
-    model.load_state_dict(clean_state_dict(state_dict), strict=False)
-    model.eval()
+    model, _, _ = load_detector_checkpoint(weights_path=weights_path, device=device, data_root=data_root)
 
     evaluator = ModelEvaluator(model, device=device)
 
@@ -87,15 +78,9 @@ def evaluate(
     val_ece_cal = compute_ece(val_probs_cal, val_targets)
     print(f"Validation ECE: {val_ece_uncal:.4f} (Uncalibrated) -> {val_ece_cal:.4f} (Calibrated)")
 
-    thresholds = np.linspace(0.1, 0.9, 81)
-    best_thresh = 0.5
-    best_bal_acc = 0.0
-    for t in thresholds:
-        preds = (val_probs_cal >= t).astype(int)
-        score = balanced_accuracy_score(val_targets, preds)
-        if score > best_bal_acc:
-            best_bal_acc = score
-            best_thresh = t
+    best_thresh, best_bal_acc = find_optimal_threshold(
+        val_targets, val_probs_cal, criterion="balanced_accuracy", n_thresholds=81
+    )
     youden_j = 2.0 * best_bal_acc - 1.0
     print(f"Optimal Decision Threshold tau* = {best_thresh:.4f} (Val Balanced Acc = {best_bal_acc:.4f}, Youden's J = {youden_j:.4f})")
 

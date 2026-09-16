@@ -8,7 +8,6 @@ import os
 import sys
 from typing import Any, Optional
 
-import cv2
 import numpy as np
 from sklearn.metrics import f1_score
 import torch
@@ -19,61 +18,26 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from src.dataset.datasets import FaceCropDataset
+from src.dataset.degradations import blur_fn, downscale_fn, jpeg_fn, noise_fn
 from src.dataset.loader import dedupe_split
-from src.dataset.resolver import find_dataset_root, find_weights_path, resolve_splits_path
+from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.evaluation.evaluator import ModelEvaluator
 from src.evaluation.metrics import compute_roc_auc_safe
-from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict
+from src.utils.checkpoint import load_detector_checkpoint
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 IMG_SIZE = 256
 
-
-def jpeg_fn(quality: int) -> Callable[[np.ndarray], np.ndarray]:
-    """JPEG compression degradation at specified quality level (0-100)."""
-
-    def fn(rgb: np.ndarray) -> np.ndarray:
-        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        _, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
-        return cv2.cvtColor(cv2.imdecode(buf, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-
-    return fn
-
-
-def blur_fn(sigma: float) -> Callable[[np.ndarray], np.ndarray]:
-    """Gaussian blur degradation at specified kernel sigma."""
-
-    def fn(rgb: np.ndarray) -> np.ndarray:
-        ksize = int(6 * sigma + 1) | 1
-        return cv2.GaussianBlur(rgb, (ksize, ksize), sigma)
-
-    return fn
-
-
-def noise_fn(sigma: float) -> Callable[[np.ndarray], np.ndarray]:
-    """Additive Gaussian noise degradation at specified pixel-space sigma."""
-
-    def fn(rgb: np.ndarray) -> np.ndarray:
-        noise = np.random.randn(*rgb.shape).astype(np.float32) * sigma
-        return np.clip(rgb.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-
-    return fn
-
-
-def downscale_fn(scale: float) -> Callable[[np.ndarray], np.ndarray]:
-    """Downscale and re-upsample image back to original resolution."""
-
-    def fn(rgb: np.ndarray) -> np.ndarray:
-        h, w = rgb.shape[:2]
-        small = cv2.resize(
-            rgb, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA
-        )
-        return cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
-
-    return fn
+__all__ = [
+    "jpeg_fn",
+    "blur_fn",
+    "noise_fn",
+    "downscale_fn",
+    "run_eval",
+    "main",
+]
 
 
 def run_eval(
@@ -128,7 +92,6 @@ def main() -> None:
     args = parser.parse_args()
 
     data_root = find_dataset_root(args.data_root)
-    checkpoint_path = find_weights_path(args.checkpoint, data_root)
 
     splits_path = resolve_splits_path(data_root=data_root)
     with open(splits_path, "r") as f:
@@ -137,16 +100,10 @@ def main() -> None:
     logger.info("Loaded %d test samples from %s", len(test_samples), splits_path)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-    threshold = float(ckpt.get("optimal_threshold", 0.50))
-    temperature = float(ckpt.get("temperature", 1.0))
+    model, temperature, threshold = load_detector_checkpoint(
+        weights_path=args.checkpoint, device=device, data_root=data_root
+    )
     logger.info("Loaded threshold=%.4f, temperature=%.4f from checkpoint", threshold, temperature)
-
-    model = HybridDeepfakeDetector(pretrained=False).to(device)
-    state = ckpt.get("model_state_dict", ckpt)
-    model.load_state_dict(clean_state_dict(state), strict=False)
-    model.eval()
 
     results: dict[str, Any] = {}
 

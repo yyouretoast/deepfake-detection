@@ -70,14 +70,21 @@ def load_config(config_path: Optional[str] = None) -> dict[str, Any]:
             if os.path.exists(alt_path):
                 config_path = alt_path
 
+    merged_cfg = copy.deepcopy(DEFAULT_CONFIG)
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 user_cfg = yaml.safe_load(f)
             if isinstance(user_cfg, dict):
-                return _deep_merge_dict(DEFAULT_CONFIG, user_cfg)
+                merged_cfg = _deep_merge_dict(DEFAULT_CONFIG, user_cfg)
         except (yaml.YAMLError, OSError, ValueError) as e:
             logger.warning("Failed to parse config file '%s': %s. Using DEFAULT_CONFIG.", config_path, e)
 
-    return copy.deepcopy(DEFAULT_CONFIG)
+    prep = merged_cfg.setdefault("preprocessing", {})
+    if "scale_factor" in prep and "padding_scale" not in prep:
+        prep["padding_scale"] = prep["scale_factor"]
+    elif "padding_scale" in prep and "scale_factor" not in prep:
+        prep["scale_factor"] = prep["padding_scale"]
+
+    return merged_cfg
 

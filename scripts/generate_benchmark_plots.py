@@ -381,7 +381,7 @@ def plot_confusion_matrices(
     cm_sp_norm = cm_sp.astype(float) / cm_sp.sum(axis=1)[:, np.newaxis]
 
     ax1 = axes[0]
-    im1 = ax1.imshow(cm_sp_norm, cmap="Blues", vmin=0.0, vmax=1.0, aspect="auto")
+    ax1.imshow(cm_sp_norm, cmap="Blues", vmin=0.0, vmax=1.0, aspect="auto")
     for i in range(2):
         for j in range(2):
             cnt = cm_sp[i, j]
@@ -406,7 +406,7 @@ def plot_confusion_matrices(
         cm_tp = confusion_matrix(t_labels, preds_tp)
         cm_tp_norm = cm_tp.astype(float) / cm_tp.sum(axis=1)[:, np.newaxis]
 
-        im2 = ax2.imshow(cm_tp_norm, cmap="Blues", vmin=0.0, vmax=1.0, aspect="auto")
+        ax2.imshow(cm_tp_norm, cmap="Blues", vmin=0.0, vmax=1.0, aspect="auto")
         for i in range(2):
             for j in range(2):
                 cnt = cm_tp[i, j]

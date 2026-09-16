@@ -15,7 +15,6 @@ import torch
 import torch.nn as nn
 from torchvision import models
 
-from src.models.fusion import ClassificationHead, GatedResidualFusion, LayerNorm2d
 from src.models.spectral import RealFFT2DModule
 from src.models.spectral_tower import ResSESpectralTower
 from src.models.steganography import BayarConv2d, SRMConv2d
@@ -26,9 +25,6 @@ __all__ = [
     "SRMConv2d",
     "BayarConv2d",
     "RealFFT2DModule",
-    "LayerNorm2d",
-    "GatedResidualFusion",
-    "ClassificationHead",
     "HybridDeepfakeDetector",
 ]
 
@@ -128,6 +124,8 @@ class HybridDeepfakeDetector(nn.Module):
             nn.AdaptiveAvgPool2d(1),
         ).to(device=device, dtype=dtype)
         self.freq_fc = nn.Sequential(nn.Linear(128, 512), nn.ReLU()).to(device=device, dtype=dtype)
+        self.freq_conv.train(self.training)
+        self.freq_fc.train(self.training)
         self.frequency_backbone = "legacy"
 
     def _switch_to_resse_frequency_branch(self) -> None:
@@ -139,6 +137,7 @@ class HybridDeepfakeDetector(nn.Module):
         if hasattr(self, "freq_fc"):
             delattr(self, "freq_fc")
         self.freq_tower = ResSESpectralTower(in_channels=20, embed_dim=512).to(device=device, dtype=dtype)
+        self.freq_tower.train(self.training)
         self.frequency_backbone = "resse"
 
     def load_state_dict(self, state_dict: dict[str, Any], strict: bool = True, assign: bool = False):
@@ -236,7 +235,7 @@ class HybridDeepfakeDetector(nn.Module):
             aux_logit = torch.zeros(x.shape[0], 1, device=x.device, dtype=x.dtype)
 
         logits = self.classifier(fused)
-        if return_aux:
+        if not torch.jit.is_tracing() and return_aux:
             return logits, aux_logit
         return logits
 

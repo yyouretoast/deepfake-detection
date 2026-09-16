@@ -19,11 +19,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from src.config import load_config
 from src.dataset.loader import dedupe_split
 from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict
+from src.utils.checkpoint import load_detector_checkpoint
+from src.utils.interpretability import generate_face_diagnostics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,12 +33,8 @@ DEFAULT_THRESHOLD = 0.50
 DEFAULT_TEMPERATURE = 1.0
 
 
-from src.utils.interpretability import ConvNeXtGradCAM
-
-
 def generate_4panel_figure(
     model: HybridDeepfakeDetector,
-    grad_cam: ConvNeXtGradCAM,
     rgb_uint8: np.ndarray,
     label_str: str,
     output_path: str,
@@ -52,67 +48,29 @@ def generate_4panel_figure(
     img_tensor = img_tensor.to(device)
 
     with torch.no_grad():
-        srm_out = model.srm(img_tensor)
-        bayar_out = model.bayar(img_tensor)
-        noise_combined = torch.cat([srm_out, bayar_out], dim=1)
-        freq_maps = model.fft(noise_combined)
-
-        mean = model.imagenet_mean.to(dtype=img_tensor.dtype)
-        std = model.imagenet_std.to(dtype=img_tensor.dtype)
-        x_spatial = (img_tensor - mean) / std
-        f_s = model.spatial_pool(model.spatial_backbone(x_spatial)).flatten(1)
-        f_s = model.spatial_fc(f_s)
-
-        if hasattr(model, "freq_tower"):
-            f_f, _ = model.freq_tower(freq_maps)
-        else:
-            f_f = model.freq_conv(freq_maps).flatten(1)
-            f_f = model.freq_fc(f_f)
-
-        concat_feat = torch.cat([f_s, f_f], dim=1)
-        gate = model.gate_fc(concat_feat)
-        gate_mean = float(gate.mean().item())
-
         logits = model(img_tensor).squeeze(-1).float()
         raw_logit = float(logits.item())
         calibrated_prob = float(torch.sigmoid(logits / temperature).item())
         pred_label = "FAKE" if calibrated_prob > threshold else "REAL"
 
-    h, w = rgb_uint8.shape[:2]
-    cam_map = grad_cam.generate_heatmap(img_tensor.clone(), img_size=h)
-    if cam_map.shape[:2] != (h, w):
-        cam_map = cv2.resize(cam_map, (w, h), interpolation=cv2.INTER_LINEAR)
-
-    srm_map = srm_out[0].abs().mean(dim=0).cpu().numpy()
-    p_low = np.percentile(srm_map, 1.0)
-    p_high = np.percentile(srm_map, 99.5)
-    srm_norm = np.clip((srm_map - p_low) / max(p_high - p_low, 1e-6), 0.0, 1.0)
-
-    mag_maps = freq_maps[0, :10].cpu().numpy()
-    fft_centered = np.mean(mag_maps, axis=0)
-
-    cam_uint8 = np.uint8(255 * cam_map)
-    heatmap_bgr = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)
-    heatmap_rgb = cv2.cvtColor(heatmap_bgr, cv2.COLOR_BGR2RGB)
-    gradcam_overlay = cv2.addWeighted(rgb_uint8, 0.6, heatmap_rgb, 0.4, 0)
+    diag = generate_face_diagnostics(model, rgb_uint8, device=device)
 
     plt.rcParams.update({"font.family": "DejaVu Sans", "figure.facecolor": "white"})
     fig, axes = plt.subplots(2, 2, figsize=(10, 8.5), dpi=300)
 
-    axes[0, 0].imshow(rgb_uint8)
+    axes[0, 0].imshow(diag["original"])
     axes[0, 0].set_title("(a) Input RGB Face Crop (256x256)", fontsize=10, fontweight="bold")
     axes[0, 0].axis("off")
 
-    axes[0, 1].imshow(srm_norm, cmap="magma")
+    axes[0, 1].imshow(diag["srm_residual"])
     axes[0, 1].set_title("(b) SRM Noise Residual Map (9 Filters)", fontsize=10, fontweight="bold")
     axes[0, 1].axis("off")
 
-    im_c = axes[1, 0].imshow(fft_centered, cmap="viridis")
-    axes[1, 0].set_title(f"(c) 2D FFT Magnitude Spectrum (Gate={gate_mean:.3f})", fontsize=10, fontweight="bold")
+    axes[1, 0].imshow(diag["fft_spectrum"])
+    axes[1, 0].set_title("(c) 2D FFT Magnitude Spectrum", fontsize=10, fontweight="bold")
     axes[1, 0].axis("off")
-    fig.colorbar(im_c, ax=axes[1, 0], fraction=0.046, pad=0.04)
 
-    axes[1, 1].imshow(gradcam_overlay)
+    axes[1, 1].imshow(diag["gradcam_overlay"])
     axes[1, 1].set_title("(d) ConvNeXt Grad-CAM Attention Overlay", fontsize=10, fontweight="bold")
     axes[1, 1].axis("off")
 
@@ -153,34 +111,16 @@ def main() -> None:
 
     data_root = find_dataset_root(args.data_root)
 
-    config = load_config()
-    backbone = config.get("model", {}).get("backbone", "convnext_small")
-    model = HybridDeepfakeDetector(
-        backbone_name=backbone, pretrained=False, use_fft_branch=True, config=config
-    )
-
-    threshold = DEFAULT_THRESHOLD
-    temperature = DEFAULT_TEMPERATURE
-
-    ckpt_path = args.checkpoint
-    if not os.path.exists(ckpt_path):
-        for cand in [os.path.join("models", os.path.basename(ckpt_path)), os.path.join("results", os.path.basename(ckpt_path))]:
-            if os.path.exists(cand):
-                ckpt_path = cand
-                break
-
-    if os.path.exists(ckpt_path):
-        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
-        state_dict = checkpoint.get("model_state_dict", checkpoint)
-        model.load_state_dict(clean_state_dict(state_dict), strict=False)
-        threshold = float(checkpoint.get("optimal_threshold", DEFAULT_THRESHOLD))
-        temperature = float(checkpoint.get("temperature", DEFAULT_TEMPERATURE))
-        logger.info("Loaded checkpoint '%s' (Threshold=%.4f, Temp=%.4f)", ckpt_path, threshold, temperature)
-    else:
+    try:
+        model, temperature, threshold = load_detector_checkpoint(
+            weights_path=args.checkpoint, device=device, data_root=data_root
+        )
+        logger.info("Loaded checkpoint '%s' (Threshold=%.4f, Temp=%.4f)", args.checkpoint, threshold, temperature)
+    except FileNotFoundError:
+        model = HybridDeepfakeDetector(pretrained=False).to(device).eval()
+        threshold = DEFAULT_THRESHOLD
+        temperature = DEFAULT_TEMPERATURE
         logger.warning("Checkpoint '%s' not found. Running with initial model weights.", args.checkpoint)
-
-    model.to(device).eval()
-    grad_cam = ConvNeXtGradCAM(model)
 
     if args.image_path is not None:
         if not os.path.exists(args.image_path):
@@ -192,9 +132,8 @@ def main() -> None:
 
         out_name = os.path.join(args.output_dir, "single_image_attention.png")
         generate_4panel_figure(
-            model, grad_cam, rgb, "UNKNOWN", out_name, device, threshold, temperature
+            model, rgb, "UNKNOWN", out_name, device, threshold, temperature
         )
-        grad_cam.remove_hooks()
         return
 
     splits_path = resolve_splits_path(data_root=data_root)
@@ -223,7 +162,7 @@ def main() -> None:
             cv2.ellipse(img, (128, 160), (35, 15), 0, 0, 180, (150, 50, 50), 4)
             out_path = os.path.join(args.output_dir, f"attention_map_{idx+1:02d}_{label_str.lower()}.png")
             generate_4panel_figure(
-                model, grad_cam, img, label_str, out_path, device, threshold, temperature
+                model, img, label_str, out_path, device, threshold, temperature
             )
     else:
         for idx, (rel_path, label_str) in enumerate(samples):
@@ -239,10 +178,9 @@ def main() -> None:
 
             out_path = os.path.join(args.output_dir, f"attention_map_{idx+1:02d}_{label_str.lower()}.png")
             generate_4panel_figure(
-                model, grad_cam, rgb, label_str, out_path, device, threshold, temperature
+                model, rgb, label_str, out_path, device, threshold, temperature
             )
 
-    grad_cam.remove_hooks()
     logger.info("All diagnostic figures rendered to %s/", args.output_dir)
 
 

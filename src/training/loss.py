@@ -30,16 +30,24 @@ class FocalLossWithLogits(nn.Module):
 class MaskedBCEWithLogits(nn.Module):
     """Standard binary cross-entropy with pos_weight and corrupt sample valid_flag reduction."""
 
-    def __init__(self, pos_weight: Optional[torch.Tensor] = None) -> None:
+    def __init__(self, pos_weight: Optional[torch.Tensor] = None, reduction: str = "none") -> None:
         super().__init__()
         self.pos_weight = pos_weight
+        self.reduction = reduction
 
     def forward(
-        self, logits: torch.Tensor, targets: torch.Tensor, valid_flags: Optional[torch.Tensor] = None
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        valid_flags: Optional[torch.Tensor] = None,
+        reduction: Optional[str] = None,
     ) -> torch.Tensor:
         unreduced = F.binary_cross_entropy_with_logits(
             logits, targets, pos_weight=self.pos_weight, reduction="none"
         )
         if valid_flags is not None:
             return (unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+        red = reduction if reduction is not None else self.reduction
+        if red == "mean":
+            return unreduced.mean()
         return unreduced

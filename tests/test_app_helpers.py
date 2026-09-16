@@ -1,16 +1,17 @@
-"""Unit tests for app.py helper and inference functions."""
+"""Unit tests for inference and post-processing helper functions."""
 
 import numpy as np
 import torch
 
-from app import (
-    clean_state_dict,
-    normalize_confidence,
-    preprocess_tensors_batch,
-    process_video_frames,
-)
+from src.dataset.preprocess import preprocess_tensors_batch
 from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import compute_ece, fit_temperature_log
+from src.services.video_engine import process_video_frames
+from src.utils.checkpoint import (
+    clean_state_dict,
+    compute_ece,
+    fit_temperature_log,
+    normalize_confidence,
+)
 
 
 class TestCleanStateDict:

@@ -5,7 +5,6 @@ import logging
 import os
 from typing import Any, Optional, Union
 
-import cv2
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -118,10 +117,3 @@ class FaceCropDataset(Dataset):
         if self.return_valid_flag:
             return tensor_img, label_tensor, valid_tensor
         return tensor_img, int(label_float)
-
-
-class DeepfakeDataset(FaceCropDataset):
-    """Single-frame dataset returning (tensor, int_label) for backward compatibility."""
-
-    def __init__(self, samples: list[Any], transform: Optional[Any] = None) -> None:
-        super().__init__(samples, root_dir="", transform=transform, return_valid_flag=False)

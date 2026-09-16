@@ -105,7 +105,7 @@ class TestEmptyInputSafeDefaults:
         assert ema_aggregation([]) == 0.5
 
 
-class TestAggregateVideoPredicitions:
+class TestAggregateVideoPredictions:
     def test_dispatcher_soft_max(self) -> None:
         result = aggregate_video_predictions([0.8, 0.9, 0.85], method="soft_max")
         assert "video_score" in result
@@ -123,3 +123,12 @@ class TestAggregateVideoPredicitions:
         assert result["is_fake"] is True
         result = aggregate_video_predictions([0.1, 0.05], method="mean", threshold=0.5)
         assert result["is_fake"] is False
+
+    def test_default_threshold(self) -> None:
+        result = aggregate_video_predictions([0.4, 0.45], method="mean")
+        assert result["threshold_used"] == 0.50
+        assert result["is_fake"] is False
+
+        result = aggregate_video_predictions([0.6, 0.65], method="mean")
+        assert result["threshold_used"] == 0.50
+        assert result["is_fake"] is True

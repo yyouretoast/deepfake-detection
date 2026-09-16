@@ -10,7 +10,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from scripts.evaluate_robustness import blur_fn, downscale_fn, jpeg_fn, noise_fn
+from src.dataset.degradations import blur_fn, downscale_fn, jpeg_fn, noise_fn
 from scripts.train_loto_experiment import filter_loto_split_strict, matches_holdout_domain
 
 

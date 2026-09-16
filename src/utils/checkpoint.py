@@ -1,8 +1,8 @@
-"""Checkpoint state dictionary cleaning and temperature calibration utilities."""
-
-from typing import Any
-
+from typing import Any, Optional, Union
 import numpy as np
+
+# Re-export calibration utilities from canonical metrics module
+from src.evaluation.metrics import compute_ece, fit_temperature_log
 
 DEFAULT_THRESHOLD: float = 0.50
 DEFAULT_TEMPERATURE: float = 1.4788
@@ -11,6 +11,7 @@ __all__ = [
     "DEFAULT_THRESHOLD",
     "DEFAULT_TEMPERATURE",
     "clean_state_dict",
+    "load_detector_checkpoint",
     "normalize_confidence",
     "compute_ece",
     "fit_temperature_log",
@@ -41,10 +42,6 @@ def normalize_confidence(prob: float, threshold: float = DEFAULT_THRESHOLD) -> f
     if prob_val >= thresh:
         return 50.0 + 50.0 * ((prob_val - thresh) / (1.0 - thresh))
     return 50.0 + 50.0 * ((thresh - prob_val) / thresh)
-
-
-# Re-export calibration utilities from canonical metrics module
-from src.evaluation.metrics import compute_ece, fit_temperature_log
 
 
 def compute_dual_thresholds(
@@ -123,3 +120,42 @@ def classify_three_zone(
         "confidence": float(max(p, 1.0 - p)),
         "is_inconclusive": True,
     }
+
+
+def load_detector_checkpoint(
+    weights_path: Optional[str] = None,
+    device: Optional[Union[Any, str]] = None,
+    data_root: Optional[str] = None,
+    strict: bool = False,
+) -> tuple[Any, float, float]:
+    """
+    Loads trained Dual-Stream detector weights, returning (model, temperature, threshold).
+    Automatically resolves checkpoint path, strips distributed prefixes, dynamically
+    detects frequency backbone (resse vs legacy), and configures model in eval mode.
+    """
+    import torch
+    from src.dataset.resolver import find_weights_path
+    from src.models.hybrid_detector import HybridDeepfakeDetector
+
+    if device is None:
+        target_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        target_device = torch.device(device) if isinstance(device, str) else device
+
+    resolved_path = find_weights_path(weights_path, data_root)
+    ckpt = torch.load(resolved_path, map_location=target_device, weights_only=False)
+
+    temperature = float(ckpt.get("temperature", DEFAULT_TEMPERATURE))
+    threshold = float(ckpt.get("optimal_threshold", DEFAULT_THRESHOLD))
+
+    state_dict = ckpt.get("model_state_dict", ckpt)
+    cleaned = clean_state_dict(state_dict)
+
+    has_resse = any(k.startswith("freq_tower.") for k in cleaned)
+    freq_backbone = "resse" if has_resse else "legacy"
+
+    model = HybridDeepfakeDetector(pretrained=False, frequency_backbone=freq_backbone).to(target_device)
+    model.load_state_dict(cleaned, strict=strict)
+    model.eval()
+
+    return model, temperature, threshold

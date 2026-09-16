@@ -35,14 +35,16 @@ def get_yunet_model_path() -> Optional[str]:
     if repo_root is None:
         repo_root = os.getcwd()
 
+    candidate_paths = [
+        os.path.join(repo_root, "models", YUNET_MODEL_FILENAME),
+        os.path.join("models", YUNET_MODEL_FILENAME),
+        os.path.join(repo_root, "src", "models", YUNET_MODEL_FILENAME),
+    ]
+    for p in candidate_paths:
+        if os.path.exists(p) and os.path.getsize(p) > 1000:
+            return os.path.abspath(p)
+
     local_path = os.path.join(repo_root, "models", YUNET_MODEL_FILENAME)
-    if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
-        return local_path
-
-    alt_path = os.path.join("models", YUNET_MODEL_FILENAME)
-    if os.path.exists(alt_path) and os.path.getsize(alt_path) > 1000:
-        return os.path.abspath(alt_path)
-
     try:
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         req = urllib.request.Request(

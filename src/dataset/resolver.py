@@ -17,11 +17,8 @@ class DatasetResolver:
         "./data",
         "/kaggle/working/local_crops",
         "/kaggle/input/deepfake-face-crops-256/deepfake_crops_512",
-        "/kaggle/input/datasets/yassinyasserr/deepfake-face-crops-256/deepfake_crops_512",
         "/kaggle/input/deepfake-face-crops-256",
-        "/kaggle/input/datasets/yassinyasserr/deepfake-dataset/deepfake_crops_512",
         "/kaggle/input/deepfake-dataset/deepfake_crops_512",
-        "/kaggle/input/datasets/yassinyasserr/deepfake-crops-512/deepfake_crops_512",
         "/kaggle/input/deepfake-crops-512/deepfake_crops_512",
         "/kaggle/input/deepfake_crops_512",
     )

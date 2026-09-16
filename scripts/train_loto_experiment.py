@@ -19,12 +19,6 @@ try:
 except Exception:
     pass
 
-for cache_dir in ["/root/.cache/torch/kernels", os.path.expanduser("~/.cache/torch/kernels")]:
-    try:
-        os.makedirs(cache_dir, exist_ok=True)
-    except Exception:
-        pass
-
 from accelerate import Accelerator
 import cv2
 import numpy as np
@@ -44,6 +38,7 @@ from src.dataset.datasets import FaceCropDataset
 from src.dataset.domains import DomainClassifier
 from src.dataset.loader import get_transforms
 from src.dataset.resolver import find_dataset_root, resolve_splits_path
+from src.evaluation.metrics import find_optimal_threshold
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.training.ema import ExponentialMovingAverage
 from src.training.loss import FocalLossWithLogits
@@ -282,25 +277,11 @@ def main() -> None:
         zero_shot_rec = float(recall_score(eval_targets, eval_preds, zero_division=0))
 
         # Youden's J optimal threshold calibration
-        opt_thresh = 0.5
-        opt_f1 = zero_shot_f1
-        opt_prec = zero_shot_prec
-        opt_rec = zero_shot_rec
-        if len(np.unique(eval_targets)) > 1:
-            try:
-                from sklearn.metrics import roc_curve
-                fpr, tpr, thresholds = roc_curve(eval_targets, eval_probs)
-                valid_idx = np.isfinite(thresholds)
-                if np.any(valid_idx):
-                    j_scores = tpr[valid_idx] - fpr[valid_idx]
-                    best_j_idx = np.argmax(j_scores)
-                    opt_thresh = float(thresholds[valid_idx][best_j_idx])
-                    opt_preds = (eval_probs >= opt_thresh).astype(int)
-                    opt_f1 = float(f1_score(eval_targets, opt_preds, zero_division=0))
-                    opt_prec = float(precision_score(eval_targets, opt_preds, zero_division=0))
-                    opt_rec = float(recall_score(eval_targets, opt_preds, zero_division=0))
-            except Exception as e:
-                logger.warning("Error computing Youden optimal threshold: %s", e)
+        opt_thresh, _ = find_optimal_threshold(eval_targets, eval_probs, criterion="youden_roc")
+        opt_preds = (eval_probs >= opt_thresh).astype(int)
+        opt_f1 = float(f1_score(eval_targets, opt_preds, zero_division=0))
+        opt_prec = float(precision_score(eval_targets, opt_preds, zero_division=0))
+        opt_rec = float(recall_score(eval_targets, opt_preds, zero_division=0))
 
         logger.info(
             "Holdout [%s] Default (tau=0.50) -> AUC: %.4f | F1: %.4f | Precision: %.4f | Recall: %.4f",
