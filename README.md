@@ -442,8 +442,8 @@ deepfake-detection/
 │   ├── evaluate_robustness.py         # Degradation perturbation stress sweeps
 │   ├── train_loto_experiment.py       # LOTO cross-generator training runner
 │   ├── generate_benchmark_plots.py    # Publication figure rendering
-│   ├── export_onnx.py                 # Dynamic-batching ONNX model exporter
-│   ├── benchmark_latency.py           # Latency & FPS profiling
+│   ├── export_onnx.py                 # Standalone ONNX exporter with Conv-BN fusion & parity validation
+│   ├── benchmark_latency.py           # Latency & throughput benchmarking (PyTorch CUDA/CPU & ONNX Runtime)
 │   └── visualize_attention_maps.py    # 4-panel Grad-CAM diagnostic generator
 ├── src/                               # Modular core library
 │   ├── dataset/                       # Graph partitioning, YuNet alignment, datasets
