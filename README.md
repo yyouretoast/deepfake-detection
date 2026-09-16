@@ -13,7 +13,7 @@ license: mit
 
 # Dual-Stream Deepfake Forensics Engine
 
-**An auditable, mathematically calibrated deepfake detection engine fusing spatial semantic representations with Fourier phase/magnitude spectral noise and spatiotemporal sequence modeling.**
+**A dual-stream deepfake detection pipeline fusing spatial representations with Fourier phase/magnitude spectral noise and spatiotemporal sequence modeling.**
 
 [![CI Test Suite](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-140%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
@@ -25,7 +25,7 @@ license: mit
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[**Live Interactive Demo**](https://huggingface.co/spaces/yyouretoast/deepfake-detector) • [**Model Zoo**](#model-zoo--checkpoint-downloads) • [**Quickstart**](#quickstart--60-second-onboarding) • [**SOTA Benchmarks**](#empirical-benchmarks--literature-comparison) • [**System Architecture**](#system-architecture--methodology) • [**Zero-GPU Reproduction**](#zero-gpu-instant-figure-reproduction) • [**BibTeX**](#academic-citation)
+[**Live Interactive Demo**](https://huggingface.co/spaces/yyouretoast/deepfake-detector) • [**Model Zoo**](#model-zoo--checkpoint-downloads) • [**Quickstart**](#quickstart) • [**SOTA Benchmarks**](#empirical-benchmarks--literature-comparison) • [**System Architecture**](#system-architecture--methodology) • [**Zero-GPU Reproduction**](#zero-gpu-figure-reproduction) • [**BibTeX**](#academic-citation)
 
 </div>
 
@@ -38,25 +38,25 @@ Intermediate representations extracted across the spatial, residual steganograph
 | Authentic Face (Real) | Manipulated Face (Deepfake) |
 | :---: | :---: |
 | ![Authentic Diagnostics](figures/attention_maps/attention_map_05_real.png) | ![Deepfake Diagnostics](figures/attention_maps/attention_map_05_fake.png) |
-| *Continuous camera PRNU sensor noise, natural $1/f$ Fourier power decay, and anatomically uniform spatial attention.* | *Sensor noise suppression along blending boundaries, periodic lattice peaks in 2D FFT, and localized manipulation contours in Grad-CAM.* |
+| *Continuous camera PRNU sensor noise, natural $1/f$ Fourier power decay, and diffuse, non-localized spatial activation.* | *Sensor noise suppression along blending boundaries, periodic lattice peaks in 2D FFT, and localized manipulation contours in Grad-CAM.* |
 
 > [!NOTE]
 > **Forensic Diagnostic Breakdown:**
 > 1. **Panel A (RGB Face Crop)**: Normalized facial crop aligned using OpenCV YuNet 5-point facial landmark similarity affine warping ($1.50\times$ canonical box expansion with 2D Cosine window edge tapering).
 > 2. **Panel B (SRM High-Pass Residual)**: 9-filter Steganographic Rich Model (SRM) high-pass convolutions isolating sub-pixel camera Photo Response Non-Uniformity (PRNU) noise and manipulation boundary blending seams.
-> 3. **Panel C (2D Real FFT Log-Magnitude Spectrum)**: Orthonormal centered 2D Real Fourier Transform exposing upsampling artifacts and frequency anomalies characteristic of GAN generators and diffusion latents (Frank et al., ICML 2020; Durall et al., CVPR 2020).
+> 3. **Panel C (2D Real FFT Log-Magnitude Spectrum)**: Orthonormal centered 2D Real Fourier Transform exposing upsampling artifacts and spectral anomalies characteristic of generative up-convolution and blending pipelines (Frank et al., ICML 2020; Durall et al., CVPR 2020).
 > 4. **Panel D (Spatial Grad-CAM Overlay)**: Gradient-weighted class activation mapping identifying spatial regions driving the classification decision.
 
 ---
 
-## Technical Methodology & Core Innovations
+## System Methodology
 
-* **Dual-Domain Gated Fusion**: Fuses semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a dedicated **4-Stage ResSE-Spectral Tower** (~2.99M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
-* **Spectral SNR-Adaptive Gating**: Mitigates high-frequency degradation under spatial blur ($\sigma \ge 1.5$) or compression by attenuating the spectral branch ($\gamma \to 0$) when noise residual power decreases, reverting to the spatial ConvNeXt stream with zero added parameters.
+* **Dual-Domain Gated Fusion**: Combines semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a **4-Stage ResSE-Spectral Tower** (~2.99M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
+* **Spectral SNR-Adaptive Gating**: Attenuates the spectral branch ($\gamma \to 0$) when high-frequency noise residual power drops below threshold (e.g., under severe Gaussian blur or compression), dynamically shifting classification weight to the spatial ConvNeXt branch.
 * **Disjoint Identity Graph Partitioning**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity overlap ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
-* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8719` ROC AUC** (+4.71% over the single-frame baseline) and capturing single-frame manipulation artifacts that can be diluted under sequence averaging.
-* **Bayesian 3-Zone Decision Bands**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes decision boundaries ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving $\ge$ 98% empirical precision on confirmed synthetic samples while routing borderline inputs to manual review.
-* **High-Throughput Inference**: 60.9 FPS inference throughput on an NVIDIA Tesla T4 with dynamic batching.
+* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8719` ROC AUC** (+4.71% over single-frame baseline) and capturing transient manipulation artifacts that can be diluted under sequence averaging.
+* **Bayesian 3-Zone Decision Boundaries**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes operational decision thresholds ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving $\ge$ 98% empirical precision on confirmed synthetic samples while routing borderline inputs to manual review.
+* **Inference Throughput**: 60.9 FPS inference throughput on an NVIDIA Tesla T4 with dynamic batching.
 
 ---
 
@@ -69,7 +69,7 @@ All model weights are hosted on the Hugging Face Model Hub: [`yyouretoast/deepfa
 | **Dual-Stream Detector** | `dual_stream_calibrated.pth` | 53.2M | **214.7 MB** | Single-Frame Spatial + Spectral | **`0.8248`** | `0.4200` ($T^*=4.288$) | `cacdd1f6...fd5237` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
 | **Bi-GRU Temporal Head** | `temporal_head_best.pth` | 3.32M | **13.3 MB** | Spatiotemporal Video Sequences | **`0.8719`** | `0.3895` | `5976689a...d0700e` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
 
-### Automated 1-Line Download via CLI
+### Automated Download via CLI
 
 ```bash
 python -c "from huggingface_hub import hf_hub_download; hf_hub_download('yyouretoast/deepfake-detector', 'dual_stream_calibrated.pth', local_dir='models'); hf_hub_download('yyouretoast/deepfake-detector', 'temporal_head_best.pth', local_dir='models')"
@@ -77,7 +77,7 @@ python -c "from huggingface_hub import hf_hub_download; hf_hub_download('yyouret
 
 ---
 
-## Quickstart & 60-Second Onboarding
+## Quickstart
 
 ### 1. Installation
 
@@ -94,7 +94,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. 1-Line CLI Test Set Evaluation
+### 2. CLI Test Set Evaluation
 
 Run the held-out test split evaluation with pre-calibrated temperature scaling and Bayesian thresholding:
 
@@ -104,12 +104,12 @@ python scripts/evaluate_test_set.py --weights_path models/dual_stream_calibrated
 
 ### 3. Python API (Single Image Inference)
 
-Analyze any static image file with YuNet face alignment, dual-stream feature extraction, live gating telemetry, and Bayesian 3-zone decision output:
+Analyze any static image file with YuNet face alignment, dual-stream feature extraction, gating ratios, and Bayesian 3-zone decision output:
 
 ```python
 from src.services.video_engine import process_single_image
 
-# Runs face detection, alignment, dual-stream inference, and telemetry
+# Runs face detection, alignment, dual-stream inference, and gating extraction
 res = process_single_image("sample_face.jpg")
 
 if res is None:
@@ -117,7 +117,7 @@ if res is None:
 else:
     print(f"Deepfake Probability: {res['prob']:.4f}")
     print(f"Calibrated Verdict:   {res['three_zone']['verdict']}")
-    print(f"Gating Telemetry:     {res['spectral_gate']*100:.1f}% Spectral / {res['spatial_gate']*100:.1f}% Spatial")
+    print(f"Gating Ratio:         {res['spectral_gate']*100:.1f}% Spectral / {res['spatial_gate']*100:.1f}% Spatial")
     print(f"SNR Attenuation (γ):  {res['snr_attenuator']:.2f}")
     print(f"Laplacian Noise (σ²): {res['laplacian_var']:.1f}")
 ```
@@ -154,16 +154,16 @@ streamlit run app.py
 docker build -t deepfake-detector . && docker run -p 8501:8501 deepfake-detector
 ```
 Access the application at `http://localhost:8501` supporting:
-* **Single Photo / Frame Mode**: Drag-and-drop intake with real-time telemetry ($g, \gamma, \sigma^2$) and the complete 4-panel diagnostic quad.
+* **Single Photo / Frame Mode**: Drag-and-drop intake with real-time gating and noise parameters ($g, \gamma, \sigma^2$) and the complete 4-panel diagnostic quad.
 * **Video Sequence Mode**: Temporal anomaly timeline with amber Bi-GRU attention highlight markers ($\alpha_t > 1/T$), interactive frame scrubbing, and structured JSON report export.
 
 ---
 
 ## Empirical Benchmarks & Literature Comparison
 
-### 1. Comparison with Published Baselines
+### 1. In-Distribution & Cross-Dataset Baseline Comparison
 
-Evaluated on canonical FaceForensics++ (c23 / lightly compressed) and Celeb-DF v2 (cross-dataset unseen test):
+Evaluated under standard literature benchmark protocols on FaceForensics++ (c23 / lightly compressed) and Celeb-DF v2 (cross-dataset zero-shot):
 
 | Model Architecture | Input Stream(s) | FF++ (c23) ROC AUC | Celeb-DF v2 (Cross-Dataset) AUC | Sequence Modeling | Inference Latency (T4) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -176,9 +176,9 @@ Evaluated on canonical FaceForensics++ (c23 / lightly compressed) and Celeb-DF v
 
 ---
 
-### 2. Held-Out Test Split Performance
+### 2. Complete Held-Out Multimodal Test Split Performance
 
-Evaluated across 13,444 facial crops (756 authentic real faces, 12,688 deepfakes across 5 generator families) and 1,120 video sequences on an NVIDIA Tesla T4:
+Evaluated across the full held-out test split (13,444 facial crops: 756 authentic real faces, 12,688 deepfakes across all 5 generator families at 16.78:1 class skew; 1,120 video sequences) on an NVIDIA Tesla T4:
 
 | Metric | Single-Frame Spatial Model | Video Spatiotemporal Bi-GRU | Delta / Impact |
 | :--- | :---: | :---: | :--- |
@@ -213,7 +213,7 @@ To account for the $16.8:1$ test class imbalance, the model was evaluated on a p
   <img src="figures/confusion_matrices.png" width="48%" alt="Normalized Confusion Matrices" />
 </div>
 
-*Figure 2: Left: Precision-Recall curves evaluating detector operating characteristics under the 16.78:1 synthetic-to-authentic class skew alongside operational F1-score threshold sweeps. Right: Normalized confusion matrices at calibrated decision thresholds demonstrating exact Type I (false accusation) and Type II (evasion) sample counts.*
+*Figure 2: Left: Precision-Recall curves evaluating detector operating characteristics under the 16.78:1 synthetic-to-authentic class skew alongside operational F1-score threshold sweeps. Right: Normalized confusion matrices at calibrated decision thresholds demonstrating exact sample counts for Type I errors (false positives / authentic flagged as synthetic) and Type II errors (false negatives / synthetic undetected).*
 
 ---
 
@@ -241,13 +241,13 @@ Evaluated on 756 real face crops against each respective manipulation generator 
 
 To evaluate whether the detector memorizes generator-specific signatures or learns fundamental synthesis artifacts, a 5-fold Leave-One-Type-Out experiment was conducted by systematically excluding an entire generator family from training:
 
-| LOTO Fold | Excluded Holdout Generator | Zero-Shot AUC | Zero-Shot F1 (τ=0.50) | Precision | Recall | Generalization Transfer Assessment |
+| LOTO Fold | Excluded Holdout Generator | Zero-Shot AUC | Zero-Shot F1 (τ=0.50) | Precision | Recall | Manipulation Category |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9563`** | **`0.9233`** | 95.02% | 89.79% | Zero-shot transfer across autoencoder manipulations |
-| **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9915`** | **`0.9530`** | 92.21% | 98.61% | Cross-manipulation transfer on facial reenactment (0.9915 AUC) |
-| **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.8972`** | **`0.7220`** | 63.69% | 83.33% | Resilience to graphic face swapping (0.8972 AUC) |
-| **Fold 4** | `FF++ NeuralTextures` (Pairs 600–799) | **`0.9379`** | **`0.6081`** | 51.14% | 75.00% | Transfer on neural texture rendering (0.9379 AUC) |
-| **Fold 5** | `Celeb-DF v2` (Cross-Dataset) | **`0.7000`** | **`0.4336`** | 97.63% | 27.87% | Cross-dataset transfer on unseen Celeb-DF v2 (+4.5% vs. Xception) |
+| **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9563`** | **`0.9233`** | 95.02% | 89.79% | Autoencoder Face Replacement |
+| **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9915`** | **`0.9530`** | 92.21% | 98.61% | 3DMM Facial Reenactment |
+| **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.8972`** | **`0.7220`** | 63.69% | 83.33% | Graphics Face Swapping |
+| **Fold 4** | `FF++ NeuralTextures` (Pairs 600–799) | **`0.9379`** | **`0.6081`** | 51.14% | 75.00% | Neural Texture Rendering |
+| **Fold 5** | `Celeb-DF v2` (Cross-Dataset) | **`0.7000`** | **`0.4336`** | 97.63% | 27.87% | Cross-Dataset DeepFake Synthesis |
 
 <div align="center">
   <img src="figures/loto_generalization.png" width="75%" alt="LOTO Generalization" />
@@ -282,11 +282,11 @@ Evaluated across 4 real-world distortion families on the held-out test split:
 
 ---
 
-## Zero-GPU Instant Figure Reproduction
+## Zero-GPU Figure Reproduction
 
 > [!TIP]
-> **Replicate All 9 Paper Figures in 5 Seconds (Zero GPU Required)**:
-> Pre-computed validation and test set inference fixtures are bundled in [`test_predictions.json`](test_predictions.json) and [`temporal_test_predictions.json`](temporal_test_predictions.json). You can replicate all 9 publication-grade figures locally without needing the 100GB dataset or GPU hardware:
+> **Replicate All 9 Benchmark Figures (Zero GPU Required)**:
+> Pre-computed validation and test set inference fixtures are bundled in [`test_predictions.json`](test_predictions.json) and [`temporal_test_predictions.json`](temporal_test_predictions.json). You can replicate all 9 benchmark figures locally without requiring the dataset or GPU hardware:
 > ```bash
 > python scripts/generate_benchmark_plots.py
 > ```
@@ -338,7 +338,7 @@ Evaluated across 4 real-world distortion families on the held-out test split:
   <img src="figures/temporal_attention_dynamics.png" width="48%" alt="Spatiotemporal Anomaly Dynamics" />
 </div>
 
-*Figure: Dual-path decision telemetry. Left: Probability density separation under Bayesian 3-zone decision boundaries with ≥98% confirmed synthetic precision. Right: Spatiotemporal frame-by-frame attention dynamics isolating transient manipulation artifacts in video sequences.*
+*Figure: Dual-path decision metrics. Left: Probability density separation under Bayesian 3-zone decision boundaries with ≥98% confirmed synthetic precision. Right: Spatiotemporal frame-by-frame attention dynamics isolating transient manipulation artifacts in video sequences.*
 
 ---
 
@@ -361,7 +361,7 @@ $$
 
 ---
 
-## Technical Specifications & Deep Dives
+## Technical Specifications
 
 <details>
 <summary><b>Hardware Latency & Profiling Sweeps (Click to expand)</b></summary>
@@ -412,14 +412,14 @@ python scripts/evaluate_temporal_test_set.py \
 </details>
 
 <details>
-<summary><b>Core Repository Architecture & Directory Tree (Click to expand)</b></summary>
+<summary><b>Repository Directory Structure (Click to expand)</b></summary>
 
 ```text
 deepfake-detection/
 ├── app.py                             # Streamlit web application & serving dashboard
 ├── config/default.yaml                # Hyperparameters and preprocessing resolution
 ├── Dockerfile                         # Production-grade headless container definition
-├── figures/                           # Publication-grade benchmark figures
+├── figures/                           # Benchmark figures and diagnostic visualizations
 │   ├── roc_curve.png                  # Single-frame vs Video Bi-GRU ROC comparison
 │   ├── ece_reliability.png            # Expected Calibration Error reliability diagram
 │   ├── precision_recall_curve.png     # Precision-Recall curves & F1 threshold sweeps
