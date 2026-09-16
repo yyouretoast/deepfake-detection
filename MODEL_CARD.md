@@ -32,8 +32,9 @@ model-index:
       value: 0.8248
     - name: Expected Calibration Error (ECE)
       type: ece
-      value: 0.0050
+      value: 0.0785
     - name: Equal Error Rate (EER)
+
       type: eer
       value: 0.1898
 ---
@@ -120,9 +121,10 @@ Evaluated across **13,444 facial crops** (756 authentic real faces, 12,688 deepf
 | **Fake Precision** | **`98.00%`** | **`98.60%`** | **+0.60%** false alarm suppression |
 | **Fake Recall** | **`77.04%`** | **`79.75%`** | **+2.71%** detection coverage |
 | **Overall Accuracy** | **`76.85%`** | **`79.82%`** | **+2.97%** classification rate |
-| **Expected Calibration Error (ECE)** | **`0.0050`** | -- | Platt-calibrated ($98.9\%$ error drop from raw $0.4525$) |
+| **Expected Calibration Error (ECE)** | **`0.0785`** | -- | Temperature-calibrated ($69.8\%$ error drop from raw $0.2597$) |
 
 ### In-Distribution Per-Generator AUC:
+
 - **FF++ Face2Face**: **`0.9975`**
 - **FF++ NeuralTextures**: **`0.9749`**
 - **FF++ Deepfakes**: **`0.9625`**

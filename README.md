@@ -16,8 +16,9 @@ license: mit
 **A dual-stream deepfake detection pipeline fusing spatial representations with Fourier phase/magnitude spectral noise and spatiotemporal sequence modeling.**
 
 [![CI Test Suite](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-140%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/tests-141%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
 [![Python 3.10 | 3.11](https://img.shields.io/badge/Python-3.10%20%7C%203.11-3776AB?style=flat&logo=python&logoColor=white)](pyproject.toml)
+
 [![PyTorch 2.1+](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate DDP](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
 [![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Live%20Space-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
@@ -193,9 +194,10 @@ Evaluated across the full held-out test split (13,444 facial crops: 756 authenti
 | **Macro F1-Score** | **`0.5631`** | **`0.5964`** | Balanced across real/fake classes |
 | **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3895` | Derived via Youden's $J$ statistic |
 | **Calibrated Temperature ($T^*$)**| `4.2880` | -- | SciPy L-BFGS-B log-temperature scaling |
-| **Expected Calibration Error (ECE)** | **`0.0050`** | -- | Platt-calibrated ($98.9\%$ error drop from raw $0.4525$) |
+| **Expected Calibration Error (ECE)** | **`0.0785`** | -- | Temperature-calibrated ($69.8\%$ error drop from raw $0.2597$) |
 
 #### Balanced 1:1 Prevalence-Invariant Test Benchmark (63 Real vs 63 Fake Sequences)
+
 To account for the $16.8:1$ test class imbalance, the model was evaluated on a prevalence-normalized $1:1$ subset:
 * **Balanced ROC AUC:** `0.8610` | **Balanced Accuracy:** `76.98%`
 * **Real Class Performance:** Precision: `75.00%` | Recall: `80.95%` | F1-Score: `0.7786`

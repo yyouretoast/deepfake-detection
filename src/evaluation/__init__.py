@@ -2,6 +2,7 @@
 
 from src.evaluation.evaluator import ModelEvaluator
 from src.evaluation.metrics import (
+    calibrate_probabilities_balanced,
     compute_classification_metrics,
     compute_ece,
     compute_eer,
@@ -12,6 +13,7 @@ from src.evaluation.metrics import (
 
 __all__ = [
     "ModelEvaluator",
+    "calibrate_probabilities_balanced",
     "compute_classification_metrics",
     "compute_ece",
     "compute_eer",
@@ -19,3 +21,4 @@ __all__ = [
     "find_optimal_threshold",
     "fit_temperature_log",
 ]
+

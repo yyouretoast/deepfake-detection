@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 
 # Re-export calibration utilities from canonical metrics module
-from src.evaluation.metrics import compute_ece, fit_temperature_log
+from src.evaluation.metrics import calibrate_probabilities_balanced, compute_ece, fit_temperature_log
 
 DEFAULT_THRESHOLD: float = 0.50
 DEFAULT_TEMPERATURE: float = 1.4788
@@ -11,6 +11,7 @@ DEFAULT_TEMPERATURE: float = 1.4788
 __all__ = [
     "DEFAULT_TEMPERATURE",
     "DEFAULT_THRESHOLD",
+    "calibrate_probabilities_balanced",
     "classify_three_zone",
     "clean_state_dict",
     "compute_dual_thresholds",
@@ -19,6 +20,7 @@ __all__ = [
     "load_detector_checkpoint",
     "normalize_confidence",
 ]
+
 
 
 def clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:

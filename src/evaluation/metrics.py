@@ -170,3 +170,30 @@ def find_optimal_threshold(
             best_thresh = float(t)
 
     return best_thresh, best_score
+
+
+def calibrate_probabilities_balanced(
+    logits: Any,
+    temp: float = 1.0,
+    platt_a: float | None = None,
+    platt_b: float | None = None,
+    cal_prevalence: float | None = None,
+    target_prevalence: float = 0.50,
+) -> np.ndarray:
+    """
+    Computes prevalence-invariant calibrated probabilities.
+    If Platt parameters (a, b) and calibration dataset prevalence (cal_prevalence) are provided,
+    applies Saerens et al. (2002) prior-shift subtraction to eliminate majority-class bias.
+    Otherwise, applies pure monotonic temperature scaling (z / T*) without intercept distortion.
+    """
+    logits_arr = np.asarray(logits, dtype=np.float64)
+    if platt_a is not None and platt_b is not None and cal_prevalence is not None and 0.0 < cal_prevalence < 1.0:
+        z_platt = float(platt_a) * logits_arr + float(platt_b)
+        prior_shift = np.log(cal_prevalence / (1.0 - cal_prevalence))
+        target_shift = np.log(target_prevalence / (1.0 - target_prevalence))
+        z_balanced = z_platt - prior_shift + target_shift
+        return 1.0 / (1.0 + np.exp(-np.clip(z_balanced, -50.0, 50.0)))
+
+    t = max(float(temp), 1e-4)
+    return 1.0 / (1.0 + np.exp(-np.clip(logits_arr / t, -50.0, 50.0)))
+
