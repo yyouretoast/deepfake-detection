@@ -1,15 +1,16 @@
 """Evaluation metrics, calibration error, and safe statistical score calculations."""
 
 from collections.abc import Sequence
-from typing import Any, Union
+from typing import Any
+
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, roc_curve
 
 
 def compute_roc_auc_safe(
-    y_true: Union[np.ndarray, Sequence[float]],
-    y_score: Union[np.ndarray, Sequence[float]],
+    y_true: np.ndarray | Sequence[float],
+    y_score: np.ndarray | Sequence[float],
     fallback: float = 0.5,
 ) -> float:
     """Computes ROC AUC score defensively, returning fallback if fewer than 2 distinct classes exist."""
@@ -25,8 +26,8 @@ def compute_roc_auc_safe(
 
 
 def compute_classification_metrics(
-    y_true: Union[np.ndarray, Sequence[float]],
-    y_prob: Union[np.ndarray, Sequence[float]],
+    y_true: np.ndarray | Sequence[float],
+    y_prob: np.ndarray | Sequence[float],
     threshold: float = 0.5,
 ) -> dict[str, float]:
     """Computes binary classification metrics: AUC, F1, precision, recall, and accuracy."""
@@ -95,8 +96,8 @@ def fit_temperature_log(logits: Any, labels: Any) -> float:
 
 
 def compute_eer(
-    y_true: Union[np.ndarray, Sequence[float]],
-    y_score: Union[np.ndarray, Sequence[float]],
+    y_true: np.ndarray | Sequence[float],
+    y_score: np.ndarray | Sequence[float],
 ) -> tuple[float, float]:
     """Computes Equal Error Rate (EER) and the corresponding decision threshold."""
     y_true_arr = np.asarray(y_true).flatten()
@@ -114,8 +115,8 @@ def compute_eer(
 
 
 def find_optimal_threshold(
-    y_true: Union[np.ndarray, Sequence[float]],
-    y_prob: Union[np.ndarray, Sequence[float]],
+    y_true: np.ndarray | Sequence[float],
+    y_prob: np.ndarray | Sequence[float],
     criterion: str = "balanced_accuracy",
     n_thresholds: int = 81,
 ) -> tuple[float, float]:

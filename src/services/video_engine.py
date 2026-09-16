@@ -4,11 +4,12 @@ import hashlib
 import json
 import logging
 import os
-from typing import Any, Optional, Union
+from typing import Any
 
 import cv2
 import numpy as np
 import torch
+from typing_extensions import Self
 
 from src.config import load_config
 from src.dataset.preprocess import DynamicFaceCropper, preprocess_tensors_batch
@@ -25,7 +26,7 @@ IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Expected SHA-256 hash of published checkpoint weights (can be overridden via ENV)
-EXPECTED_WEIGHTS_SHA256: Optional[str] = os.getenv(
+EXPECTED_WEIGHTS_SHA256: str | None = os.getenv(
     "EXPECTED_WEIGHTS_SHA256",
     os.getenv("PUBLISHED_WEIGHTS_SHA256", None)
 )
@@ -43,7 +44,7 @@ class PredictionEngine(tuple):
         temperature: float,
         tau_real: float = 0.40,
         tau_fake: float = 0.60,
-    ) -> "PredictionEngine":
+    ) -> Self:
         instance = super().__new__(cls, (model, cropper, has_weights, threshold, temperature))
         instance.model = model
         instance.cropper = cropper
@@ -56,7 +57,7 @@ class PredictionEngine(tuple):
 
 
 def load_prediction_engine(
-    weights_path: Optional[str] = None,
+    weights_path: str | None = None,
 ) -> PredictionEngine:
     """
     Load prediction engine model weights, sidecar metadata, and face cropper.
@@ -123,7 +124,7 @@ def load_prediction_engine(
                 logger.warning("Could not load sidecar metadata: %s", e)
 
     has_weights = weights_path is not None and os.path.exists(weights_path)
-    state_dict: Optional[dict[str, Any]] = None
+    state_dict: dict[str, Any] | None = None
     if has_weights:
         checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=True)
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
@@ -166,8 +167,8 @@ def load_prediction_engine(
 
 
 def load_temporal_engine(
-    weights_path: Optional[str] = None,
-) -> Optional[torch.nn.Module]:
+    weights_path: str | None = None,
+) -> torch.nn.Module | None:
     """Loads optional Bi-GRU spatiotemporal consistency head if checkpoint exists."""
     if weights_path is None:
         candidate_paths = [
@@ -213,17 +214,17 @@ def load_temporal_engine(
 
 def process_video_frames(
     video_path: str,
-    pytorch_model: Optional[torch.nn.Module] = None,
-    cropper: Optional[DynamicFaceCropper] = None,
-    classification_threshold: Optional[float] = None,
-    temperature: Optional[float] = None,
-    has_pytorch_weights: Optional[bool] = None,
+    pytorch_model: torch.nn.Module | None = None,
+    cropper: DynamicFaceCropper | None = None,
+    classification_threshold: float | None = None,
+    temperature: float | None = None,
+    has_pytorch_weights: bool | None = None,
     aggregation_method: str = "soft_max",
-    num_frames: Optional[int] = None,
-    temporal_model: Optional[torch.nn.Module] = None,
-    tau_real: Optional[float] = None,
-    tau_fake: Optional[float] = None,
-) -> Optional[dict[str, Any]]:
+    num_frames: int | None = None,
+    temporal_model: torch.nn.Module | None = None,
+    tau_real: float | None = None,
+    tau_fake: float | None = None,
+) -> dict[str, Any] | None:
     """
     Video inference engine with OpenCV keyframe seeking, AMP autocast, and temporal aggregation.
     """
@@ -339,26 +340,27 @@ def process_video_frames(
         batch_faces = all_faces[i : i + batch_size]
         _, sub_torch = preprocess_tensors_batch(batch_faces, device=DEVICE)
 
-        with MODEL_INFERENCE_LOCK:
-            with torch.inference_mode():
-                with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                    p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature).view(-1)
-                    p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature).view(-1)
-                    p_avg = (p1 + p2) / 2.0
-                    unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
-                    if temporal_model is not None and hasattr(pytorch_model, "extract_features"):
-                        emb = pytorch_model.extract_features(sub_torch)
-                        all_embeddings.append(emb)
-                all_probs.extend([float(val) for val in p_avg.cpu().numpy().tolist()])
+        with (
+            MODEL_INFERENCE_LOCK,
+            torch.inference_mode(),
+            torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")),
+        ):
+            p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature).view(-1)
+            p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature).view(-1)
+            p_avg = (p1 + p2) / 2.0
+            unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
+            if temporal_model is not None and hasattr(pytorch_model, "extract_features"):
+                emb = pytorch_model.extract_features(sub_torch)
+                all_embeddings.append(emb)
+            all_probs.extend([float(val) for val in p_avg.cpu().numpy().tolist()])
 
     frame_attention = None
     if temporal_model is not None and all_embeddings:
-        with MODEL_INFERENCE_LOCK:
-            with torch.inference_mode():
-                seq_tensor = torch.cat(all_embeddings, dim=0).unsqueeze(0)  # [1, T, 512]
-                v_logit, v_attn = temporal_model(seq_tensor)
-                raw_video_prob = float(torch.sigmoid(v_logit.float() / temperature).item())
-                frame_attention = [float(w) for w in v_attn.squeeze(0).cpu().tolist()]
+        with MODEL_INFERENCE_LOCK, torch.inference_mode():
+            seq_tensor = torch.cat(all_embeddings, dim=0).unsqueeze(0)  # [1, T, 512]
+            v_logit, v_attn = temporal_model(seq_tensor)
+            raw_video_prob = float(torch.sigmoid(v_logit.float() / temperature).item())
+            frame_attention = [float(w) for w in v_attn.squeeze(0).cpu().tolist()]
     else:
         _agg = aggregate_video_predictions(
             scores=all_probs,
@@ -394,14 +396,14 @@ def process_video_frames(
 
 
 def process_single_image(
-    image_input: Union[str, bytes, np.ndarray, Any],
-    pytorch_model: Optional[torch.nn.Module] = None,
-    cropper: Optional[DynamicFaceCropper] = None,
-    classification_threshold: Optional[float] = None,
-    temperature: Optional[float] = None,
-    tau_real: Optional[float] = None,
-    tau_fake: Optional[float] = None,
-) -> Optional[dict[str, Any]]:
+    image_input: str | bytes | np.ndarray | Any,
+    pytorch_model: torch.nn.Module | None = None,
+    cropper: DynamicFaceCropper | None = None,
+    classification_threshold: float | None = None,
+    temperature: float | None = None,
+    tau_real: float | None = None,
+    tau_fake: float | None = None,
+) -> dict[str, Any] | None:
     """
     Forensic inference engine for a single static image input.
     Performs YuNet 5-point face alignment, dual-stream feature extraction,
@@ -475,48 +477,50 @@ def process_single_image(
     snr_attenuator = 1.0
     noise_power = 0.0
 
-    with MODEL_INFERENCE_LOCK:
-        with torch.inference_mode():
-            with torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")):
-                raw_logit_t = unwrapped_model(img_tensor).float()
-                p1 = torch.sigmoid(raw_logit_t / temperature).item()
-                p2 = torch.sigmoid(unwrapped_model(torch.flip(img_tensor, dims=[-1])).float() / temperature).item()
-                prob = float((p1 + p2) / 2.0)
-                raw_logit = float(raw_logit_t.squeeze().item())
+    with (
+        MODEL_INFERENCE_LOCK,
+        torch.inference_mode(),
+        torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")),
+    ):
+        raw_logit_t = unwrapped_model(img_tensor).float()
+        p1 = torch.sigmoid(raw_logit_t / temperature).item()
+        p2 = torch.sigmoid(unwrapped_model(torch.flip(img_tensor, dims=[-1])).float() / temperature).item()
+        prob = float((p1 + p2) / 2.0)
+        raw_logit = float(raw_logit_t.squeeze().item())
 
-                # Dual-stream telemetry
-                if getattr(unwrapped_model, "use_fft_branch", False):
-                    srm_out = unwrapped_model.srm(img_tensor)
-                    bayar_out = unwrapped_model.bayar(img_tensor)
-                    noise_combined = torch.cat([srm_out, bayar_out], dim=1)
-                    freq_maps = unwrapped_model.fft(noise_combined)
-                    if hasattr(unwrapped_model, "freq_tower"):
-                        f_f, _ = unwrapped_model.freq_tower(freq_maps)
-                    else:
-                        f_f = unwrapped_model.freq_conv(freq_maps).flatten(1)
-                        f_f = unwrapped_model.freq_fc(f_f)
+        # Dual-stream telemetry
+        if getattr(unwrapped_model, "use_fft_branch", False):
+            srm_out = unwrapped_model.srm(img_tensor)
+            bayar_out = unwrapped_model.bayar(img_tensor)
+            noise_combined = torch.cat([srm_out, bayar_out], dim=1)
+            freq_maps = unwrapped_model.fft(noise_combined)
+            if hasattr(unwrapped_model, "freq_tower"):
+                f_f, _ = unwrapped_model.freq_tower(freq_maps)
+            else:
+                f_f = unwrapped_model.freq_conv(freq_maps).flatten(1)
+                f_f = unwrapped_model.freq_fc(f_f)
 
-                    mean = unwrapped_model.imagenet_mean.to(dtype=img_tensor.dtype, device=img_tensor.device)
-                    std = unwrapped_model.imagenet_std.to(dtype=img_tensor.dtype, device=img_tensor.device)
-                    feat_maps = unwrapped_model.spatial_backbone((img_tensor - mean) / std)
-                    feat_maps = unwrapped_model.spatial_norm(feat_maps)
-                    f_s = unwrapped_model.spatial_fc(unwrapped_model.spatial_pool(feat_maps).flatten(1))
+            mean = unwrapped_model.imagenet_mean.to(dtype=img_tensor.dtype, device=img_tensor.device)
+            std = unwrapped_model.imagenet_std.to(dtype=img_tensor.dtype, device=img_tensor.device)
+            feat_maps = unwrapped_model.spatial_backbone((img_tensor - mean) / std)
+            feat_maps = unwrapped_model.spatial_norm(feat_maps)
+            f_s = unwrapped_model.spatial_fc(unwrapped_model.spatial_pool(feat_maps).flatten(1))
 
-                    concat_feat = torch.cat([f_s, f_f], dim=1)
-                    raw_gate = unwrapped_model.gate_fc(concat_feat)
+            concat_feat = torch.cat([f_s, f_f], dim=1)
+            raw_gate = unwrapped_model.gate_fc(concat_feat)
 
-                    if getattr(unwrapped_model, "enable_snr_gating", False):
-                        noise_power_t = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
-                        gamma = torch.clamp((noise_power_t - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
-                        effective_gate = raw_gate * gamma
-                        snr_attenuator = float(gamma.item())
-                        noise_power = float(noise_power_t.item())
-                    else:
-                        effective_gate = raw_gate
-                        snr_attenuator = 1.0
-                        noise_power = float(noise_combined.pow(2).mean().item())
+            if getattr(unwrapped_model, "enable_snr_gating", False):
+                noise_power_t = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+                gamma = torch.clamp((noise_power_t - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+                effective_gate = raw_gate * gamma
+                snr_attenuator = float(gamma.item())
+                noise_power = float(noise_power_t.item())
+            else:
+                effective_gate = raw_gate
+                snr_attenuator = 1.0
+                noise_power = float(noise_combined.pow(2).mean().item())
 
-                    spectral_gate = float(effective_gate.mean().item())
+            spectral_gate = float(effective_gate.mean().item())
 
     # High-frequency Laplacian variance on grayscale face crop
     gray_face = cv2.cvtColor(face_crop, cv2.COLOR_RGB2GRAY)

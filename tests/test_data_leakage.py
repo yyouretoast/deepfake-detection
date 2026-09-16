@@ -24,7 +24,7 @@ def test_extract_identities_frame_counter_not_parsed_as_actor_pair() -> None:
         f"Frame-counter filename 'real_001_0001.png' should yield single-actor identity, "
         f"got id1='{id1}', id2='{id2}'. This would cause identity graph collapse."
     )
-    assert len(id1) <= 3, (  # noqa: PLR2004
+    assert len(id1) <= 3, (
         f"Parsed identity '{id1}' looks like a frame counter (>=4 digits)"
     )
 

@@ -1,6 +1,7 @@
 """Unit tests for canonical evaluation metrics, optimal threshold finding, and checkpoint loading."""
 
 import tempfile
+
 import numpy as np
 import pytest
 import torch
@@ -37,7 +38,7 @@ class TestOptimalThresholdFinder:
     def test_single_class_edge_case(self) -> None:
         y_true = np.array([1, 1, 1, 1])
         y_prob = np.array([0.6, 0.7, 0.8, 0.9])
-        tau, score = find_optimal_threshold(y_true, y_prob, criterion="balanced_accuracy")
+        tau, _score = find_optimal_threshold(y_true, y_prob, criterion="balanced_accuracy")
         assert tau == 0.5
 
     def test_invalid_criterion_raises(self) -> None:

@@ -2,7 +2,7 @@ import logging
 import os
 import random
 import re
-from typing import Any, Optional
+from typing import Any
 
 import cv2
 import numpy as np
@@ -34,7 +34,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def extract_identities(
-    filename: str, metadata_map: Optional[dict[str, tuple[str, str]]] = None
+    filename: str, metadata_map: dict[str, tuple[str, str]] | None = None
 ) -> tuple[str, str]:
     """Extract actor/source identity IDs from video or crop filenames."""
     if metadata_map and filename in metadata_map:
@@ -55,7 +55,7 @@ def extract_identities(
     match_num = re.search(r"(\d+)_(\d+)", clean_base)
     if match_num:
         g1, g2 = match_num.group(1), match_num.group(2)
-        if len(g1) <= 3 and len(g2) <= 3:  # noqa: PLR2004 — actor IDs are ≤3 digits
+        if len(g1) <= 3 and len(g2) <= 3:
             return g1, g2
         # Fall through if either looks like a frame counter
         logger.debug(
@@ -131,7 +131,7 @@ def perform_graph_split(
         G.add_node(id2)
         G.add_edge(id1, id2)
 
-    components = [sorted(list(c)) for c in nx.connected_components(G)]
+    components = [sorted(c) for c in nx.connected_components(G)]
 
     # Stratify components by dominant label to prevent class skew
     comp_real_stats = []
@@ -209,7 +209,7 @@ def perform_graph_split(
 
 def get_transforms(
     img_size: int = 256, hardened: bool = True
-) -> tuple[Optional[Any], Optional[Any]]:
+) -> tuple[Any | None, Any | None]:
     """Build albumentations train and validation transform pipelines for target resolution [H, W]."""
     if not HAS_ALBUMENTATIONS:
         return None, None
@@ -286,18 +286,20 @@ class SequenceVideoDataset(Dataset):
     def __init__(
         self,
         video_samples: list[tuple[list[str], int]],
-        transform: Optional[Any] = None,
+        transform: Any | None = None,
         seq_len: int = 8,
         stride: int = 1,
         is_train: bool = False,
     ) -> None:
         self.video_samples = video_samples
         self.transform = transform
-        if HAS_ALBUMENTATIONS and self.transform is not None:
-            if isinstance(self.transform, A.Compose) and not isinstance(
-                self.transform, A.ReplayCompose
-            ):
-                self.transform = A.ReplayCompose(self.transform.transforms)
+        if (
+            HAS_ALBUMENTATIONS
+            and self.transform is not None
+            and isinstance(self.transform, A.Compose)
+            and not isinstance(self.transform, A.ReplayCompose)
+        ):
+            self.transform = A.ReplayCompose(self.transform.transforms)
         self.seq_len = seq_len
         self.stride = max(1, stride)
         self.is_train = is_train
@@ -353,7 +355,7 @@ class SequenceVideoDataset(Dataset):
                         frames.append(aug_tensor)
             else:
                 for img_rgb in img_rgb_list:
-                    if hasattr(self.transform, "__call__"):
+                    if callable(self.transform):
                         frames.append(self.transform(Image.fromarray(img_rgb)))
         else:
             for img_rgb in img_rgb_list:

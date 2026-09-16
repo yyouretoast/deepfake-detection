@@ -1,16 +1,16 @@
 """Robustness evaluation script for Dual-Stream Deepfake Detector under real-world distortions."""
 
 import argparse
-from collections.abc import Callable
 import json
 import logging
 import os
 import sys
-from typing import Any, Optional
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
-from sklearn.metrics import f1_score
 import torch
+from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,12 +31,12 @@ logger = logging.getLogger(__name__)
 IMG_SIZE = 256
 
 __all__ = [
-    "jpeg_fn",
     "blur_fn",
-    "noise_fn",
     "downscale_fn",
-    "run_eval",
+    "jpeg_fn",
     "main",
+    "noise_fn",
+    "run_eval",
 ]
 
 
@@ -44,12 +44,12 @@ def run_eval(
     model: torch.nn.Module,
     samples: list[tuple[str, float]],
     root_dir: str,
-    degradation_fn: Optional[Callable[[np.ndarray], np.ndarray]],
+    degradation_fn: Callable[[np.ndarray], np.ndarray] | None,
     threshold: float,
     temperature: float,
     device: torch.device,
     batch_size: int,
-    max_samples: Optional[int],
+    max_samples: int | None,
 ) -> tuple[float, float, int]:
     """Run an inference pass over evaluation samples under specified degradation."""
     if max_samples:

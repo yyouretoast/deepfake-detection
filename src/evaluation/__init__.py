@@ -12,10 +12,10 @@ from src.evaluation.metrics import (
 
 __all__ = [
     "ModelEvaluator",
-    "compute_roc_auc_safe",
     "compute_classification_metrics",
     "compute_ece",
     "compute_eer",
+    "compute_roc_auc_safe",
     "find_optimal_threshold",
     "fit_temperature_log",
 ]

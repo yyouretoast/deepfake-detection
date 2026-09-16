@@ -1,6 +1,7 @@
 """Unit tests for canonical DomainClassifier and manipulation taxonomy."""
 
 import pytest
+
 from src.dataset.domains import DomainClassifier, ManipulationDomain
 
 

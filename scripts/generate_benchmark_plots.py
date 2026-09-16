@@ -226,7 +226,7 @@ def plot_precision_recall(
             fontsize=8,
             color=RED,
             fontweight="bold",
-            arrowprops=dict(arrowstyle="->", color=RED, lw=0.9),
+            arrowprops={"arrowstyle": "->", "color": RED, "lw": 0.9},
         )
 
     ax_pr.set_xlabel("Recall (Detection Sensitivity)")
@@ -487,7 +487,7 @@ def plot_temporal_dynamics(output_path: str) -> None:
         15.8, 0.90,
         f"Bi-GRU Pooled Verdict: {p_bigru:.3f} [FAKE]\nNaive Frame Average: {p_naive:.3f} [DILUTED]",
         ha="right", va="top", fontsize=8.5, fontweight="bold",
-        bbox=dict(boxstyle="round,pad=0.4", facecolor=LIGHT_GRAY, edgecolor="#CBD5E1", alpha=0.95),
+        bbox={"boxstyle": "round,pad=0.4", "facecolor": LIGHT_GRAY, "edgecolor": "#CBD5E1", "alpha": 0.95},
     )
 
     fig.tight_layout()

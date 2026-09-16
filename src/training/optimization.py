@@ -1,8 +1,9 @@
 """Optimization parameter groups and learning rate scheduler builders."""
 
 from typing import Any
+
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def get_differential_param_groups(

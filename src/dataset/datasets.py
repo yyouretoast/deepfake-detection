@@ -1,12 +1,13 @@
 """Unified PyTorch Dataset implementations for face crops and degradation testing."""
 
-from collections.abc import Callable
 import logging
 import os
-from typing import Any, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageFile
+
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 import torch
 from torch.utils.data import Dataset
@@ -33,11 +34,11 @@ class FaceCropDataset(Dataset):
 
     def __init__(
         self,
-        samples: list[Union[tuple[str, Union[int, float]], list[Any]]],
-        root_dir: Optional[str] = None,
+        samples: list[tuple[str, int | float] | list[Any]],
+        root_dir: str | None = None,
         is_train: bool = True,
-        transform: Optional[Any] = None,
-        degradation_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        transform: Any | None = None,
+        degradation_fn: Callable[[np.ndarray], np.ndarray] | None = None,
         img_size: int = 256,
         return_valid_flag: bool = True,
     ) -> None:
@@ -75,7 +76,7 @@ class FaceCropDataset(Dataset):
 
         return rgb, valid_flag
 
-    def __getitem__(self, idx: int) -> Union[tuple[torch.Tensor, torch.Tensor, torch.Tensor], tuple[torch.Tensor, int]]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor] | tuple[torch.Tensor, int]:
         entry = self.samples[idx]
         path_rel = entry[0] if isinstance(entry, (list, tuple)) else str(entry)
         label_val = entry[1] if isinstance(entry, (list, tuple)) and len(entry) > 1 else 0

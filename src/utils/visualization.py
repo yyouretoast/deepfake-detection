@@ -1,4 +1,3 @@
-from typing import Optional
 
 import matplotlib
 
@@ -11,7 +10,7 @@ def render_temporal_anomaly_timeline(
     timestamps: list[float],
     probs: list[float],
     threshold: float,
-    attention_weights: Optional[list[float]] = None,
+    attention_weights: list[float] | None = None,
 ) -> matplotlib.figure.Figure:
     """Renders dark glassmorphism timeline graph of frame-by-frame confidence scores."""
     fig, ax = plt.subplots(figsize=(10, 3.2), facecolor="#0b0f19")

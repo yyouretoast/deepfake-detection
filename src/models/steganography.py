@@ -2,8 +2,8 @@
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class SRMConv2d(nn.Module):

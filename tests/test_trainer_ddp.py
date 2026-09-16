@@ -1,7 +1,8 @@
 """Unit tests for distributed training components, EMA shadow weights, and losses."""
 
 import torch
-import torch.nn as nn
+from torch import nn
+
 from src.evaluation.metrics import compute_roc_auc_safe
 from src.training.ema import ExponentialMovingAverage
 from src.training.loss import MaskedBCEWithLogits
@@ -60,6 +61,7 @@ class TestTrainingComponents:
         """Verifies evaluate handles single-sample batches without TypeError: 'float' object is not iterable."""
         from accelerate import Accelerator
         from torch.utils.data import DataLoader, TensorDataset
+
         from src.training.trainer import DualStreamTrainer
 
         model = nn.Linear(4, 1)

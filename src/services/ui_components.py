@@ -1,6 +1,7 @@
 """Modular UI components and rendering helpers for the Streamlit deepfake forensics dashboard."""
 
 from typing import Any
+
 import streamlit as st
 
 

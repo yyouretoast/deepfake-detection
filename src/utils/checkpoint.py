@@ -1,4 +1,5 @@
-from typing import Any, Optional, Union
+from typing import Any
+
 import numpy as np
 
 # Re-export calibration utilities from canonical metrics module
@@ -8,15 +9,15 @@ DEFAULT_THRESHOLD: float = 0.50
 DEFAULT_TEMPERATURE: float = 1.4788
 
 __all__ = [
-    "DEFAULT_THRESHOLD",
     "DEFAULT_TEMPERATURE",
+    "DEFAULT_THRESHOLD",
+    "classify_three_zone",
     "clean_state_dict",
-    "load_detector_checkpoint",
-    "normalize_confidence",
+    "compute_dual_thresholds",
     "compute_ece",
     "fit_temperature_log",
-    "compute_dual_thresholds",
-    "classify_three_zone",
+    "load_detector_checkpoint",
+    "normalize_confidence",
 ]
 
 
@@ -27,10 +28,8 @@ def clean_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
         if "lora_" in k:
             continue
         new_k = k
-        if new_k.startswith("module."):
-            new_k = new_k[7:]
-        if new_k.startswith("_orig_mod."):
-            new_k = new_k[10:]
+        new_k = new_k.removeprefix("module.")
+        new_k = new_k.removeprefix("_orig_mod.")
         cleaned[new_k] = v
     return cleaned
 
@@ -123,9 +122,9 @@ def classify_three_zone(
 
 
 def load_detector_checkpoint(
-    weights_path: Optional[str] = None,
-    device: Optional[Union[Any, str]] = None,
-    data_root: Optional[str] = None,
+    weights_path: str | None = None,
+    device: Any | str | None = None,
+    data_root: str | None = None,
     strict: bool = False,
 ) -> tuple[Any, float, float]:
     """
@@ -134,6 +133,7 @@ def load_detector_checkpoint(
     detects frequency backbone (resse vs legacy), and configures model in eval mode.
     """
     import torch
+
     from src.dataset.resolver import find_weights_path
     from src.models.hybrid_detector import HybridDeepfakeDetector
 

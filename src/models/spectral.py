@@ -1,7 +1,7 @@
 """2D Fast Fourier Transform spectral decomposition with numerically stable autograd."""
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class RealFFT2DModule(nn.Module):

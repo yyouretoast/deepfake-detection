@@ -2,8 +2,9 @@
 
 from contextlib import contextmanager
 from typing import Generator
+
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class ExponentialMovingAverage:

@@ -1,8 +1,8 @@
 """Canonical domain classification and identity taxonomy for FaceForensics++ and Celeb-DF."""
 
-from enum import Enum
 import re
-from typing import NamedTuple, Optional
+from enum import Enum
+from typing import NamedTuple
 
 
 class ManipulationDomain(str, Enum):
@@ -23,7 +23,7 @@ class DomainInfo(NamedTuple):
     domain: ManipulationDomain
     display_name: str
     is_fake: bool
-    pair_number: Optional[int]
+    pair_number: int | None
 
 
 class DomainClassifier:
@@ -39,11 +39,10 @@ class DomainClassifier:
     NEURALTEXTURES_METHOD_REGEX = re.compile(r"(?:^|[\\/])(?:manipulated_sequences[\\/])?neuraltextures(?:[\\/]|$)", re.IGNORECASE)
 
     @classmethod
-    def extract_pair_number(cls, path: str) -> Optional[int]:
+    def extract_pair_number(cls, path: str) -> int | None:
         """Extract the 3-digit source actor pair number from a sample path if present."""
         norm_path = path.replace("\\", "/").lower()
-        if norm_path.startswith("./"):
-            norm_path = norm_path[2:]
+        norm_path = norm_path.removeprefix("./")
         match = cls.PAIR_REGEX.search(norm_path)
         if match:
             return int(match.group(1))
@@ -53,8 +52,7 @@ class DomainClassifier:
     def classify(cls, path: str) -> DomainInfo:
         """Classify a relative or absolute sample path into its manipulation domain and metadata."""
         norm_path = path.replace("\\", "/").lower()
-        if norm_path.startswith("./"):
-            norm_path = norm_path[2:]
+        norm_path = norm_path.removeprefix("./")
 
         # Tier 1: Authentic / Real Faces
         is_explicit_real = (

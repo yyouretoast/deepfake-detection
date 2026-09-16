@@ -1,10 +1,10 @@
 """Inference and evaluation engine with AMP autocasting and optional test-time augmentation (TTA)."""
 
 import logging
-from typing import Optional
+
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
@@ -17,7 +17,7 @@ class ModelEvaluator:
     def __init__(
         self,
         model: nn.Module,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
         use_tta: bool = False,
     ) -> None:
         self.model = model

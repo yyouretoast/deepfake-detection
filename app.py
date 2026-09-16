@@ -8,7 +8,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Optional
+from typing import Any
 
 import matplotlib
 
@@ -61,7 +61,7 @@ def safe_remove_file(file_path: str, max_retries: int = 3, delay: float = 0.5) -
 def _cached_model_loader() -> tuple[Any, Any, bool, float, float]:
     """Cache and warm up the primary dual-stream prediction engine."""
     engine = load_prediction_engine()
-    model, cropper, has_weights, threshold, temp = engine
+    model, _cropper, _has_weights, _threshold, _temp = engine
     try:
         dummy_tensor = torch.zeros(1, 3, 256, 256, device=DEVICE)
         with torch.inference_mode():
@@ -72,7 +72,7 @@ def _cached_model_loader() -> tuple[Any, Any, bool, float, float]:
 
 
 @st.cache_resource
-def _cached_temporal_loader() -> Optional[torch.nn.Module]:
+def _cached_temporal_loader() -> torch.nn.Module | None:
     """Cache the optional Bi-GRU spatiotemporal consistency head."""
     return load_temporal_engine()
 
@@ -437,7 +437,7 @@ def render_ui() -> None:
                 "video_results" not in st.session_state
                 or st.session_state.get("last_video_id") != file_id
             ):
-                tmp_path: Optional[str] = None
+                tmp_path: str | None = None
                 try:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
                         shutil.copyfileobj(uploaded_video, tmp)

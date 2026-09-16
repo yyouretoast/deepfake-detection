@@ -1,5 +1,6 @@
 """Service layer for deepfake detection inferencing, video processing, and UI components."""
 
+from src.services.ui_components import render_diagnostic_quad
 from src.services.video_engine import (
     PredictionEngine,
     load_prediction_engine,
@@ -7,7 +8,6 @@ from src.services.video_engine import (
     process_single_image,
     process_video_frames,
 )
-from src.services.ui_components import render_diagnostic_quad
 
 __all__ = [
     "PredictionEngine",

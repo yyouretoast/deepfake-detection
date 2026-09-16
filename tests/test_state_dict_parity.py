@@ -2,6 +2,7 @@
 
 import pytest
 import torch
+
 from src.dataset.resolver import find_weights_path
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.utils.checkpoint import clean_state_dict

@@ -19,11 +19,11 @@ try:
 except Exception:
     pass
 
-from accelerate import Accelerator
 import cv2
 import numpy as np
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 import torch
+from accelerate import Accelerator
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 from torch.utils.data import DataLoader
 
 # Disable OpenCV multithreading to eliminate fork deadlocks in Linux containers (e.g. Kaggle)
@@ -51,10 +51,10 @@ logger = logging.getLogger(__name__)
 
 
 __all__ = [
-    "matches_holdout_domain",
     "filter_loto_split_strict",
-    "seed_worker",
     "main",
+    "matches_holdout_domain",
+    "seed_worker",
 ]
 
 
@@ -250,14 +250,13 @@ def main() -> None:
 
     model.eval()
     all_logits, all_targets = [], []
-    with torch.no_grad():
-        with accelerator.autocast():
-            for images, labels, valid_flags in eval_loader:
-                labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
-                outputs = model(images)
-                gathered_logits, gathered_labels = accelerator.gather_for_metrics((outputs, labels))
-                all_logits.extend(gathered_logits.cpu().reshape(-1).tolist())
-                all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
+    with torch.no_grad(), accelerator.autocast():
+        for images, labels, valid_flags in eval_loader:
+            labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
+            outputs = model(images)
+            gathered_logits, gathered_labels = accelerator.gather_for_metrics((outputs, labels))
+            all_logits.extend(gathered_logits.cpu().reshape(-1).tolist())
+            all_targets.extend(gathered_labels.cpu().reshape(-1).tolist())
 
     if accelerator.is_main_process:
         eval_logits = np.array(all_logits).flatten()

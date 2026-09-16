@@ -67,7 +67,7 @@ def main() -> None:
         "labels": targets_clean.tolist(),
         "temperature": float(temperature),
         "threshold": float(threshold),
-        "n_samples": int(len(targets_clean)),
+        "n_samples": len(targets_clean),
     }
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output_json)), exist_ok=True)

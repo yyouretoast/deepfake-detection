@@ -10,8 +10,8 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from src.dataset.degradations import blur_fn, downscale_fn, jpeg_fn, noise_fn
 from scripts.train_loto_experiment import filter_loto_split_strict, matches_holdout_domain
+from src.dataset.degradations import blur_fn, downscale_fn, jpeg_fn, noise_fn
 
 
 class TestLOTOScriptHelpers:
@@ -87,6 +87,7 @@ class TestExportONNX:
             pytest.skip("onnxscript optional dependency is not installed")
 
         import torch
+
         from src.models.hybrid_detector import HybridDeepfakeDetector
 
         model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)

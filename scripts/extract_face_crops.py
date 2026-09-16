@@ -1,12 +1,12 @@
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import glob
 import json
 import logging
 import os
 import sys
 import threading
-from typing import Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 import cv2
 import numpy as np
@@ -69,11 +69,11 @@ def process_video_fast(
 def process_single_video_worker(
     vid_path: str,
     output_dir: str = DEFAULT_OUTPUT_DIR,
-    cropper: Optional[DynamicFaceCropper] = None,
+    cropper: DynamicFaceCropper | None = None,
     face_size: int = DEFAULT_FACE_SIZE,
     scale_factor: float = DEFAULT_CROP_SCALE_FACTOR,
     num_frames: int = DEFAULT_FRAMES_PER_VIDEO,
-) -> tuple[list[dict[str, Any]], Optional[str]]:
+) -> tuple[list[dict[str, Any]], str | None]:
     """Worker task processing a single video file with thread-safe face cropper."""
     if cropper is None:
         cropper = get_thread_local_cropper(face_size=face_size, scale_factor=scale_factor)
@@ -119,7 +119,7 @@ def main() -> None:
         for found_p in glob.glob(f"{args.input_dir}/**/{ext}", recursive=True):
             all_videos_set.add(found_p)
 
-    all_videos = sorted(list(all_videos_set))
+    all_videos = sorted(all_videos_set)
     logger.info("Discovered %d video files in %s", len(all_videos), args.input_dir)
     if not all_videos:
         logger.error("No video files found in %s! Verify mounted datasets.", args.input_dir)

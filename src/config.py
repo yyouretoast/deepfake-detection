@@ -1,9 +1,10 @@
 """Configuration loader and default settings for Deepfake Detector."""
 
-from typing import Any, Optional
 import copy
 import logging
 import os
+from typing import Any
+
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ def _deep_merge_dict(base: dict[str, Any], custom: dict[str, Any]) -> dict[str, 
     return merged
 
 
-def load_config(config_path: Optional[str] = None) -> dict[str, Any]:
+def load_config(config_path: str | None = None) -> dict[str, Any]:
     """Load YAML configuration file and merge missing key defaults from DEFAULT_CONFIG."""
     if config_path is None or not os.path.exists(config_path):
         config_path = "config/default.yaml"

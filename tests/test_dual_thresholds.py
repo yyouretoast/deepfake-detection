@@ -1,6 +1,7 @@
 """Unit tests for dual-threshold Bayesian decision boundaries and three-zone classification."""
 
 import numpy as np
+
 from src.utils.checkpoint import classify_three_zone, compute_dual_thresholds
 
 
@@ -40,7 +41,7 @@ class TestDualThresholds:
     def test_compute_dual_thresholds_min_samples_floor(self) -> None:
         probs = np.array([0.1] * 50 + [0.99])
         targets = np.array([0] * 50 + [1])
-        tau_real, tau_fake = compute_dual_thresholds(probs, targets, min_precision=0.98, min_samples=5)
+        _tau_real, tau_fake = compute_dual_thresholds(probs, targets, min_precision=0.98, min_samples=5)
         assert tau_fake in (0.5, 0.60)
 
     def test_prediction_engine_backward_compatibility(self) -> None:

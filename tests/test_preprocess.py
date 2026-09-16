@@ -66,6 +66,6 @@ def test_yunet_landmark_order_affine_determinant() -> None:
     lms = np.array([r_eye, l_eye, nose, r_mouth, l_mouth], dtype=np.float32)
 
     box = np.array([100, 100, 300, 300])
-    aligned_face, raw_crop = cropper._crop_single_box(image, box, landmarks=lms, target_size=256)
+    aligned_face, _raw_crop = cropper._crop_single_box(image, box, landmarks=lms, target_size=256)
     assert aligned_face is not None
     assert aligned_face.shape == (256, 256, 3)

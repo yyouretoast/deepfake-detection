@@ -5,10 +5,11 @@ import json
 import logging
 import os
 import sys
+
 import numpy as np
 import torch
-import torch.nn as nn
 from sklearn.metrics import roc_auc_score
+from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -49,9 +50,11 @@ def extract_clip_embeddings(
     """Extracts [B, T, 512] embedding sequence from [B, T, 3, H, W] video clip."""
     b, t, c, h, w = frames.shape
     frames_flat = frames.view(b * t, c, h, w).to(device)
-    with torch.no_grad():
-        with torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")):
-            feats = backbone.extract_features(frames_flat)  # [B*T, 512]
+    with (
+        torch.no_grad(),
+        torch.amp.autocast(device_type=device.type, enabled=(device.type == "cuda")),
+    ):
+        feats = backbone.extract_features(frames_flat)  # [B*T, 512]
     return feats.view(b, t, -1)
 
 

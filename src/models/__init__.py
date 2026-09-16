@@ -7,12 +7,12 @@ from src.models.steganography import BayarConv2d, SRMConv2d
 from src.models.temporal_head import BiGRUTemporalDetector
 
 __all__ = [
-    "HybridDeepfakeDetector",
-    "SRMConv2d",
     "BayarConv2d",
+    "BiGRUTemporalDetector",
+    "HybridDeepfakeDetector",
     "RealFFT2DModule",
     "ResSESpectralTower",
     "SEBlock",
+    "SRMConv2d",
     "SpectralResBlock",
-    "BiGRUTemporalDetector",
 ]

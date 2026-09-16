@@ -9,10 +9,10 @@ Symmetric Gated Residual Fusion:
 """
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
-import torch.nn as nn
+from torch import nn
 from torchvision import models
 
 from src.models.spectral import RealFFT2DModule
@@ -22,10 +22,10 @@ from src.models.steganography import BayarConv2d, SRMConv2d
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "SRMConv2d",
     "BayarConv2d",
-    "RealFFT2DModule",
     "HybridDeepfakeDetector",
+    "RealFFT2DModule",
+    "SRMConv2d",
 ]
 
 
@@ -42,7 +42,7 @@ class HybridDeepfakeDetector(nn.Module):
         pretrained: bool = True,
         use_fft_branch: bool = True,
         dropout: float = 0.3,
-        config: Optional[dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
         frequency_backbone: str = "legacy",
         enable_snr_gating: bool = True,
     ) -> None:
@@ -185,19 +185,23 @@ class HybridDeepfakeDetector(nn.Module):
 
     def forward(
         self, x: torch.Tensor, return_aux: bool = False
-    ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass for 4D image input tensor [B, 3, H, W].
         Returns unscaled classification logits [B, 1], or (logits, aux_logit) if return_aux=True.
         """
-        if self.training and not torch.jit.is_scripting() and not torch.jit.is_tracing():
-            if (x < -0.1).any() or (x > 1.1).any():
-                logger.warning(
-                    "Input tensor x has values outside [0, 1] range: min=%.3f, max=%.3f. "
-                    "SRM and Bayar filters expect unnormalized [0, 1] inputs.",
-                    float(x.min()),
-                    float(x.max()),
-                )
+        if (
+            self.training
+            and not torch.jit.is_scripting()
+            and not torch.jit.is_tracing()
+            and ((x < -0.1).any() or (x > 1.1).any())
+        ):
+            logger.warning(
+                "Input tensor x has values outside [0, 1] range: min=%.3f, max=%.3f. "
+                "SRM and Bayar filters expect unnormalized [0, 1] inputs.",
+                float(x.min()),
+                float(x.max()),
+            )
 
         mean = self.imagenet_mean.to(dtype=x.dtype, device=x.device)
         std = self.imagenet_std.to(dtype=x.dtype, device=x.device)

@@ -3,17 +3,18 @@
 import os
 import tempfile
 import threading
+
 import numpy as np
 import torch
-import torch.nn as nn
 from accelerate import Accelerator
+from torch import nn
 
 from src.dataset.domains import DomainClassifier
+from src.dataset.preprocess import DynamicFaceCropper
 from src.dataset.resolver import find_dataset_root
+from src.models.hybrid_detector import RealFFT2DModule
 from src.training.ema import ExponentialMovingAverage
 from src.training.loss import FocalLossWithLogits
-from src.dataset.preprocess import DynamicFaceCropper
-from src.models.hybrid_detector import RealFFT2DModule
 from src.utils.interpretability import MODEL_INFERENCE_LOCK
 
 
@@ -167,6 +168,7 @@ def test_find_dataset_root_filters_empty_code_repo() -> None:
 def test_evaluator_single_sample_batch_no_scalar_collapse() -> None:
     """Verifies that ModelEvaluator.predict_loader handles single-sample batches without scalar collapse."""
     from torch.utils.data import DataLoader, TensorDataset
+
     from src.evaluation.evaluator import ModelEvaluator
 
     class DummyModel(nn.Module):
@@ -191,6 +193,7 @@ def test_evaluator_single_sample_batch_no_scalar_collapse() -> None:
 def test_facecropdataset_uncrashable_on_corrupt_or_missing_files() -> None:
     """Verifies FaceCropDataset gracefully handles missing, corrupt, or truncated files via PIL/zero-tensor fallback."""
     from PIL import Image
+
     from src.dataset.datasets import FaceCropDataset
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -219,12 +222,12 @@ def test_facecropdataset_uncrashable_on_corrupt_or_missing_files() -> None:
         assert l0.item() == 1.0
 
         # Sample 1: corrupt file (must not segfault or throw uncaught exception)
-        t1, l1, v1 = ds[1]
+        t1, _l1, v1 = ds[1]
         assert t1.shape == (3, 256, 256)
         assert v1.item() == 0.0
 
         # Sample 2: missing file
-        t2, l2, v2 = ds[2]
+        t2, _l2, v2 = ds[2]
         assert t2.shape == (3, 256, 256)
         assert v2.item() == 0.0
 

@@ -2,13 +2,13 @@
 
 import logging
 import threading
-from typing import Any, Optional
+from typing import Any
 
 import cv2
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
@@ -23,8 +23,8 @@ class ConvNeXtGradCAM:
 
     def __init__(self, model: HybridDeepfakeDetector) -> None:
         self.model = model
-        self.feature_maps: Optional[torch.Tensor] = None
-        self.gradients: Optional[torch.Tensor] = None
+        self.feature_maps: torch.Tensor | None = None
+        self.gradients: torch.Tensor | None = None
         target_layer = self.model.spatial_backbone[-1]
         self.forward_handle = target_layer.register_forward_hook(self._save_feature_maps)
         self.backward_handle = target_layer.register_full_backward_hook(self._save_gradients)

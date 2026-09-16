@@ -1,6 +1,7 @@
 """Unit tests for Bi-GRU spatiotemporal consistency head and temporal attention."""
 
 import torch
+
 from src.models.temporal_head import BiGRUTemporalDetector
 
 

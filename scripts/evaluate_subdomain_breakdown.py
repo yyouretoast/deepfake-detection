@@ -5,11 +5,16 @@ import json
 import logging
 import os
 import sys
-from typing import Optional
 
 import numpy as np
-from sklearn.metrics import balanced_accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 import torch
+from sklearn.metrics import (
+    balanced_accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 from torch.utils.data import DataLoader
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -29,9 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 def run_subdomain_evaluation(
-    data_dir: Optional[str] = None,
-    weights_path: Optional[str] = None,
-    output_json: Optional[str] = None,
+    data_dir: str | None = None,
+    weights_path: str | None = None,
+    output_json: str | None = None,
 ) -> None:
     data_root = find_dataset_root(data_dir)
     splits_path = resolve_splits_path(data_root=data_root)

@@ -4,6 +4,7 @@ import argparse
 import io
 import os
 import sys
+
 import torch
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -20,7 +21,7 @@ from src.services.video_engine import load_prediction_engine
 
 def export_onnx(
     output_path: str = "models/dual_stream_detector.onnx",
-    weights_path: str = None,
+    weights_path: str | None = None,
     img_size: int = 256,
 ) -> str:
     """Instantiate the trained model and export it to ONNX format."""

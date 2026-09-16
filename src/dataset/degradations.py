@@ -1,6 +1,7 @@
 """Image degradation and corruption functions for robustness testing and perturbation benchmarks."""
 
 from collections.abc import Callable
+
 import cv2
 import numpy as np
 
@@ -50,8 +51,8 @@ def downscale_fn(scale: float) -> Callable[[np.ndarray], np.ndarray]:
 
 
 __all__ = [
-    "jpeg_fn",
     "blur_fn",
-    "noise_fn",
     "downscale_fn",
+    "jpeg_fn",
+    "noise_fn",
 ]

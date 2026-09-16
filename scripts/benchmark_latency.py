@@ -5,7 +5,7 @@ import gc
 import os
 import sys
 import time
-from typing import Any, Optional
+from typing import Any
 
 import torch
 
@@ -18,10 +18,10 @@ from src.utils.checkpoint import load_detector_checkpoint
 
 
 def benchmark_inference(
-    weights_path: Optional[str] = None,
+    weights_path: str | None = None,
     img_size: int = 256,
     batch_size: int = 32,
-    device_str: Optional[str] = None,
+    device_str: str | None = None,
 ) -> dict[str, Any]:
     """Benchmark model inference latency and throughput for batch sizes 1 and batch_size."""
     if device_str:
@@ -51,9 +51,11 @@ def benchmark_inference(
 
     warmup_runs = 15 if device.type == "cuda" else 3
     for _ in range(warmup_runs):
-        with torch.inference_mode():
-            with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
-                _ = model(bs1_input)
+        with (
+            torch.inference_mode(),
+            torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype),
+        ):
+            _ = model(bs1_input)
     if device.type == "cuda":
         torch.cuda.synchronize()
 
@@ -62,10 +64,12 @@ def benchmark_inference(
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         start_event.record()
-        with torch.inference_mode():
-            with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
-                for _ in range(n_runs):
-                    _ = model(bs1_input)
+        with (
+            torch.inference_mode(),
+            torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype),
+        ):
+            for _ in range(n_runs):
+                _ = model(bs1_input)
         end_event.record()
         torch.cuda.synchronize()
         total_time_s = start_event.elapsed_time(end_event) / 1000.0
@@ -87,9 +91,11 @@ def benchmark_inference(
         bsN_input = torch.randn(batch_size, 3, img_size, img_size, device=device)
 
     for _ in range(warmup_runs):
-        with torch.inference_mode():
-            with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
-                _ = model(bsN_input)
+        with (
+            torch.inference_mode(),
+            torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype),
+        ):
+            _ = model(bsN_input)
     if device.type == "cuda":
         torch.cuda.synchronize()
 
@@ -97,10 +103,12 @@ def benchmark_inference(
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
         start_event.record()
-        with torch.inference_mode():
-            with torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype):
-                for _ in range(n_runs):
-                    _ = model(bsN_input)
+        with (
+            torch.inference_mode(),
+            torch.amp.autocast(device_type=device.type, enabled=use_amp, dtype=autocast_dtype),
+        ):
+            for _ in range(n_runs):
+                _ = model(bsN_input)
         end_event.record()
         torch.cuda.synchronize()
         total_time_s = start_event.elapsed_time(end_event) / 1000.0
@@ -132,8 +140,8 @@ def benchmark_onnx_inference(
     onnx_path: str,
     img_size: int = 256,
     batch_size: int = 32,
-    device_str: Optional[str] = None,
-) -> Optional[dict[str, Any]]:
+    device_str: str | None = None,
+) -> dict[str, Any] | None:
     """Benchmark ONNX Runtime model inference latency and throughput."""
     try:
         import numpy as np

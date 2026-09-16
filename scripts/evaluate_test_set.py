@@ -4,9 +4,9 @@ import argparse
 import json
 import os
 import sys
-from typing import Optional
 
 import numpy as np
+import torch
 from sklearn.metrics import (
     balanced_accuracy_score,
     classification_report,
@@ -15,7 +15,6 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-import torch
 from torch.utils.data import DataLoader
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,9 +30,9 @@ from src.utils.checkpoint import compute_dual_thresholds, load_detector_checkpoi
 
 
 def evaluate(
-    data_dir: Optional[str] = None,
-    weights_path: Optional[str] = None,
-    save_calibrated: Optional[str] = None,
+    data_dir: str | None = None,
+    weights_path: str | None = None,
+    save_calibrated: str | None = None,
 ) -> None:
     data_root = find_dataset_root(data_dir)
     splits_path = resolve_splits_path(data_root=data_root)

@@ -5,7 +5,9 @@ import json
 import logging
 import os
 import sys
+
 import numpy as np
+import torch
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
@@ -17,7 +19,6 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
-import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 

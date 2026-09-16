@@ -23,17 +23,17 @@ from src.utils.visualization import (
 )
 
 __all__ = [
-    "clean_state_dict",
-    "load_detector_checkpoint",
-    "normalize_confidence",
-    "fit_temperature_log",
-    "compute_ece",
     "ConvNeXtGradCAM",
-    "generate_face_diagnostics",
     "aggregate_video_predictions",
-    "mean_aggregation",
-    "top_k_aggregation",
-    "soft_max_weighted_aggregation",
+    "clean_state_dict",
+    "compute_ece",
     "ema_aggregation",
+    "fit_temperature_log",
+    "generate_face_diagnostics",
+    "load_detector_checkpoint",
+    "mean_aggregation",
+    "normalize_confidence",
     "render_temporal_anomaly_timeline",
+    "soft_max_weighted_aggregation",
+    "top_k_aggregation",
 ]

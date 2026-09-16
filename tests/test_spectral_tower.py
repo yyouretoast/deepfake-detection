@@ -1,6 +1,7 @@
 """Unit tests for ResSE-Spectral Tower, Squeeze-and-Excitation attention, and auxiliary supervision."""
 
 import torch
+
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.spectral_tower import ResSESpectralTower, SEBlock, SpectralResBlock
 

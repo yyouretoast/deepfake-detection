@@ -7,9 +7,9 @@ import os
 import random
 import sys
 
-from accelerate import Accelerator
 import numpy as np
 import torch
+from accelerate import Accelerator
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -36,8 +36,8 @@ BEST_MODEL_WEIGHTS_PATH = "./models/dual_stream_best.pth"
 CHECKPOINT_DIR = "./checkpoints_ddp"
 
 __all__ = [
-    "seed_worker",
     "main",
+    "seed_worker",
 ]
 
 

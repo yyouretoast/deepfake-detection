@@ -4,7 +4,7 @@ import faulthandler
 import logging
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 try:
     faulthandler.enable()
@@ -12,9 +12,9 @@ except Exception:
     pass
 
 import numpy as np
-from sklearn.metrics import roc_auc_score
 import torch
-import torch.nn as nn
+from sklearn.metrics import roc_auc_score
+from torch import nn
 from tqdm import tqdm
 
 from src.training.ema import ExponentialMovingAverage
@@ -30,11 +30,11 @@ class DualStreamTrainer:
         model: nn.Module,
         optimizer: torch.optim.Optimizer,
         criterion: nn.Module,
-        scheduler: Optional[torch.optim.lr_scheduler.LRScheduler],
+        scheduler: torch.optim.lr_scheduler.LRScheduler | None,
         train_loader: Any,
         val_loader: Any,
         accelerator: Any,
-        ema: Optional[ExponentialMovingAverage] = None,
+        ema: ExponentialMovingAverage | None = None,
         max_grad_norm: float = 1.0,
         aux_loss_weight: float = 0.3,
     ) -> None:
@@ -110,10 +110,11 @@ class DualStreamTrainer:
                         else:
                             outputs = self.model(images)
                             loss = self._compute_loss(outputs, labels, valid_flags)
-                    except Exception as e:
-                        logger.error(
-                            "[CRITICAL] Forward pass exception on batch %d: %s | images: %s",
-                            batch_idx, e, images.shape, exc_info=True
+                    except Exception:
+                        logger.exception(
+                            "[CRITICAL] Forward pass exception on batch %d | images: %s",
+                            batch_idx,
+                            images.shape,
                         )
                         raise
 
@@ -122,10 +123,11 @@ class DualStreamTrainer:
 
                 try:
                     self.accelerator.backward(loss)
-                except Exception as e:
-                    logger.error(
-                        "[CRITICAL] Backward pass exception on batch %d: %s | loss: %s",
-                        batch_idx, e, loss, exc_info=True
+                except Exception:
+                    logger.exception(
+                        "[CRITICAL] Backward pass exception on batch %d | loss: %s",
+                        batch_idx,
+                        loss,
                     )
                     raise
 
@@ -152,7 +154,7 @@ class DualStreamTrainer:
         return {"train_loss": epoch_loss, "failures": failures}
 
     @torch.inference_mode()
-    def evaluate(self, loader: Optional[Any] = None) -> dict[str, float]:
+    def evaluate(self, loader: Any | None = None) -> dict[str, float]:
         """Evaluates model (applying EMA shadow weights if present) and computes loss and AUC."""
         eval_loader = loader if loader is not None else self.val_loader
         self.model.eval()

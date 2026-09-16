@@ -6,10 +6,10 @@ from src.training.optimization import create_scheduler, get_differential_param_g
 from src.training.trainer import DualStreamTrainer
 
 __all__ = [
+    "DualStreamTrainer",
+    "ExponentialMovingAverage",
     "FocalLossWithLogits",
     "MaskedBCEWithLogits",
-    "ExponentialMovingAverage",
-    "get_differential_param_groups",
     "create_scheduler",
-    "DualStreamTrainer",
+    "get_differential_param_groups",
 ]

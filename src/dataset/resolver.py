@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ class DatasetResolver:
         return has_splits and has_images
 
     @classmethod
-    def find_dataset_root(cls, custom_dir: Optional[str] = None) -> str:
+    def find_dataset_root(cls, custom_dir: str | None = None) -> str:
         """
         Locates the dataset directory containing splits.json and image crops.
         Priority: custom argument -> DATASET_ROOT env var -> candidate paths -> /kaggle/input walk.
@@ -69,7 +68,7 @@ class DatasetResolver:
 
     @classmethod
     def resolve_splits_path(
-        cls, data_root: Optional[str] = None, custom_splits: Optional[str] = None
+        cls, data_root: str | None = None, custom_splits: str | None = None
     ) -> str:
         """
         Resolves splits.json path.
@@ -95,7 +94,7 @@ class DatasetResolver:
 
     @classmethod
     def find_weights_path(
-        cls, custom_path: Optional[str] = None, data_root: Optional[str] = None
+        cls, custom_path: str | None = None, data_root: str | None = None
     ) -> str:
         """Resolves model weights checkpoint path across local and Kaggle environments."""
         candidates = []

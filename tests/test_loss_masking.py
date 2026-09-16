@@ -16,7 +16,6 @@ import torch.nn.functional as F
 from src.models.hybrid_detector import HybridDeepfakeDetector
 
 
-
 def test_loss_masking_zero_gradient_for_corrupt_samples(
     eval_model_factory: Callable[[bool], HybridDeepfakeDetector]
 ) -> None:

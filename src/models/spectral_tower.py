@@ -1,7 +1,7 @@
 """Residual Squeeze-and-Excitation Spectral Tower for 20-channel FFT magnitude/phase features."""
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class SEBlock(nn.Module):

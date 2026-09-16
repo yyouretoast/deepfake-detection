@@ -1,7 +1,7 @@
 """Spatiotemporal sequence modeling with Bidirectional GRU and Temporal Self-Attention."""
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class BiGRUTemporalDetector(nn.Module):
