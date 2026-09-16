@@ -116,7 +116,7 @@ Evaluated across **13,444 facial crops** (756 authentic real faces, 12,688 deepf
 | :--- | :---: | :---: | :--- |
 | **ROC AUC** | **`0.8248`** | **`0.8719`** | **+4.71%** discriminative improvement |
 | **PR AUC** | **`0.9860`** *(1:1 Bal: `0.8298`)* | **`0.9904`** | Precision-recall area under curve (16.78:1 skew) |
-| **Equal Error Rate (EER)** | `24.10%` | **`18.98%`** | **-5.12%** biometric verification error drop |
+| **Equal Error Rate (EER)** | `24.73%` | **`18.98%`** | **-5.75%** biometric verification error drop |
 | **Fake Precision** | **`98.00%`** | **`98.60%`** | **+0.60%** false alarm suppression |
 | **Fake Recall** | **`77.04%`** | **`79.75%`** | **+2.71%** detection coverage |
 | **Overall Accuracy** | **`76.85%`** | **`79.82%`** | **+2.97%** classification rate |

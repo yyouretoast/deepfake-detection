@@ -66,7 +66,7 @@ All model weights are hosted on the Hugging Face Model Hub: [`yyouretoast/deepfa
 
 | Model Checkpoint | Weights File | Parameters | Size | Task / Domain | ROC AUC | Calibrated Threshold ($\tau^*$) | SHA-256 Checksum | Direct Download |
 | :--- | :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: |
-| **Dual-Stream Detector** | `dual_stream_calibrated.pth` | 53.2M | **214.7 MB** | Single-Frame Spatial + Spectral | **`0.8248`** | `0.4200` ($T^*=4.288$) | `cacdd1f6...fd5237` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
+| **Dual-Stream Detector** | `dual_stream_calibrated.pth` | 53.6M | **214.7 MB** | Single-Frame Spatial + Spectral | **`0.8248`** | `0.4200` ($T^*=4.288$) | `cacdd1f6...fd5237` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
 | **Bi-GRU Temporal Head** | `temporal_head_best.pth` | 3.32M | **13.3 MB** | Spatiotemporal Video Sequences | **`0.8719`** | `0.3895` | `5976689a...d0700e` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
 
 ### Automated Download via CLI
@@ -184,11 +184,11 @@ Evaluated across the full held-out test split (13,444 facial crops: 756 authenti
 | :--- | :---: | :---: | :--- |
 | **ROC AUC** | **`0.8248`** | **`0.8719`** | **+4.71%** discriminative improvement |
 | **PR AUC** | **`0.9860`** *(1:1 Bal: `0.8298`)* | **`0.9904`** | Precision-recall area under curve (16.78:1 skew) |
-| **Equal Error Rate (EER)** | `24.10%` | **`18.98%`** | **-5.12%** biometric verification error drop |
+| **Equal Error Rate (EER)** | `24.73%` | **`18.98%`** | **-5.75%** biometric verification error drop |
 | **Fake Precision** | **`98.00%`** | **`98.60%`** | **+0.60%** false alarm suppression |
 | **Fake Recall** | **`77.04%`** | **`79.75%`** | **+2.71%** detection coverage |
 | **Overall Accuracy** | **`76.85%`** | **`79.82%`** | **+2.97%** classification rate |
-| **Balanced Accuracy** | **`76.12%`** | **`80.35%`** | **+4.23%** balanced accuracy gain |
+| **Balanced Accuracy** | **`75.36%`** | **`80.35%`** | **+4.99%** balanced accuracy gain |
 | **Fake F1-Score** | **`0.8627`** | **`0.8818`** | **+0.0191** F1 balance |
 | **Macro F1-Score** | **`0.5631`** | **`0.5964`** | Balanced across real/fake classes |
 | **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3895` | Derived via Youden's $J$ statistic |
@@ -310,7 +310,7 @@ Evaluated across 4 real-world distortion families on the held-out test split:
 • ConvNeXt-Small Backbone                       • 1 Learnable Bayar-Stamm Conv (1 ch)
 • LayerNorm2d Feature Normalization             • 2D Real FFT (torch.fft.fft2, FP32)
 • 512-d Spatial Embedding (f_s)                 • 10 Log-Mag + 10 Phase Angle Maps
-                                                • ResSE-Spectral Tower (4 stages + SE, 2.98M)
+                                                • ResSE-Spectral Tower (4 stages + SE, 2.99M)
                                                 • 512-d Spectral Embedding (f_f)
                                                 • Auxiliary Supervision Head (λ = 0.3)
        │                                                │

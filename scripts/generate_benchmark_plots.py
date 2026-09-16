@@ -394,7 +394,15 @@ def plot_confusion_matrices(
     ax1.set_yticks([0, 1])
     ax1.set_xticklabels(["Predicted Real", "Predicted Fake"], fontsize=9)
     ax1.set_yticklabels(["Actual Real", "Actual Fake"], fontsize=9)
-    ax1.set_title(f"Single-Frame Spatial (τ* = {tau_star_sp:.2f})\nBal Acc = 76.12% | Precision = 98.00%")
+    bal_acc_sp = (cm_sp_norm[0, 0] + cm_sp_norm[1, 1]) / 2.0 * 100.0
+    prec_sp = (
+        cm_sp[1, 1] / (cm_sp[1, 1] + cm_sp[0, 1]) * 100.0
+        if (cm_sp[1, 1] + cm_sp[0, 1]) > 0
+        else 0.0
+    )
+    ax1.set_title(
+        f"Single-Frame Spatial (τ* = {tau_star_sp:.2f})\nBal Acc = {bal_acc_sp:.2f}% | Precision = {prec_sp:.2f}%"
+    )
 
     # Panel B: Video Spatiotemporal Bi-GRU at tau* = 0.3895
     ax2 = axes[1]
@@ -419,7 +427,15 @@ def plot_confusion_matrices(
         ax2.set_yticks([0, 1])
         ax2.set_xticklabels(["Predicted Real", "Predicted Fake"], fontsize=9)
         ax2.set_yticklabels(["Actual Real", "Actual Fake"], fontsize=9)
-        ax2.set_title(f"Video Spatiotemporal Bi-GRU (τ* = {t_opt:.4f})\nBal Acc = 80.35% | Precision = 98.60%")
+        bal_acc_tp = (cm_tp_norm[0, 0] + cm_tp_norm[1, 1]) / 2.0 * 100.0
+        prec_tp = (
+            cm_tp[1, 1] / (cm_tp[1, 1] + cm_tp[0, 1]) * 100.0
+            if (cm_tp[1, 1] + cm_tp[0, 1]) > 0
+            else 0.0
+        )
+        ax2.set_title(
+            f"Video Spatiotemporal Bi-GRU (τ* = {t_opt:.4f})\nBal Acc = {bal_acc_tp:.2f}% | Precision = {prec_tp:.2f}%"
+        )
     else:
         ax2.text(0.5, 0.5, "Temporal video data not available", ha="center", va="center")
 
