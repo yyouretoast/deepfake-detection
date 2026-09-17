@@ -3,7 +3,11 @@ from typing import Any
 import numpy as np
 
 # Re-export calibration utilities from canonical metrics module
-from src.evaluation.metrics import calibrate_probabilities_balanced, compute_ece, fit_temperature_log
+from src.evaluation.metrics import (
+    calibrate_probabilities_balanced,
+    compute_ece,
+    fit_temperature_log,
+)
 
 DEFAULT_THRESHOLD: float = 0.50
 DEFAULT_TEMPERATURE: float = 1.4788
