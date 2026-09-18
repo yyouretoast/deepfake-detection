@@ -131,7 +131,7 @@ def plot_roc(
 
     ax.set_xlabel("False Positive Rate (FPR)")
     ax.set_ylabel("True Positive Rate (TPR)")
-    ax.set_title(f"ROC Curve — Held-Out Test Set ({len(labels):,} crops)")
+    ax.set_title(f"ROC Curve — Held-Out Test Set ({len(labels):,} crops)", pad=8)
     ax.legend(loc="lower right")
     ax.set_xlim(-0.01, 1.01)
     ax.set_ylim(-0.01, 1.01)
@@ -149,7 +149,7 @@ def plot_ece(
     probs_raw: np.ndarray, probs_cal: np.ndarray, labels: np.ndarray, output_path: str
 ) -> None:
     apply_base_style()
-    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.4), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.6), sharey=True)
 
     for ax, probs, title, color in [
         (axes[0], probs_raw, "Raw Logits (Uncalibrated)", RED),
@@ -166,12 +166,17 @@ def plot_ece(
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1.05)
         ax.set_xlabel("Mean Predicted Probability")
-        ax.set_title(f"{title}\nECE = {ece:.4f}")
+        ax.set_title(f"{title}\nECE = {ece:.4f}", pad=8)
         ax.legend(loc="upper left")
 
     axes[0].set_ylabel("Empirical Positive Proportion")
-    fig.suptitle("Probability Calibration Reliability Diagram (Held-Out Test Split)", fontweight="bold", fontsize=11.5)
-    fig.tight_layout()
+    fig.suptitle(
+        "Probability Calibration Reliability Diagram (Held-Out Test Split)",
+        fontweight="bold",
+        fontsize=11.5,
+        y=0.98,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.91])
     fig.savefig(output_path)
     plt.close(fig)
     logger.info("Saved ECE diagram -> %s", output_path)
@@ -222,16 +227,17 @@ def plot_precision_recall(
             f"τ* = {tau_star:.2f}\n(P={p_sp[idx_opt]*100:.1f}%, R={r_sp[idx_opt]*100:.1f}%)",
             (r_sp[idx_opt], p_sp[idx_opt]),
             textcoords="offset points",
-            xytext=(-45, -28),
+            xytext=(-52, -32),
             fontsize=8,
             color=RED,
             fontweight="bold",
             arrowprops={"arrowstyle": "->", "color": RED, "lw": 0.9},
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "edgecolor": "#FECACA", "alpha": 0.9},
         )
 
     ax_pr.set_xlabel("Recall (Detection Sensitivity)")
     ax_pr.set_ylabel("Precision (Positive Predictive Value)")
-    ax_pr.set_title("Precision-Recall (16.78:1 Class Skew)")
+    ax_pr.set_title("Precision-Recall (16.78:1 Class Skew)", pad=8)
     ax_pr.set_xlim(-0.01, 1.01)
     ax_pr.set_ylim(0.85, 1.01)
     ax_pr.legend(loc="lower left")
@@ -252,9 +258,10 @@ def plot_precision_recall(
 
     f1_sp_arr = np.array(f1_sp)
     best_sp_idx = np.argmax(f1_sp_arr)
-    ax_f1.plot(threshold_grid, f1_sp_arr, color=BLUE, lw=1.8, label=f"Single-Frame Spatial (Max F1 = {f1_sp_arr[best_sp_idx]:.4f})")
-    ax_f1.axvline(tau_star, color=BLUE, lw=1.0, linestyle="--", alpha=0.7)
+    ax_f1.plot(threshold_grid, f1_sp_arr, color=BLUE, lw=1.8, label=f"Single-Frame Spatial (Max F1 = {f1_sp_arr[best_sp_idx]:.4f}, τ* = {tau_star:.2f})")
+    ax_f1.axvline(tau_star, color=BLUE, lw=1.2, linestyle="--", alpha=0.6)
 
+    t_star_seq = 0.3895
     if temporal_data and "probs_temporal" in temporal_data and "labels" in temporal_data:
         t_probs = np.array(temporal_data["probs_temporal"])
         t_labels = np.array(temporal_data["labels"])
@@ -269,18 +276,28 @@ def plot_precision_recall(
         f1_tp_arr = np.array(f1_tp)
         best_tp_idx = np.argmax(f1_tp_arr)
         t_star_seq = float(temporal_data.get("optimal_threshold", 0.3895))
-        ax_f1.plot(threshold_grid, f1_tp_arr, color=GREEN, lw=2.0, label=f"Video Bi-GRU (Max F1 = {f1_tp_arr[best_tp_idx]:.4f})")
-        ax_f1.axvline(t_star_seq, color=GREEN, lw=1.0, linestyle="--", alpha=0.7)
+        ax_f1.plot(threshold_grid, f1_tp_arr, color=GREEN, lw=2.0, label=f"Video Bi-GRU (Max F1 = {f1_tp_arr[best_tp_idx]:.4f}, τ* = {t_star_seq:.4f})")
+        ax_f1.axvline(t_star_seq, color=GREEN, lw=1.2, linestyle="--", alpha=0.6)
+
+    ax_f1.text(
+        0.96,
+        0.96,
+        f"Optimal Thresholds (Max F1):\n• Single-Frame: τ* = {tau_star:.2f}\n• Video Bi-GRU: τ* = {t_star_seq:.4f}",
+        ha="right",
+        va="top",
+        fontsize=7.8,
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": LIGHT_GRAY, "edgecolor": "#CBD5E1", "alpha": 0.95},
+    )
 
     ax_f1.set_xlabel("Decision Threshold (τ)")
     ax_f1.set_ylabel("Fake Class F1-Score")
-    ax_f1.set_title("Operational F1-Score vs Decision Threshold")
+    ax_f1.set_title("Operational F1-Score vs Decision Threshold", pad=8)
     ax_f1.set_xlim(0.0, 1.0)
     ax_f1.set_ylim(0.70, 1.00)
-    ax_f1.legend(loc="lower center")
+    ax_f1.legend(loc="lower left", fontsize=8)
 
-    fig.suptitle("Forensic Detection Trade-Offs (Held-Out Test Set)", fontweight="bold", fontsize=11.5)
-    fig.tight_layout()
+    fig.suptitle("Forensic Detection Trade-Offs (Held-Out Test Set)", fontweight="bold", fontsize=11.5, y=0.98)
+    fig.tight_layout(rect=[0, 0, 1, 0.92])
     fig.savefig(output_path)
     plt.close(fig)
     logger.info("Saved Precision-Recall figure -> %s", output_path)
@@ -296,7 +313,7 @@ def plot_bayesian_decision_zones(
     output_path: str,
 ) -> None:
     apply_base_style()
-    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.6))
+    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.8))
 
     # Panel A: Single-Frame Probability Density
     ax1 = axes[0]
@@ -320,15 +337,20 @@ def plot_bayesian_decision_zones(
     ax1.axvline(0.42, color=RED, lw=1.4, linestyle="-", label="Optimal Threshold (τ* = 0.42)")
     ax1.axvline(0.60, color=PURPLE, lw=1.2, linestyle="--")
 
-    ax1.text(0.27, ax1.get_ylim()[1] * 0.90 if ax1.get_ylim()[1] > 0 else 3.0, "Authentic Zone\n(P < 0.40)", ha="center", fontsize=8, color="#15803D", fontweight="bold")
-    ax1.text(0.50, ax1.get_ylim()[1] * 0.90 if ax1.get_ylim()[1] > 0 else 3.0, "Manual Review\n[0.40, 0.60]", ha="center", fontsize=8, color="#B45309", fontweight="bold")
-    ax1.text(0.72, ax1.get_ylim()[1] * 0.90 if ax1.get_ylim()[1] > 0 else 3.0, "Confirmed Fake\n(P > 0.60, ≥98% P)", ha="center", fontsize=8, color="#B91C1C", fontweight="bold")
+    ax1.set_ylim(0, 9.6)
+    bbox_z1 = {"boxstyle": "round,pad=0.25", "facecolor": "#DCFCE7", "edgecolor": "#86EFAC", "alpha": 0.9}
+    bbox_z2 = {"boxstyle": "round,pad=0.25", "facecolor": "#FEF3C7", "edgecolor": "#FDE047", "alpha": 0.9}
+    bbox_z3 = {"boxstyle": "round,pad=0.25", "facecolor": "#FEE2E2", "edgecolor": "#FCA5A5", "alpha": 0.9}
+
+    ax1.text(0.275, 8.6, "Authentic Zone\n(P < 0.40)", ha="center", va="center", fontsize=8, color="#15803D", fontweight="bold", bbox=bbox_z1)
+    ax1.text(0.50, 8.6, "Manual Review\n[0.40, 0.60]", ha="center", va="center", fontsize=8, color="#B45309", fontweight="bold", bbox=bbox_z2)
+    ax1.text(0.725, 8.6, "Confirmed Fake\n(P > 0.60, ≥98% P)", ha="center", va="center", fontsize=8, color="#B91C1C", fontweight="bold", bbox=bbox_z3)
 
     ax1.set_xlabel("Temperature-Scaled Probability P(Fake)")
     ax1.set_ylabel("Probability Density")
-    ax1.set_title("Single-Frame Bayesian 3-Zone Separation")
+    ax1.set_title("Single-Frame Bayesian 3-Zone Separation", pad=8)
     ax1.set_xlim(0.15, 0.85)
-    ax1.legend(loc="upper left", fontsize=8)
+    ax1.legend(loc="upper left", bbox_to_anchor=(0.02, 0.76), fontsize=7.8, framealpha=0.92)
 
     # Panel B: Video Spatiotemporal Bi-GRU Separation
     ax2 = axes[1]
@@ -349,14 +371,15 @@ def plot_bayesian_decision_zones(
 
         ax2.set_xlabel("Bi-GRU Output Probability P(Fake)")
         ax2.set_ylabel("Probability Density")
-        ax2.set_title("Video Spatiotemporal Bi-GRU Bimodal Mode Separation")
+        ax2.set_title("Video Spatiotemporal Bi-GRU Bimodal Mode Separation", pad=8)
         ax2.set_xlim(-0.02, 1.02)
-        ax2.legend(loc="upper center", fontsize=8)
+        ax2.set_ylim(0, 19.5)
+        ax2.legend(loc="upper center", fontsize=8, framealpha=0.92)
     else:
         ax2.text(0.5, 0.5, "Temporal video predictions not available", ha="center", va="center")
 
-    fig.suptitle("Forensic Score Distributions & Decision Boundaries (Held-Out Test Set)", fontweight="bold", fontsize=11.5)
-    fig.tight_layout()
+    fig.suptitle("Forensic Score Distributions & Decision Boundaries (Held-Out Test Set)", fontweight="bold", fontsize=11.5, y=0.98)
+    fig.tight_layout(rect=[0, 0, 1, 0.92])
     fig.savefig(output_path)
     plt.close(fig)
     logger.info("Saved Bayesian decision zones plot -> %s", output_path)
@@ -439,8 +462,8 @@ def plot_confusion_matrices(
     else:
         ax2.text(0.5, 0.5, "Temporal video data not available", ha="center", va="center")
 
-    fig.suptitle("Normalized Confusion Matrices at Calibrated Operating Thresholds", fontweight="bold", fontsize=11.5)
-    fig.tight_layout()
+    fig.suptitle("Normalized Confusion Matrices at Calibrated Operating Thresholds", fontweight="bold", fontsize=11.5, y=0.98)
+    fig.tight_layout(rect=[0, 0, 1, 0.91])
     fig.savefig(output_path)
     plt.close(fig)
     logger.info("Saved Confusion Matrices -> %s", output_path)
@@ -451,7 +474,9 @@ def plot_confusion_matrices(
 # ---------------------------------------------------------------------------
 def plot_temporal_dynamics(output_path: str) -> None:
     apply_base_style()
-    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10.5, 5.2), sharex=True, gridspec_kw={"height_ratios": [2.2, 1.2]})
+    fig, (ax_top, ax_bot) = plt.subplots(
+        2, 1, figsize=(10.5, 5.4), sharex=True, gridspec_kw={"height_ratios": [2.2, 1.2]}
+    )
 
     # Representative forensic sequence (16 frames) illustrating transient anomaly detection
     frames = np.arange(1, 17)
@@ -481,9 +506,9 @@ def plot_temporal_dynamics(output_path: str) -> None:
     ax_top.scatter(frames[high_attn_mask], p_frames[high_attn_mask], s=110, facecolors="none", edgecolors=AMBER, linewidths=2.0, zorder=6, label="Temporal Attention Peak (α_t > 1/T)")
 
     ax_top.set_ylabel("Manipulated Probability")
-    ax_top.set_ylim(-0.02, 1.05)
-    ax_top.legend(loc="upper left", fontsize=8.0, ncol=2)
-    ax_top.set_title("Bi-GRU Spatiotemporal Anomaly Tracking (Representative Manipulated Sequence)")
+    ax_top.set_ylim(-0.02, 1.14)
+    ax_top.legend(loc="upper left", fontsize=7.8, ncol=1, framealpha=0.92)
+    ax_top.set_title("Bi-GRU Spatiotemporal Anomaly Tracking (Representative Manipulated Sequence)", pad=10)
 
     # Bottom panel: Temporal Attention Distribution
     bar_colors = [AMBER if a > uniform_attn else GRAY for a in attention]
@@ -500,10 +525,10 @@ def plot_temporal_dynamics(output_path: str) -> None:
     p_naive = np.mean(p_frames)
     p_bigru = 0.892  # Bi-GRU pooled score
     ax_top.text(
-        15.8, 0.90,
+        16.1, 1.08,
         f"Bi-GRU Pooled Verdict: {p_bigru:.3f} [FAKE]\nNaive Frame Average: {p_naive:.3f} [DILUTED]",
-        ha="right", va="top", fontsize=8.5, fontweight="bold",
-        bbox={"boxstyle": "round,pad=0.4", "facecolor": LIGHT_GRAY, "edgecolor": "#CBD5E1", "alpha": 0.95},
+        ha="right", va="top", fontsize=8.2, fontweight="bold",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": LIGHT_GRAY, "edgecolor": "#CBD5E1", "alpha": 0.95},
     )
 
     fig.tight_layout()
@@ -517,7 +542,7 @@ def plot_temporal_dynamics(output_path: str) -> None:
 # ---------------------------------------------------------------------------
 def plot_robustness(robustness: dict, output_path: str) -> None:
     apply_base_style()
-    fig, axes = plt.subplots(2, 2, figsize=(11.5, 7.8))
+    fig, axes = plt.subplots(2, 2, figsize=(11.5, 8.0))
     axes = axes.flatten()
 
     sweep_names = ["JPEG Compression", "Gaussian Blur", "Gaussian Noise", "Downscaling"]
@@ -558,17 +583,42 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
         ax.plot(xs, aucs, color=color, lw=1.8, marker="o", markersize=5.5, zorder=3)
 
         for x, y in zip(xs, aucs):
-            ax.annotate(f"{y:.4f}", (x, y), textcoords="offset points", xytext=(0, 6), ha="center", fontsize=7.5, color=color, fontweight="bold")
+            if x == 0:
+                offset_x = 4
+                offset_y = 9
+                align_h = "left"
+            elif baseline_auc - y < 0.035 and baseline_auc - y > 0:
+                offset_x = 0
+                offset_y = -13
+                align_h = "center"
+            else:
+                offset_x = 0
+                offset_y = 7
+                align_h = "center"
+
+            ax.annotate(
+                f"{y:.4f}",
+                (x, y),
+                textcoords="offset points",
+                xytext=(offset_x, offset_y),
+                ha=align_h,
+                fontsize=7.5,
+                color=color,
+                fontweight="bold",
+                zorder=6,
+                bbox={"boxstyle": "round,pad=0.18", "facecolor": "white", "edgecolor": "none", "alpha": 0.95},
+            )
 
         ax.set_xticks(xs)
-        ax.set_xticklabels(levels, rotation=15, ha="right", fontsize=8)
-        ax.set_ylim(max(0.45, min(aucs) - 0.05), 1.01)
+        ax.set_xticklabels(levels, rotation=20, ha="right", fontsize=8)
+        min_y = max(0.42, min(aucs) - 0.05)
+        ax.set_ylim(min_y, 0.86)
         ax.set_ylabel("ROC AUC")
-        ax.set_title(sweep_name)
+        ax.set_title(sweep_name, pad=8)
         ax.legend(loc="lower left", fontsize=8)
 
-    fig.suptitle("Model Robustness Under Physical Image Degradation (Held-Out Test Set)", fontweight="bold", fontsize=11.5)
-    fig.tight_layout()
+    fig.suptitle("Model Robustness Under Physical Image Degradation (Held-Out Test Set)", fontweight="bold", fontsize=11.5, y=0.98)
+    fig.tight_layout(rect=[0, 0.02, 1, 0.94])
     fig.savefig(output_path)
     plt.close(fig)
     logger.info("Saved robustness plot -> %s", output_path)
@@ -620,7 +670,7 @@ def plot_loto(loto_data: list, output_path: str) -> None:
             ("Fold 5\nCeleb-DF v2\n(Cross-Dataset)", 0.7000, PURPLE),
         ]
 
-    fig, ax = plt.subplots(figsize=(8.2, 4.5))
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
     xs = list(range(len(folds)))
     labels = [f[0] for f in folds]
     aucs = [f[1] for f in folds]
@@ -631,18 +681,28 @@ def plot_loto(loto_data: list, output_path: str) -> None:
     for bar, f_info in zip(bars, folds):
         v = f_info[1]
         c = f_info[2]
-        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.015, f"AUC = {v:.4f}", ha="center", va="bottom", fontsize=8.5, fontweight="bold", color=c)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            v + 0.020,
+            f"AUC = {v:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=8.5,
+            fontweight="bold",
+            color=c,
+            bbox={"boxstyle": "round,pad=0.15", "facecolor": "white", "edgecolor": "none", "alpha": 0.85},
+        )
 
     ax.axhline(0.5, color=GRAY, lw=1.0, linestyle=":", label="Random Guess (AUC = 0.5000)")
     ax.axhline(np.mean(aucs), color=GREEN, lw=1.2, linestyle="--", label=f"5-Fold Macro Mean (AUC = {np.mean(aucs):.4f})")
     ax.set_xticks(xs)
     ax.set_xticklabels(labels, fontsize=8.5)
-    ax.set_ylim(0.40, 1.10)
+    ax.set_ylim(0.40, 1.12)
     ax.set_ylabel("Zero-Shot ROC AUC")
-    ax.set_title("Leave-One-Type-Out (LOTO) Cross-Generator Generalization")
+    ax.set_title("Leave-One-Type-Out (LOTO) Cross-Generator Generalization", pad=10)
     ax.legend(loc="upper right", fontsize=8.5)
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(output_path)
     plt.close(fig)
     logger.info("Saved LOTO plot -> %s", output_path)
@@ -670,7 +730,7 @@ def plot_per_generator(output_path: str, subdomain_data: dict | None = None) -> 
     names = [g[0] for g in generators]
     aucs = [g[1] for g in generators]
 
-    fig, ax = plt.subplots(figsize=(7.5, 3.8))
+    fig, ax = plt.subplots(figsize=(7.8, 4.0))
     ys = list(range(len(names)))
     bar_colors = [PURPLE if "CELEB" in n or "Celeb" in n else TEAL for n in names]
 
@@ -685,9 +745,9 @@ def plot_per_generator(output_path: str, subdomain_data: dict | None = None) -> 
     ax.set_xlim(min_x, 1.05)
     ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("%.2f"))
     ax.set_xlabel("ROC AUC")
-    ax.set_title("In-Distribution Sub-Domain Performance (Held-Out Test Set)")
+    ax.set_title("In-Distribution Sub-Domain Performance (Held-Out Test Set)", pad=10)
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(output_path)
     plt.close(fig)
     logger.info("Saved per-generator plot -> %s", output_path)
