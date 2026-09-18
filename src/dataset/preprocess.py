@@ -217,6 +217,11 @@ class DynamicFaceCropper:
         cx = x1 + w_box / 2.0
         cy = y1 + h_box / 2.0
 
+        if w_box <= 0 or h_box <= 0:
+            logger.warning("Fallback center crop used due to non-positive box dimensions.")
+            fallback = self._center_crop(image_rgb, target_size=out_size)
+            return fallback, fallback
+
         side = max(w_box, h_box) * self.scale_factor
 
         crop_x1 = round(cx - side / 2.0)

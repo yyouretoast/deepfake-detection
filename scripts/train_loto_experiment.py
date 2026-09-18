@@ -350,8 +350,8 @@ def main() -> None:
                 with open(p, "w") as f:
                     json.dump(results, f, indent=2)
                 logger.info("Saved LOTO result entry to %s", p)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning("Could not write LOTO result to %s: %s", p, exc)
 
     accelerator.wait_for_everyone()
     accelerator.end_training()

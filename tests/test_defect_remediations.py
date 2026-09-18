@@ -92,20 +92,31 @@ def test_crop_face_fallback_modes() -> None:
 def test_inference_lock_concurrency() -> None:
     """Verifies MODEL_INFERENCE_LOCK functions as a reentrant lock and guards model execution."""
     model = nn.Linear(4, 1)
+    errors: list[Exception] = []
+    executions: list[int] = []
 
-    def thread_worker():
-        with MODEL_INFERENCE_LOCK:
-            x = torch.randn(2, 4)
-            y = model(x).sum()
-            y.backward()
-            model.zero_grad()
+    def thread_worker(worker_id: int):
+        try:
+            with MODEL_INFERENCE_LOCK:
+                x = torch.randn(2, 4)
+                y = model(x).sum()
+                y.backward()
+                model.zero_grad()
+                executions.append(worker_id)
+        except Exception as exc:
+            errors.append(exc)
 
-    t1 = threading.Thread(target=thread_worker)
-    t2 = threading.Thread(target=thread_worker)
+    t1 = threading.Thread(target=thread_worker, args=(1,))
+    t2 = threading.Thread(target=thread_worker, args=(2,))
     t1.start()
     t2.start()
-    t1.join()
-    t2.join()
+    t1.join(timeout=5.0)
+    t2.join(timeout=5.0)
+
+    assert not t1.is_alive(), "Worker thread 1 timed out or deadlocked"
+    assert not t2.is_alive(), "Worker thread 2 timed out or deadlocked"
+    assert len(errors) == 0, f"Thread execution encountered exceptions: {errors}"
+    assert sorted(executions) == [1, 2], f"Expected both threads to complete execution, got {executions}"
 
 
 def test_focal_loss_and_ema_integration() -> None:

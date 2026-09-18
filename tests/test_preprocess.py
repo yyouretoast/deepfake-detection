@@ -55,6 +55,8 @@ def test_dynamic_face_cropper_similarity_transform_math() -> None:
 
 
 def test_yunet_landmark_order_affine_determinant() -> None:
+    import cv2
+
     cropper = DynamicFaceCropper(target_size=256, scale_factor=1.50)
     image = np.ones((400, 400, 3), dtype=np.uint8) * 128
 
@@ -69,3 +71,32 @@ def test_yunet_landmark_order_affine_determinant() -> None:
     aligned_face, _raw_crop = cropper._crop_single_box(image, box, landmarks=lms, target_size=256)
     assert aligned_face is not None
     assert aligned_face.shape == (256, 256, 3)
+
+    sf = max(cropper.scale_factor, 1.0)
+    margin_frac = (1.0 - 1.0 / sf) / 2.0
+    canonical_landmarks = (
+        np.array(
+            [[0.30, 0.35], [0.70, 0.35], [0.50, 0.50], [0.35, 0.70], [0.65, 0.70]],
+            dtype=np.float32,
+        )
+    )
+    canonical = (canonical_landmarks * (1.0 - 2.0 * margin_frac) + margin_frac) * 256.0
+    M, _ = cv2.estimateAffinePartial2D(lms, canonical, method=cv2.LMEDS)
+    assert M is not None, "Failed to estimate partial affine transform matrix"
+    det = M[0, 0] * M[1, 1] - M[0, 1] * M[1, 0]
+    assert det > 0.0, f"Affine determinant must be positive (orientation-preserving), got {det}"
+
+
+def test_dynamic_face_cropper_invalid_box_fallback() -> None:
+    cropper = DynamicFaceCropper(target_size=256, scale_factor=1.50)
+    image = np.ones((300, 300, 3), dtype=np.uint8) * 100
+
+    inverted_box = np.array([200, 200, 50, 50])
+    crop1, _ = cropper._crop_single_box(image, inverted_box, target_size=256)
+    assert crop1 is not None
+    assert crop1.shape == (256, 256, 3)
+
+    negative_box = np.array([-50, -50, -10, -10])
+    crop2, _ = cropper._crop_single_box(image, negative_box, target_size=256)
+    assert crop2 is not None
+    assert crop2.shape == (256, 256, 3)

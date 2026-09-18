@@ -230,6 +230,7 @@ Evaluated on 756 real face crops against each respective manipulation generator 
 | **FF++ Deepfakes** | Autoencoder Face Replacement (Pairs 0–99) | **`0.9625`** | **`85.28%`** | 70.03% | **96.88%** |
 | **FF++ FaceSwap** | Classical Graphics Face Swapping (Pairs 400–599) | **`0.9091`** | **`82.67%`** | 9.95% | **91.67%** |
 | **Celeb-DF v2** | High-Quality DeepFake Synthesis | **`0.8166`** | **`74.77%`** | **97.86%** | **75.86%** |
+| **FF++ Miscellaneous** | Unspecified Manipulation Pairs (108 crops) | **`0.9727`** | **`86.38%`** | 34.97% | **99.07%** |
 
 <div align="center">
   <img src="figures/per_generator_auc.png" width="75%" alt="Per-Generator AUC Breakdown" />

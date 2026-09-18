@@ -8,8 +8,8 @@ from typing import Any
 
 try:
     faulthandler.enable()
-except Exception:
-    pass
+except (RuntimeError, OSError) as e:
+    logging.getLogger(__name__).debug("Failed to enable faulthandler: %s", e)
 
 import numpy as np
 import torch

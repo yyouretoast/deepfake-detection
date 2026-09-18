@@ -88,8 +88,8 @@ def export_onnx(
         print(f"ONNX Runtime parity verification: max absolute error = {max_diff:.6e}")
         np.testing.assert_allclose(ref_output, ort_output, atol=1e-3, rtol=1e-3)
         print(" Parity check passed within tolerance (atol=1e-3).")
-    except ImportError:
-        pass
+    except ImportError as e:
+        print(f"Skipping ONNX Runtime parity check: optional dependency not installed ({e}).")
 
     return abs_output_path
 

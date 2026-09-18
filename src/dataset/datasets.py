@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 try:
     os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
     import albumentations as A
-    from albumentations.pytorch import ToTensorV2  # noqa: F401
 
     HAS_ALBUMENTATIONS = True
 except ImportError:

@@ -359,7 +359,7 @@ def process_video_frames(
         with MODEL_INFERENCE_LOCK, torch.inference_mode():
             seq_tensor = torch.cat(all_embeddings, dim=0).unsqueeze(0)  # [1, T, 512]
             v_logit, v_attn = temporal_model(seq_tensor)
-            raw_video_prob = float(torch.sigmoid(v_logit.float() / temperature).item())
+            raw_video_prob = float(torch.sigmoid(v_logit.float()).item())
             frame_attention = [float(w) for w in v_attn.squeeze(0).cpu().tolist()]
     else:
         _agg = aggregate_video_predictions(
