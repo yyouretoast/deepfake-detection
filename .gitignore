@@ -52,4 +52,9 @@ archive.zip
 deepfake_crops_512/
 .virtual_documents/
 repo/
+MASTER_FORENSIC_ENGINEERING_COMPENDIUM.md
+REPO_AUDIT_PROMPT_TITAN.md
+.venv_gpu/
+.cache/
+smoke_test_run/
 

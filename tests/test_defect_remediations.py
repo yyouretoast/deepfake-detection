@@ -6,7 +6,10 @@ import threading
 
 import numpy as np
 import torch
-from accelerate import Accelerator
+try:
+    from accelerate import Accelerator
+except ImportError:
+    Accelerator = None
 from torch import nn
 
 from src.dataset.domains import DomainClassifier
@@ -20,6 +23,9 @@ from src.utils.interpretability import MODEL_INFERENCE_LOCK
 
 def test_gradient_accumulation_order() -> None:
     """Verifies that micro-batch 0 gradients are NOT wiped before micro-batch 1 under accelerator.accumulate."""
+    if Accelerator is None:
+        import unittest
+        raise unittest.SkipTest("accelerate package not installed")
     acc = Accelerator(gradient_accumulation_steps=2)
     model = nn.Linear(4, 1, bias=False)
     model.weight.data.fill_(1.0)

@@ -25,7 +25,8 @@ def test_matches_holdout_domain_pair_ranges() -> None:
     assert matches_holdout_domain("fake/ff_c23/600_605/frame_001.webp", "neuraltextures") is True
 
     assert matches_holdout_domain("fake/id0_id16_0000/frame_002.webp", "celeb") is True
-    assert matches_holdout_domain("fake/01_02__meeting_serious/frame_002.webp", "celeb") is True
+    assert matches_holdout_domain("fake/01_02__meeting_serious/frame_002.webp", "dfd") is True
+    assert matches_holdout_domain("fake/01_02__meeting_serious/frame_002.webp", "celeb") is False
 
 
 def test_filter_loto_split_strict_retains_reals() -> None:

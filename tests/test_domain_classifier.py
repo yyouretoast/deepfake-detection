@@ -41,7 +41,7 @@ class TestDomainClassifier:
             ("Celeb-synthesis/id0_id16_0000.mp4", ManipulationDomain.CELEB_DF, None),
             # Extracted crops from deepfake_crops_512
             ("deepfake_crops_512/fake/850_860/f0.png", ManipulationDomain.UNKNOWN, 850),
-            ("deepfake_crops_512/fake/01_02__meeting_serious__YVGY8LOK/f0.webp", ManipulationDomain.CELEB_DF, None),
+            ("deepfake_crops_512/fake/01_02__meeting_serious__YVGY8LOK/f0.webp", ManipulationDomain.DFD, None),
         ],
     )
     def test_domain_classification(self, path: str, expected_domain: ManipulationDomain, expected_pair: int | None) -> None:

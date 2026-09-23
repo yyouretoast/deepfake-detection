@@ -89,10 +89,49 @@ def fit_temperature_log(logits: Any, labels: Any) -> float:
         loss = np.log1p(np.exp(-np.clip(margin, -50.0, 50.0)))
         return float(np.mean(loss))
 
-    bounds = [(float(np.log(0.05)), float(np.log(10.0)))]
+    bounds = [(float(np.log(0.1)), float(np.log(10.0)))]
     res = minimize(nll_func, [0.0], method="L-BFGS-B", bounds=bounds)
     fitted_t = float(np.exp(res.x[0]))
-    return float(np.clip(fitted_t, 0.05, 10.0))
+    return float(np.clip(fitted_t, 0.1, 10.0))
+
+
+def fit_platt_scaling(
+    logits: Any, labels: Any, sample_weights: Any | None = None
+) -> tuple[float, float, float]:
+    """Fits 2-parameter Platt scaling p = sigmoid(a * z + b) to absorb balanced-sampling prior shift.
+
+    Supports optional sample_weights for stratified calibration on skewed validation cohorts.
+
+    Returns:
+        tuple (scale_a, bias_b, effective_temperature_T)
+        where T = 1.0 / max(scale_a, 1e-6)
+    """
+    logits_arr = np.asarray(logits, dtype=np.float64).flatten()
+    labels_arr = np.asarray(labels, dtype=np.float64).flatten()
+    if sample_weights is not None:
+        weights_arr = np.asarray(sample_weights, dtype=np.float64).flatten()
+        weights_arr = weights_arr / max(1e-12, float(np.sum(weights_arr)))
+    else:
+        weights_arr = None
+
+    def nll_func(params: np.ndarray) -> float:
+        a = float(params[0])
+        b = float(params[1])
+        calibrated = a * logits_arr + b
+        y_signed = 2.0 * labels_arr - 1.0
+        margin = y_signed * calibrated
+        loss = np.log1p(np.exp(-np.clip(margin, -50.0, 50.0)))
+        if weights_arr is not None:
+            return float(np.sum(weights_arr * loss))
+        return float(np.mean(loss))
+
+    # a bounded to [0.1, 10.0] (corresponding to T in [0.1, 10.0]), b in [-10.0, 10.0]
+    bounds = [(0.1, 10.0), (-10.0, 10.0)]
+    res = minimize(nll_func, [1.0, 0.0], method="L-BFGS-B", bounds=bounds)
+    a_fit = float(np.clip(res.x[0], 0.1, 10.0))
+    b_fit = float(np.clip(res.x[1], -10.0, 10.0))
+    eff_t = float(1.0 / max(a_fit, 1e-6))
+    return a_fit, b_fit, eff_t
 
 
 def compute_eer(

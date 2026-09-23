@@ -12,19 +12,39 @@ class FocalLossWithLogits(nn.Module):
     Formula: FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
     """
 
-    def __init__(self, gamma: float = 2.0, pos_weight: torch.Tensor | None = None) -> None:
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        pos_weight: torch.Tensor | None = None,
+        reduction: str = "none",
+    ) -> None:
         super().__init__()
         self.gamma = gamma
         self.pos_weight = pos_weight
+        self.reduction = reduction
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        valid_flags: torch.Tensor | None = None,
+        reduction: str | None = None,
+    ) -> torch.Tensor:
         bce_loss = F.binary_cross_entropy_with_logits(
             logits, targets, pos_weight=self.pos_weight, reduction="none"
         )
         p = torch.sigmoid(logits)
         p_t = p * targets + (1.0 - p) * (1.0 - targets)
         focal_factor = (1.0 - p_t).pow(self.gamma)
-        return focal_factor * bce_loss
+        unreduced = focal_factor * bce_loss
+        if valid_flags is not None:
+            return (unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
+        red = reduction if reduction is not None else self.reduction
+        if red == "mean":
+            return unreduced.mean()
+        elif red == "sum":
+            return unreduced.sum()
+        return unreduced
 
 
 class MaskedBCEWithLogits(nn.Module):

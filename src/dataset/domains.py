@@ -14,6 +14,7 @@ class ManipulationDomain(str, Enum):
     FACESWAP = "faceswap"
     NEURALTEXTURES = "neuraltextures"
     CELEB_DF = "celeb"
+    DFD = "dfd"
     UNKNOWN = "unknown"
 
 
@@ -27,10 +28,11 @@ class DomainInfo(NamedTuple):
 
 
 class DomainClassifier:
-    """Canonical domain classifier and holdout matcher for FF++ and Celeb-DF."""
+    """Canonical domain classifier and holdout matcher for FF++, Celeb-DF, and Google DFD."""
 
     PAIR_REGEX = re.compile(r"(?:^|[\\/])(\d{3})_\d{3}(?:[\\/\.]|$)")
-    CELEB_REGEX = re.compile(r"(?:celeb|(?:^|[\\/_\-])id\d+|__)", re.IGNORECASE)
+    CELEB_REGEX = re.compile(r"(?:celeb|(?:^|[\\/_\-])id\d+)", re.IGNORECASE)
+    DFD_REGEX = re.compile(r"(?:^|[\\/])\d{2}_\d{2}__", re.IGNORECASE)
 
     # Boundary-aware generator method regexes matching official benchmark folder names
     DEEPFAKES_METHOD_REGEX = re.compile(r"(?:^|[\\/])(?:manipulated_sequences[\\/])?deepfakes(?:[\\/]|$)", re.IGNORECASE)
@@ -81,6 +83,15 @@ class DomainClassifier:
             return DomainInfo(
                 domain=ManipulationDomain.CELEB_DF,
                 display_name="Celeb-DF v2 Synthesis",
+                is_fake=True,
+                pair_number=None,
+            )
+
+        # Tier 2b: Google DeepFakeDetection (DFD)
+        if cls.DFD_REGEX.search(norm_path) or "__" in norm_path:
+            return DomainInfo(
+                domain=ManipulationDomain.DFD,
+                display_name="Google DeepFakeDetection (DFD)",
                 is_fake=True,
                 pair_number=None,
             )
@@ -183,6 +194,9 @@ class DomainClassifier:
             "celeb-df": ManipulationDomain.CELEB_DF,
             "celeb_df": ManipulationDomain.CELEB_DF,
             "celebdf": ManipulationDomain.CELEB_DF,
+            "dfd": ManipulationDomain.DFD,
+            "google_dfd": ManipulationDomain.DFD,
+            "google-dfd": ManipulationDomain.DFD,
         }
 
         if kw in keyword_to_domain:

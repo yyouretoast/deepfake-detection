@@ -61,8 +61,12 @@ class HybridDeepfakeDetector(nn.Module):
         self.frequency_backbone = frequency_backbone
         self.enable_snr_gating = enable_snr_gating
 
-        weights = models.ConvNeXt_Small_Weights.DEFAULT if pretrained else None
-        convnext = models.convnext_small(weights=weights)
+        try:
+            weights = models.ConvNeXt_Small_Weights.DEFAULT if pretrained else None
+            convnext = models.convnext_small(weights=weights)
+        except Exception as e:
+            logger.warning("Could not load pretrained ConvNeXt weights (pretrained=%s): %s. Falling back to uninitialized backbone.", pretrained, e)
+            convnext = models.convnext_small(weights=None)
         self.spatial_backbone = convnext.features
         self.spatial_norm = convnext.classifier[0]  # nn.LayerNorm2d(768)
         self.spatial_pool = nn.AdaptiveAvgPool2d(1)

@@ -21,8 +21,10 @@ except Exception:
 
 import cv2
 import numpy as np
-import torch
-from accelerate import Accelerator
+try:
+    from accelerate import Accelerator
+except ImportError:
+    Accelerator = None
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 from torch.utils.data import DataLoader
 
@@ -36,7 +38,7 @@ if REPO_ROOT not in sys.path:
 
 from src.dataset.datasets import FaceCropDataset
 from src.dataset.domains import DomainClassifier
-from src.dataset.loader import get_transforms
+from src.dataset.loader import dedupe_split, get_transforms
 from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.evaluation.metrics import find_optimal_threshold
 from src.models.hybrid_detector import HybridDeepfakeDetector
@@ -138,9 +140,9 @@ def main() -> None:
     with open(splits_path, "r") as f:
         splits = json.load(f)
 
-    train_samples = splits["train"]
-    val_samples = splits["val"]
-    test_samples = splits.get("test", [])
+    train_samples = dedupe_split(splits["train"])
+    val_samples = dedupe_split(splits["val"])
+    test_samples = dedupe_split(splits.get("test", []))
 
     train_loto_samples = [
         s for s in train_samples

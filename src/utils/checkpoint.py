@@ -6,6 +6,7 @@ import numpy as np
 from src.evaluation.metrics import (
     calibrate_probabilities_balanced,
     compute_ece,
+    fit_platt_scaling,
     fit_temperature_log,
 )
 
@@ -19,7 +20,9 @@ __all__ = [
     "classify_three_zone",
     "clean_state_dict",
     "compute_dual_thresholds",
+    "compute_dual_thresholds_certified",
     "compute_ece",
+    "fit_platt_scaling",
     "fit_temperature_log",
     "load_detector_checkpoint",
     "normalize_confidence",
@@ -49,50 +52,62 @@ def normalize_confidence(prob: float, threshold: float = DEFAULT_THRESHOLD) -> f
     return 50.0 + 50.0 * ((thresh - prob_val) / thresh)
 
 
-def compute_dual_thresholds(
+def compute_dual_thresholds_certified(
     probs: Any, targets: Any, min_precision: float = 0.98, min_samples: int = 20
-) -> tuple[float, float]:
+) -> tuple[float, float, float, float]:
     """
-    Computes high-precision Bayesian decision thresholds (tau_real, tau_fake).
-    - tau_fake: Decision threshold guaranteeing >= min_precision for synthetic classifications.
-    - tau_real: Decision threshold guaranteeing >= min_precision for authentic classifications.
-    - min_samples: Minimum number of samples required in the precision bin to avoid sparse flukes.
-    Samples between [tau_real, tau_fake] form the forensic inconclusive/ambiguity zone.
+    Computes high-precision Bayesian decision thresholds (tau_real, tau_fake) and reports exact certified precision.
+    Returns:
+        tuple (tau_real, tau_fake, p_real_certified, p_fake_certified)
     """
     probs_arr = np.asarray(probs, dtype=np.float32)
     targets_arr = np.asarray(targets, dtype=np.int32)
     thresholds = np.linspace(0.01, 0.99, 100)
 
-    # Adaptive sample floor: scales down gracefully for small test arrays while enforcing
-    # statistical significance (e.g. min 20 samples) on production validation/test splits.
     effective_min_samples = max(1, min(min_samples, len(probs_arr) // 10))
 
-    tau_fake = 0.5
-    for t in thresholds:
-        pred_fake = (probs_arr >= t).astype(int)
-        tp = np.sum((pred_fake == 1) & (targets_arr == 1))
-        fp = np.sum((pred_fake == 1) & (targets_arr == 0))
-        if tp + fp >= effective_min_samples:
-            prec = tp / (tp + fp)
-            if prec >= min_precision:
-                tau_fake = float(t)
+    def eval_at_precision(p_target: float) -> tuple[float | None, float | None]:
+        t_fake = None
+        for t in thresholds:
+            pred_fake = (probs_arr >= t).astype(int)
+            tp = int(np.sum((pred_fake == 1) & (targets_arr == 1)))
+            fp = int(np.sum((pred_fake == 1) & (targets_arr == 0)))
+            if tp + fp >= effective_min_samples and (tp / (tp + fp)) >= p_target:
+                t_fake = float(t)
                 break
 
-    tau_real = 0.5
-    for t in reversed(thresholds):
-        pred_real = (probs_arr <= t).astype(int)
-        tn = np.sum((pred_real == 1) & (targets_arr == 0))
-        fn = np.sum((pred_real == 1) & (targets_arr == 1))
-        if tn + fn >= effective_min_samples:
-            prec = tn / (tn + fn)
-            if prec >= min_precision:
-                tau_real = float(t)
+        t_real = None
+        for t in reversed(thresholds):
+            pred_real = (probs_arr <= t).astype(int)
+            tn = int(np.sum((pred_real == 1) & (targets_arr == 0)))
+            fn = int(np.sum((pred_real == 1) & (targets_arr == 1)))
+            if tn + fn >= effective_min_samples and (tn / (tn + fn)) >= p_target:
+                t_real = float(t)
                 break
+        return t_real, t_fake
 
-    if tau_real > tau_fake:
-        tau_real, tau_fake = 0.40, 0.60
+    tr, tf = eval_at_precision(min_precision)
+    if tr is not None and tf is not None and tr < tf:
+        return float(tr), float(tf), float(min_precision), float(min_precision)
 
-    return float(tau_real), float(tau_fake)
+    # Search for maximal achievable certified precision P*
+    for p_cand in np.linspace(min_precision, 0.50, 49):
+        cand_r, cand_f = eval_at_precision(float(p_cand))
+        if cand_r is not None and cand_f is not None and cand_r < cand_f:
+            return float(cand_r), float(cand_f), float(p_cand), float(p_cand)
+
+    # When sample floor fails or data is degenerate, return neutral 0.40, 0.60 with 0.50 baseline precision
+    return 0.40, 0.60, 0.50, 0.50
+
+
+def compute_dual_thresholds(
+    probs: Any, targets: Any, min_precision: float = 0.98, min_samples: int = 20
+) -> tuple[float, float]:
+    """Computes high-precision Bayesian decision thresholds (tau_real, tau_fake)."""
+    tr, tf, _, _ = compute_dual_thresholds_certified(
+        probs, targets, min_precision=min_precision, min_samples=min_samples
+    )
+    return tr, tf
 
 
 def classify_three_zone(

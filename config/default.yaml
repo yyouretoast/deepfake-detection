@@ -26,7 +26,7 @@ training:
   batch_size: 16  # Effective batch size 32 via 2 gradient accumulation steps
   gradient_accumulation_steps: 2
   num_workers: 4
-  epochs: 15  # End-to-end differential LR fine-tuning
+  epochs: 5  # End-to-end differential LR fine-tuning (5 epochs, 1-epoch warmup)
   lr_backbone: 1.0e-5  # Backbone learning rate
   lr_head: 1.0e-4  # Classifier head learning rate
   weight_decay: 1.0e-2
