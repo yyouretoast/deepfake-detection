@@ -57,7 +57,7 @@ class DatasetResolver:
             for root, dirs, files in os.walk("/kaggle/input"):
                 if "splits.json" in files and ("fake" in dirs or "real" in dirs):
                     return os.path.abspath(root)
-            for root, dirs, files in os.walk("/kaggle/input"):
+            for root, _dirs, files in os.walk("/kaggle/input"):
                 if "splits.json" in files:
                     return os.path.abspath(root)
 

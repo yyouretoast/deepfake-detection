@@ -1,6 +1,9 @@
 """Service layer for deepfake detection inferencing, video processing, and UI components."""
 
-from src.services.ui_components import render_diagnostic_quad
+try:
+    from src.services.ui_components import render_diagnostic_quad
+except ImportError:
+    render_diagnostic_quad = None  # Optional in headless / test environments without Streamlit
 from src.services.video_engine import (
     PredictionEngine,
     load_prediction_engine,

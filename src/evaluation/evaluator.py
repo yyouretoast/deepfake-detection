@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -59,19 +59,3 @@ class ModelEvaluator:
             np.array(all_targets, dtype=np.float32).flatten(),
             np.array(all_valid, dtype=np.float32).flatten(),
         )
-
-    def evaluate_dataset(
-        self,
-        dataset: Dataset,
-        batch_size: int = 32,
-        num_workers: int = 4,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Convenience runner wrapping a Dataset in a DataLoader for evaluation."""
-        loader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            pin_memory=(self.device.type == "cuda"),
-        )
-        return self.predict_loader(loader)

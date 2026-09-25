@@ -10,8 +10,8 @@ from src.evaluation.metrics import (
     fit_temperature_log,
 )
 
-DEFAULT_THRESHOLD: float = 0.50
-DEFAULT_TEMPERATURE: float = 1.4788
+DEFAULT_THRESHOLD: float = 0.26
+DEFAULT_TEMPERATURE: float = 3.5931
 
 __all__ = [
     "DEFAULT_TEMPERATURE",

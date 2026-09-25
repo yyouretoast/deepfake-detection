@@ -52,7 +52,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     roc_auc_score,
-    roc_curve,
 )
 from torch import nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
@@ -82,8 +81,13 @@ if REPO_ROOT not in sys.path:
 
 from src.dataset.datasets import FaceCropDataset
 from src.dataset.domains import DomainClassifier, ManipulationDomain
-from src.dataset.loader import SequenceVideoDataset, extract_identities, get_transforms, group_video_sequences
-from src.dataset.resolver import DatasetResolver, find_dataset_root, resolve_splits_path
+from src.dataset.loader import (
+    SequenceVideoDataset,
+    extract_identities,
+    get_transforms,
+    group_video_sequences,
+)
+from src.dataset.resolver import DatasetResolver, resolve_splits_path
 from src.evaluation.evaluator import ModelEvaluator
 from src.evaluation.metrics import (
     compute_ece,
@@ -96,10 +100,8 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.temporal_head import BiGRUTemporalDetector
 from src.training.ema import ExponentialMovingAverage
 from src.training.optimization import create_scheduler, get_differential_param_groups
-from src.training.trainer import DualStreamTrainer
 from src.utils.checkpoint import (
     clean_state_dict,
-    compute_dual_thresholds,
     compute_dual_thresholds_certified,
 )
 
@@ -186,7 +188,7 @@ def subsample_stratified_test(
             by_source["ffpp"].append(s)
 
     selected = []
-    for src, src_samples in by_source.items():
+    for src_samples in by_source.values():
         if src_samples:
             selected.extend(subsample_balanced(src_samples, n_per_source, seed=seed))
     rng.shuffle(selected)
@@ -316,12 +318,8 @@ def evaluate_macro_val(
 
     val_samples = val_loader.dataset.samples  # type: ignore[attr-defined]
     for s in val_samples:
-        path = s[0]
-        domain_info = DomainClassifier.classify(path)
-        if domain_info.domain == ManipulationDomain.CELEB_DF:
-            all_sources.append("celeb")
-        else:
-            all_sources.append("ffpp")
+        stratum = get_sample_stratum(s[0], int(s[1]))
+        all_sources.append("celeb" if stratum.startswith("celeb") else "ffpp")
 
     preds_arr = np.array(all_preds)
     targets_arr = np.array(all_targets)
@@ -351,10 +349,12 @@ def train_dual_stream_backbone(
     batch_size: int = 16,
     lr_spatial: float = 1e-5,
     lr_spectral: float = 1e-4,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> str:
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = os.path.join(output_dir, "dual_stream_best.pth")
     resume_path = os.path.join(output_dir, "dual_stream_epoch_resume.pth")
     if not force_rerun and os.path.exists(save_path) and not os.path.exists(resume_path):
@@ -536,11 +536,13 @@ def train_spatial_convnext_baseline(
     epochs: int = 5,
     batch_size: int = 32,
     lr_spatial: float = 1e-4,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> str:
     """Trains ConvNeXt-Small spatial stream alone under the identical 4-way balanced sampling protocol."""
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_path = os.path.join(output_dir, "spatial_convnext_best.pth")
     if not force_rerun and os.path.exists(save_path):
         logger.info("Found existing spatial ConvNeXt baseline checkpoint: %s. Skipping training.", save_path)
@@ -660,10 +662,12 @@ def calibrate_validation_split(
     data_root: str,
     splits_path: str,
     output_dir: str,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> tuple[str, dict[str, float]]:
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     calibrated_path = os.path.join(output_dir, "dual_stream_calibrated.pth")
     if not force_rerun and os.path.exists(calibrated_path):
         try:
@@ -833,10 +837,12 @@ def evaluate_held_out_test(
     output_dir: str,
     spatial_checkpoint_path: str | None = None,
     n_bootstraps: int = 1000,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> dict[str, Any]:
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     test_summary_path = os.path.join(output_dir, "test_evaluation_summary.json")
     if not force_rerun and os.path.exists(test_summary_path):
         logger.info("Found existing test evaluation summary: %s. Skipping test evaluation.", test_summary_path)
@@ -1136,10 +1142,12 @@ def train_and_eval_temporal(
     epochs: int = 5,
     seq_len: int = 8,
     stride: int = 2,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> dict[str, Any]:
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     temporal_save_path = os.path.join(output_dir, "temporal_head_best.pth")
     temporal_summary_path = os.path.join(output_dir, "temporal_evaluation_summary.json")
     if not force_rerun and os.path.exists(temporal_save_path) and os.path.exists(temporal_summary_path):
@@ -1339,10 +1347,12 @@ def run_loto_experiment(
     output_dir: str,
     epochs: int = 3,
     batch_size: int = 16,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> dict[str, Any]:
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loto_summary_path = os.path.join(output_dir, "loto_results.json")
     if not force_rerun and os.path.exists(loto_summary_path):
         logger.info("Found existing LOTO benchmark results: %s. Skipping LOTO.", loto_summary_path)
@@ -1362,15 +1372,14 @@ def run_loto_experiment(
     if smoke_test:
         epochs = 1
         batch_size = min(batch_size, 8)
-        logger.info("--- [SMOKE TEST] Running 5-Fold LOTO Benchmark (1 Epoch, Subsampled) ---")
+        logger.info("--- [SMOKE TEST] Running 4-Fold LOMO Benchmark (1 Epoch, Subsampled) ---")
     else:
-        logger.info("--- Running 5-Fold Leave-One-Target-Out (LOTO) Generalization Benchmark ---")
+        logger.info("--- Running 4-Fold Leave-One-Manipulation-Out (LOMO) Generalization Benchmark ---")
     folds = [
-        ("Fold 1", "deepfakes", "FF++ Deepfakes"),
-        ("Fold 2", "face2face", "FF++ Face2Face"),
-        ("Fold 3", "faceswap", "FF++ FaceSwap"),
-        ("Fold 4", "neuraltextures", "FF++ NeuralTextures"),
-        ("Fold 5", "celeb", "Celeb-DF v2"),
+        ("Fold 1", "deepfakes", "FF++ Deepfakes (Pairs 0-99)"),
+        ("Fold 2", "face2face", "FF++ Face2Face (Pairs 100-399)"),
+        ("Fold 3", "faceswap", "FF++ FaceSwap (Pairs 400-599)"),
+        ("Fold 4", "neuraltextures", "FF++ NeuralTextures (Pairs 600-799)"),
     ]
 
     with open(splits_path, "r", encoding="utf-8") as f:
@@ -1385,34 +1394,42 @@ def run_loto_experiment(
             continue
 
         logger.info("\n=== %s: Holding out %s ===", fold_name, display_name)
-        # Filter train split: exclude fakes from holdout
+        # Filter train split: pure FaceForensics++ (quarantine Celeb-DF completely and exclude held-out fakes)
         retained_train = []
         for s in train_samples:
-            path, lbl = s[0], s[1]
-            if lbl == 1.0 and DomainClassifier.matches_holdout(path, holdout_key):
+            p, lbl = s[0], s[1]
+            norm = p.replace("\\", "/").lower()
+            parts = norm.split("/")
+            # Exclude Celeb-DF completely from training to ensure pure FF++ evaluation
+            if "celeb" in norm or (len(parts) > 1 and "id" in parts[1]):
+                continue
+            # Exclude held-out manipulation method fakes
+            if lbl == 1.0 and DomainClassifier.matches_holdout(p, holdout_key):
                 continue
             retained_train.append(s)
 
-        # Matched test evaluation: held-out fakes vs matched reals
+        # Held-out test fakes
         held_out_test_fakes = [s for s in test_samples if s[1] == 1.0 and DomainClassifier.matches_holdout(s[0], holdout_key)]
-        if holdout_key == "celeb":
-            matched_test_reals = [s for s in test_samples if s[1] == 0.0 and "id" in s[0].replace("\\", "/").split("/")[1]]
-        else:
-            matched_test_reals = [s for s in test_samples if s[1] == 0.0 and s[0].replace("\\", "/").split("/")[1].isdigit() and len(s[0].replace("\\", "/").split("/")[1]) == 3]
+        all_test_reals = [s for s in test_samples if s[1] == 0.0 and s[0].replace("\\", "/").split("/")[1].isdigit() and len(s[0].replace("\\", "/").split("/")[1]) == 3]
 
         if smoke_test:
             retained_train = subsample_balanced(retained_train, 40, seed=42)
             held_out_test_fakes = subsample_balanced(held_out_test_fakes, 10, seed=42)
-            matched_test_reals = subsample_balanced(matched_test_reals, 10, seed=42)
+            all_test_reals = subsample_balanced(all_test_reals, 10, seed=42)
 
-        eval_samples = held_out_test_fakes + matched_test_reals
+        # Canonical 1:1 balanced evaluation cohort (Rossler et al., ICCV 2019)
+        rng = random.Random(42)
+        n_eval = min(len(held_out_test_fakes), len(all_test_reals))
+        eval_fakes = held_out_test_fakes[:n_eval]
+        eval_reals = rng.sample(all_test_reals, n_eval)
+        eval_samples = eval_fakes + eval_reals
         logger.info(
-            "Fold %s: Retained Train = %d, Eval Set = %d (%d Fake, %d Real)",
+            "Fold %s: Retained Train = %d, Eval Set = %d (%d Fake, %d Real, 1:1 Balanced)",
             fold_name,
             len(retained_train),
             len(eval_samples),
-            len(held_out_test_fakes),
-            len(matched_test_reals),
+            len(eval_fakes),
+            len(eval_reals),
         )
 
         # Train compact model for 3 epochs (1 in smoke mode)
@@ -1440,7 +1457,7 @@ def run_loto_experiment(
         criterion = nn.BCEWithLogitsLoss(reduction="none")
         scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
 
-        for ep in range(epochs):
+        for _ep in range(epochs):
             model.train()
             for images, b_labels, v_flags in train_loader:
                 images = images.to(device)
@@ -1473,18 +1490,22 @@ def run_loto_experiment(
             fold_auc = float(roc_auc_score(targets, probs))
         else:
             fold_auc = 0.5
+        bacc = float(balanced_accuracy_score(targets, preds))
         fold_f1 = float(f1_score(targets, preds, zero_division=0))
         fold_prec = float(precision_score(targets, preds, zero_division=0))
+        eer, _ = compute_eer(targets, probs)
 
-        logger.info("Fold %s (%s): T* = %.4f | Zero-Shot AUC = %.4f | F1 = %.4f | Prec = %.4f", fold_name, display_name, t_fold, fold_auc, fold_f1, fold_prec)
+        logger.info("Fold %s (%s): T* = %.4f | Zero-Shot AUC = %.4f | Bal Acc = %.4f | F1 = %.4f | Prec = %.4f | EER = %.2f%%", fold_name, display_name, t_fold, fold_auc, bacc, fold_f1, fold_prec, eer * 100)
         loto_results[holdout_key] = {
             "fold_name": fold_name,
             "display_name": display_name,
-            "holdout_samples": len(held_out_test_fakes),
+            "holdout_samples": len(eval_fakes),
             "fitted_t_star": float(t_fold),
             "zero_shot_auc": fold_auc,
+            "balanced_accuracy": bacc,
             "zero_shot_f1": fold_f1,
             "zero_shot_precision": fold_prec,
+            "eer": eer,
         }
         with open(checkpoint_path, "w", encoding="utf-8") as f:
             json.dump(loto_results, f, indent=2)
@@ -1503,10 +1524,12 @@ def run_robustness_stress_test(
     data_root: str,
     splits_path: str,
     output_dir: str | None = None,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> dict[str, Any]:
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     robustness_path = os.path.join(output_dir, "robustness_results.json") if output_dir else None
     if not force_rerun and robustness_path and os.path.exists(robustness_path):
         logger.info("Found existing robustness results: %s. Skipping robustness.", robustness_path)
@@ -1563,9 +1586,9 @@ def run_robustness_stress_test(
     jpeg_results = {}
     jpeg_qs = [70] if smoke_test else [90, 70, 50, 30]
     for q in jpeg_qs:
-        def apply_jpeg(im: np.ndarray) -> np.ndarray:
+        def apply_jpeg(im: np.ndarray, quality: int = q) -> np.ndarray:
             im_bgr = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
-            _, enc = cv2.imencode(".jpg", im_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), q])
+            _, enc = cv2.imencode(".jpg", im_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
             dec_bgr = cv2.imdecode(enc, cv2.IMREAD_COLOR)
             return cv2.cvtColor(dec_bgr, cv2.COLOR_BGR2RGB)
         jpeg_results[f"q_{q}"] = evaluate_degraded_images(apply_jpeg)
@@ -1576,8 +1599,8 @@ def run_robustness_stress_test(
     blur_sigmas = [2.0] if smoke_test else [1.0, 2.0, 3.0, 4.0]
     for sigma in blur_sigmas:
         ksize = int(6 * sigma + 1) | 1
-        def apply_blur(im: np.ndarray) -> np.ndarray:
-            return cv2.GaussianBlur(im, (ksize, ksize), sigma)
+        def apply_blur(im: np.ndarray, k: int = ksize, s: float = sigma) -> np.ndarray:
+            return cv2.GaussianBlur(im, (k, k), s)
         blur_results[f"sigma_{sigma}"] = evaluate_degraded_images(apply_blur)
         logger.info("Robustness Blur sigma=%.1f: AUC = %.4f", sigma, blur_results[f"sigma_{sigma}"])
 
@@ -1585,8 +1608,8 @@ def run_robustness_stress_test(
     noise_results = {}
     noise_sigmas = [10.0] if smoke_test else [5.0, 10.0, 15.0, 20.0]
     for sigma_n in noise_sigmas:
-        def apply_noise(im: np.ndarray) -> np.ndarray:
-            noise = np.random.normal(0, sigma_n, im.shape)
+        def apply_noise(im: np.ndarray, s_n: float = sigma_n) -> np.ndarray:
+            noise = np.random.normal(0, s_n, im.shape)
             return np.clip(im.astype(np.float32) + noise, 0, 255).astype(np.uint8)
         noise_results[f"sigma_{sigma_n}"] = evaluate_degraded_images(apply_noise)
         logger.info("Robustness Noise sigma=%.1f: AUC = %.4f", sigma_n, noise_results[f"sigma_{sigma_n}"])
@@ -1595,9 +1618,9 @@ def run_robustness_stress_test(
     downscale_results = {}
     downscale_scales = [4] if smoke_test else [2, 4, 8]
     for scale in downscale_scales:
-        def apply_downscale(im: np.ndarray) -> np.ndarray:
+        def apply_downscale(im: np.ndarray, sc: int = scale) -> np.ndarray:
             h, w = im.shape[:2]
-            small = cv2.resize(im, (w // scale, h // scale), interpolation=cv2.INTER_AREA)
+            small = cv2.resize(im, (w // sc, h // sc), interpolation=cv2.INTER_AREA)
             return cv2.resize(small, (w, h), interpolation=cv2.INTER_CUBIC)
         downscale_results[f"scale_{scale}x"] = evaluate_degraded_images(apply_downscale)
         logger.info("Robustness Downscale %dx: AUC = %.4f", scale, downscale_results[f"scale_{scale}x"])
@@ -1621,10 +1644,12 @@ def run_robustness_stress_test(
 def run_latency_profiling(
     calibrated_path: str,
     output_dir: str | None = None,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device: torch.device | None = None,
     smoke_test: bool = False,
     force_rerun: bool = False,
 ) -> dict[str, Any]:
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     latency_path = os.path.join(output_dir, "latency_results.json") if output_dir else None
     if not force_rerun and latency_path and os.path.exists(latency_path):
         logger.info("Found existing latency results: %s. Skipping latency.", latency_path)
@@ -1682,7 +1707,7 @@ def run_latency_profiling(
 
         mean_ms = float(np.mean(timings))
         std_ms = float(np.std(timings))
-        fps = float((b_sz / (mean_ms / 1000.0)))
+        fps = float(b_sz / (mean_ms / 1000.0))
         results[f"batch_size_{b_sz}"] = {
             "mean_latency_ms": mean_ms,
             "std_latency_ms": std_ms,
@@ -1807,7 +1832,7 @@ def main() -> None:
             data_root=data_root,
             splits_path=splits_path,
             output_dir=out_dir,
-            epochs=1 if args.smoke_test else 3,
+            epochs=1 if args.smoke_test else 5,
             batch_size=batch_size,
             device=device,
             smoke_test=args.smoke_test,

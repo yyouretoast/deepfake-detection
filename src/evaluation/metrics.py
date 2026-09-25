@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 from scipy.optimize import minimize
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, roc_curve
+from sklearn.metrics import f1_score, roc_auc_score, roc_curve
 
 
 def compute_roc_auc_safe(
@@ -23,31 +23,6 @@ def compute_roc_auc_safe(
         return float(roc_auc_score(y_true_arr, y_score_arr))
     except (ValueError, TypeError, RuntimeError):
         return fallback
-
-
-def compute_classification_metrics(
-    y_true: np.ndarray | Sequence[float],
-    y_prob: np.ndarray | Sequence[float],
-    threshold: float = 0.5,
-) -> dict[str, float]:
-    """Computes binary classification metrics: AUC, F1, precision, recall, and accuracy."""
-    y_true_arr = np.asarray(y_true).flatten()
-    y_prob_arr = np.asarray(y_prob).flatten()
-    y_pred_arr = (y_prob_arr >= threshold).astype(int)
-
-    auc_val = compute_roc_auc_safe(y_true_arr, y_prob_arr)
-    f1_val = float(f1_score(y_true_arr, y_pred_arr, zero_division=0))
-    prec_val = float(precision_score(y_true_arr, y_pred_arr, zero_division=0))
-    rec_val = float(recall_score(y_true_arr, y_pred_arr, zero_division=0))
-    acc_val = float(np.mean(y_true_arr == y_pred_arr))
-
-    return {
-        "auc": auc_val,
-        "f1": f1_val,
-        "precision": prec_val,
-        "recall": rec_val,
-        "accuracy": acc_val,
-    }
 
 
 def compute_ece(probs: Any, targets: Any, n_bins: int = 15) -> float:
