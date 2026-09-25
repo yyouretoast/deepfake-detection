@@ -16,7 +16,7 @@ license: mit
 **A dual-stream deepfake detection pipeline fusing spatial representations with Fourier phase/magnitude spectral noise and spatiotemporal sequence modeling.**
 
 [![CI Test Suite](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-141%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/tests-145%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
 [![Python 3.10 | 3.11](https://img.shields.io/badge/Python-3.10%20%7C%203.11-3776AB?style=flat&logo=python&logoColor=white)](pyproject.toml)
 
 [![PyTorch 2.1+](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -394,21 +394,32 @@ deepfake-detection/
 │   ├── robustness_degradation.png     # 4-panel robustness degradation curve sweeps
 │   ├── temporal_attention_dynamics.png# Frame-by-frame anomaly tracking & attention
 │   └── attention_maps/                # 4-panel Grad-CAM forensic diagnostic maps
-├── notebooks/
-│   └── master_pipeline.ipynb          # End-to-end 14-cell master pipeline notebook
+├── manuscript/                        # IEEE manuscript source and vector assets
+│   ├── main.tex                       # Primary LaTeX publication document
+│   └── figures/                       # Publication vector PDFs and figures
+├── predict.py                         # Turnkey unified inference CLI tool
 ├── scripts/                           # Standalone CLI execution entry points
-│   ├── train_dual_stream_ddp.py       # Multi-GPU DDP training (ResSE architecture)
-│   ├── evaluate_test_set.py           # Single-frame evaluation, T* & Bayesian thresholds
-│   ├── train_temporal_head.py         # Dual-Path Bi-GRU spatiotemporal video training
-│   ├── evaluate_temporal_test_set.py  # Spatiotemporal evaluation on held-out video sequences
-│   ├── export_test_predictions.py     # Single-frame probability exporter
-│   ├── evaluate_subdomain_breakdown.py# Per-generator sub-domain breakdown evaluator
-│   ├── evaluate_robustness.py         # Degradation perturbation stress sweeps
-│   ├── train_loto_experiment.py       # LOTO cross-generator training runner
-│   ├── generate_benchmark_plots.py    # Publication figure rendering
-│   ├── export_onnx.py                 # Standalone ONNX exporter with Conv-BN fusion & parity validation
 │   ├── benchmark_latency.py           # Latency & throughput benchmarking (PyTorch CUDA/CPU & ONNX Runtime)
+│   ├── build_release1_splits.py       # Canonical actor-disjoint dataset split generator
+│   ├── compute_table5_ablations.py    # Architecture ablation suite generator
+│   ├── evaluate_robustness.py         # Degradation perturbation stress sweeps
+│   ├── evaluate_subdomain_breakdown.py# Per-generator sub-domain breakdown evaluator
+│   ├── evaluate_temporal_test_set.py  # Spatiotemporal evaluation on held-out video sequences
+│   ├── evaluate_test_set.py           # Single-frame evaluation, T* & Bayesian thresholds
+│   ├── export_onnx.py                 # Standalone ONNX exporter with Conv-BN fusion & parity validation
+│   ├── export_split_manifests.py      # Split metadata manifest exporter
+│   ├── export_test_predictions.py     # Single-frame probability exporter
+│   ├── generate_benchmark_plots.py    # Publication figure rendering
+│   ├── generate_publication_figures.py# Vector PDF figure compiler
+│   ├── package_arxiv.py               # ArXiv submission bundle packager
+│   ├── profile_latency_live.py        # Live GPU/CPU event-based profiling
+│   ├── run_lomo_canonical.py          # 4-fold Leave-One-Manipulation-Out evaluation
+│   ├── train_dual_stream_ddp.py       # Multi-GPU DDP training (ResSE architecture)
+│   ├── train_loto_experiment.py       # LOTO cross-generator training runner
+│   ├── train_temporal_head.py         # Dual-Path Bi-GRU spatiotemporal video training
+│   ├── verify_latex_full.py           # Full manuscript invariant verification engine
 │   └── visualize_attention_maps.py    # 4-panel Grad-CAM diagnostic generator
+├── splits/                            # Deterministic actor-disjoint split manifests
 ├── src/                               # Modular core library
 │   ├── dataset/                       # Graph partitioning, YuNet alignment, datasets
 │   ├── evaluation/                    # Test evaluators, safe metrics, ECE calculation
@@ -416,7 +427,7 @@ deepfake-detection/
 │   ├── services/                      # Inference engine & Streamlit components
 │   ├── training/                      # Distributed trainer, focal loss, EMA, schedulers
 │   └── utils/                         # Bayesian thresholds, Grad-CAM, checkpoint tools
-└── tests/                             # Comprehensive 140-test PyTest test suite
+└── tests/                             # Comprehensive 145-test PyTest test suite
 ```
 
 </details>
