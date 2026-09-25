@@ -6,6 +6,7 @@ import threading
 
 import numpy as np
 import torch
+
 try:
     from accelerate import Accelerator
 except ImportError:
@@ -36,7 +37,7 @@ def test_gradient_accumulation_order() -> None:
     x0 = torch.tensor([[1.0, 1.0, 1.0, 1.0]], device=acc.device)
     x1 = torch.tensor([[2.0, 2.0, 2.0, 2.0]], device=acc.device)
 
-    for i, x in enumerate([x0, x1]):
+    for x in [x0, x1]:
         with acc.accumulate(model):
             loss = model(x).sum()
             acc.backward(loss)

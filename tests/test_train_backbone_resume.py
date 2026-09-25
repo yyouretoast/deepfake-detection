@@ -2,9 +2,9 @@
 
 import json
 import os
-import shutil
 import sys
 import tempfile
+
 import torch
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

@@ -1,11 +1,10 @@
 """Test checkpoint resumption for Release 1 pipeline."""
 
 import os
-import shutil
 import sys
 import tempfile
+
 import torch
-from torch import nn
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:

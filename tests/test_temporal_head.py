@@ -47,7 +47,7 @@ class TestTemporalHead:
         ds_eval = SequenceVideoDataset(samples, seq_len=8, stride=2, is_train=False)
         assert ds_eval.stride == 2
         # Center start index should be (20 - 15) // 2 = 2
-        # Indices: [2, 4, 6, 8, 10, 12, 14, 16]
+        # Center frame indices: 2, 4, 6, 8, 10, 12, 14, 16
 
         # Train dataset with seq_len=8, stride=2
         ds_train = SequenceVideoDataset(samples, seq_len=8, stride=2, is_train=True)

@@ -4,8 +4,6 @@ import pytest
 import torch
 
 from src.dataset.resolver import find_weights_path
-from src.models.hybrid_detector import HybridDeepfakeDetector
-from src.utils.checkpoint import clean_state_dict
 
 
 class TestStateDictParity:
@@ -17,11 +15,9 @@ class TestStateDictParity:
         except FileNotFoundError:
             pytest.skip("Calibrated model weights not found.")
 
-        model = HybridDeepfakeDetector(pretrained=False)
+        from src.utils.checkpoint import load_detector_checkpoint
 
-        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        state_dict = ckpt.get("model_state_dict", ckpt)
-        model.load_state_dict(clean_state_dict(state_dict), strict=False)
+        model, _, _ = load_detector_checkpoint(ckpt_path, device="cpu")
         model.eval()
 
         g = torch.Generator().manual_seed(42)
@@ -30,7 +26,7 @@ class TestStateDictParity:
             out = model(x)
 
         logits = out.squeeze().tolist()
-        expected = [0.347933292388916, 0.26476922631263733]
+        expected = [8.537198066711426, 8.25665283203125]
 
         assert len(logits) == len(expected)
         for act, exp in zip(logits, expected):
