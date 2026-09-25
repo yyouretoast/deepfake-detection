@@ -5,16 +5,13 @@ import json
 import logging
 import os
 import sys
-import time
 
 import numpy as np
 import torch
 from sklearn.metrics import (
     balanced_accuracy_score,
-    classification_report,
     confusion_matrix,
     f1_score,
-    precision_recall_curve,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -27,7 +24,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from src.dataset.datasets import FaceCropDataset
-from src.dataset.domains import DomainClassifier, ManipulationDomain
+from src.dataset.domains import DomainClassifier
 from src.dataset.loader import dedupe_split
 from src.dataset.resolver import find_dataset_root, resolve_splits_path
 from src.evaluation.evaluator import ModelEvaluator
@@ -191,7 +188,6 @@ def evaluate(
     test_probs_uncal = 1.0 / (1.0 + np.exp(-test_logits))
     test_probs_cal = 1.0 / (1.0 + np.exp(-(test_logits / optimal_temp)))
     test_preds_opt = (test_probs_cal >= best_thresh).astype(int)
-    test_preds_default = (test_probs_cal >= 0.50).astype(int)
 
     # Overall Metrics
     overall_auc = roc_auc_score(test_targets, test_probs_cal)

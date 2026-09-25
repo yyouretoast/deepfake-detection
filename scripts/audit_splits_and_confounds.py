@@ -1,7 +1,6 @@
 import json
-import os
 import re
-from collections import defaultdict, Counter
+from collections import defaultdict
 
 with open("deepfake_crops_512/splits.json", "r", encoding="utf-8") as f:
     splits = json.load(f)

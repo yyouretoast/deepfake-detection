@@ -21,10 +21,12 @@ except Exception:
 
 import cv2
 import numpy as np
+
 try:
     from accelerate import Accelerator
 except ImportError:
     Accelerator = None
+import torch
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 from torch.utils.data import DataLoader
 
@@ -253,7 +255,7 @@ def main() -> None:
     model.eval()
     all_logits, all_targets = [], []
     with torch.no_grad(), accelerator.autocast():
-        for images, labels, valid_flags in eval_loader:
+        for images, labels, _valid_flags in eval_loader:
             labels = labels.unsqueeze(1) if labels.ndim == 1 else labels
             outputs = model(images)
             gathered_logits, gathered_labels = accelerator.gather_for_metrics((outputs, labels))

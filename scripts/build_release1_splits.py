@@ -1,10 +1,10 @@
 import json
-import os
-import sys
-import re
 import random
+import re
+import sys
+
 sys.path.insert(0, ".")
-from src.dataset.loader import extract_identities, dedupe_split, perform_graph_split
+from src.dataset.loader import dedupe_split, extract_identities
 
 random.seed(42)
 
@@ -28,10 +28,10 @@ for p, l in manifest_map.items():
     folder_to_crops[folder].append([p, l])
 
 # Deduplicate crops within each folder
-for folder in folder_to_crops:
+for folder, crops in folder_to_crops.items():
     seen = set()
     deduped = []
-    for entry in folder_to_crops[folder]:
+    for entry in crops:
         if entry[0] not in seen:
             seen.add(entry[0])
             deduped.append(entry)
@@ -52,9 +52,9 @@ print(f"Celeb: {len(celeb_fake_folders)} fakes, {len(celeb_real_folders)} reals"
 print(f"FF++: {len(ff_fake_folders)} fakes, {len(ff_real_folders)} reals")
 
 # 2. Celeb-DF splits: preserve verified sets from current_splits
-current_train_folders = set(e[0].replace('\\', '/').split('/')[0] + '/' + e[0].replace('\\', '/').split('/')[1] for e in current_splits["train"])
-current_val_folders = set(e[0].replace('\\', '/').split('/')[0] + '/' + e[0].replace('\\', '/').split('/')[1] for e in current_splits["val"])
-current_test_folders = set(e[0].replace('\\', '/').split('/')[0] + '/' + e[0].replace('\\', '/').split('/')[1] for e in current_splits["test"])
+current_train_folders = {e[0].replace('\\', '/').split('/')[0] + '/' + e[0].replace('\\', '/').split('/')[1] for e in current_splits["train"]}
+current_val_folders = {e[0].replace('\\', '/').split('/')[0] + '/' + e[0].replace('\\', '/').split('/')[1] for e in current_splits["val"]}
+current_test_folders = {e[0].replace('\\', '/').split('/')[0] + '/' + e[0].replace('\\', '/').split('/')[1] for e in current_splits["test"]}
 
 celeb_train = [f for f in (celeb_fake_folders + celeb_real_folders) if f in current_train_folders]
 celeb_val = [f for f in (celeb_fake_folders + celeb_real_folders) if f in current_val_folders]
@@ -157,7 +157,7 @@ train_crops = dedupe_split(train_crops)
 val_crops = dedupe_split(val_crops)
 test_crops = dedupe_split(test_crops)
 
-print(f"\nFinal Release 1 crop counts:")
+print("\nFinal Release 1 crop counts:")
 print(f"Train: {len(train_crops)} (Reals: {sum(1 for c in train_crops if c[1]==0)}, Fakes: {sum(1 for c in train_crops if c[1]==1)})")
 print(f"Val: {len(val_crops)} (Reals: {sum(1 for c in val_crops if c[1]==0)}, Fakes: {sum(1 for c in val_crops if c[1]==1)})")
 print(f"Test: {len(test_crops)} (Reals: {sum(1 for c in test_crops if c[1]==0)}, Fakes: {sum(1 for c in test_crops if c[1]==1)})")

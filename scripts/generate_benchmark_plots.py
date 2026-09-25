@@ -218,8 +218,8 @@ def plot_precision_recall(
 
     ax_pr.axhline(prevalence_sp, color=GRAY, lw=1.0, linestyle=":", label=f"Prevalence Baseline ({prevalence_sp*100:.1f}%)")
 
-    # Mark operational threshold tau* = 0.42 on spatial curve
-    tau_star = 0.4200
+    # Mark operational threshold tau* = 0.26 on spatial curve
+    tau_star = 0.2600
     idx_opt = np.argmin(np.abs(thresh_sp - tau_star)) if len(thresh_sp) > 0 else 0
     if idx_opt < len(r_sp) and idx_opt < len(p_sp):
         ax_pr.plot(r_sp[idx_opt], p_sp[idx_opt], marker="o", color=RED, markersize=6, zorder=5)
@@ -237,7 +237,7 @@ def plot_precision_recall(
 
     ax_pr.set_xlabel("Recall (Detection Sensitivity)")
     ax_pr.set_ylabel("Precision (Positive Predictive Value)")
-    ax_pr.set_title("Precision-Recall (16.78:1 Class Skew)", pad=8)
+    ax_pr.set_title("Precision-Recall (2.55:1 Class Imbalance)", pad=8)
     ax_pr.set_xlim(-0.01, 1.01)
     ax_pr.set_ylim(0.85, 1.01)
     ax_pr.legend(loc="lower left")
@@ -627,9 +627,18 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
 # ---------------------------------------------------------------------------
 # 8. LOTO Cross-Generator Generalization
 # ---------------------------------------------------------------------------
-def plot_loto(loto_data: list, output_path: str) -> None:
+def plot_loto(loto_data: list | dict, output_path: str) -> None:
     apply_base_style()
     folds = []
+    if isinstance(loto_data, dict):
+        raw_list = []
+        for k, v in loto_data.items():
+            entry = dict(v) if isinstance(v, dict) else {"zero_shot_auc": v}
+            if "holdout" not in entry:
+                entry["holdout"] = k
+            raw_list.append(entry)
+        loto_data = raw_list
+
     if isinstance(loto_data, list) and len(loto_data) > 0:
         fold_order = {
             "deepfakes": 1,
@@ -640,9 +649,11 @@ def plot_loto(loto_data: list, output_path: str) -> None:
             "fs": 3,
             "neuraltextures": 4,
             "nt": 4,
-            "celeb": 5,
         }
-        sorted_loto = sorted(loto_data, key=lambda entry: fold_order.get(entry.get("holdout", "").lower(), 99))
+        sorted_loto = sorted(
+            [entry for entry in loto_data if entry.get("holdout", "").lower() in fold_order],
+            key=lambda entry: fold_order.get(entry.get("holdout", "").lower(), 99),
+        )
         name_map = {
             "deepfakes": "Fold 1\nDeepfakes\n(FF++)",
             "df": "Fold 1\nDeepfakes\n(FF++)",
@@ -652,22 +663,20 @@ def plot_loto(loto_data: list, output_path: str) -> None:
             "fs": "Fold 3\nFaceSwap\n(FF++)",
             "neuraltextures": "Fold 4\nNeuralTextures\n(FF++)",
             "nt": "Fold 4\nNeuralTextures\n(FF++)",
-            "celeb": "Fold 5\nCeleb-DF v2\n(Cross-Dataset)",
         }
         for entry in sorted_loto:
             ho = entry.get("holdout", "").lower()
             label = name_map.get(ho, f"{ho.title()}")
             auc_val = float(entry.get("zero_shot_auc", 0.5))
-            color = PURPLE if "celeb" in ho else BLUE
+            color = BLUE
             folds.append((label, auc_val, color))
 
     if not folds:
         folds = [
-            ("Fold 1\nDeepfakes\n(FF++)", 0.9563, BLUE),
-            ("Fold 2\nFace2Face\n(FF++)", 0.9915, BLUE),
-            ("Fold 3\nFaceSwap\n(FF++)", 0.8972, BLUE),
-            ("Fold 4\nNeuralTextures\n(FF++)", 0.9379, BLUE),
-            ("Fold 5\nCeleb-DF v2\n(Cross-Dataset)", 0.7000, PURPLE),
+            ("Fold 1\nDeepfakes\n(FF++)", 0.9413, BLUE),
+            ("Fold 2\nFace2Face\n(FF++)", 0.9434, BLUE),
+            ("Fold 3\nFaceSwap\n(FF++)", 0.9558, BLUE),
+            ("Fold 4\nNeuralTextures\n(FF++)", 0.9651, BLUE),
         ]
 
     fig, ax = plt.subplots(figsize=(8.5, 4.8))
@@ -694,12 +703,12 @@ def plot_loto(loto_data: list, output_path: str) -> None:
         )
 
     ax.axhline(0.5, color=GRAY, lw=1.0, linestyle=":", label="Random Guess (AUC = 0.5000)")
-    ax.axhline(np.mean(aucs), color=GREEN, lw=1.2, linestyle="--", label=f"5-Fold Macro Mean (AUC = {np.mean(aucs):.4f})")
+    ax.axhline(np.mean(aucs), color=GREEN, lw=1.2, linestyle="--", label=f"4-Fold Macro Mean (AUC = {np.mean(aucs):.4f})")
     ax.set_xticks(xs)
     ax.set_xticklabels(labels, fontsize=8.5)
     ax.set_ylim(0.40, 1.12)
     ax.set_ylabel("Zero-Shot ROC AUC")
-    ax.set_title("Leave-One-Type-Out (LOTO) Cross-Generator Generalization", pad=10)
+    ax.set_title("4-Fold Leave-One-Manipulation-Out (LOMO) Cross-Generator Generalization", pad=10)
     ax.legend(loc="upper right", fontsize=8.5)
 
     fig.tight_layout(rect=[0, 0, 1, 0.96])

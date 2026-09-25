@@ -81,12 +81,14 @@ def verify_latex_full(file_path, results_data=None):
     # 5. Check tables against generator and numbers against results JSON
     if results_data:
         import difflib
+
         from scripts.generate_manuscript_tables import (
             extract_table,
             generate_table1,
             generate_table2,
             generate_table3,
             generate_table4,
+            generate_table_ablations,
             generate_table_latency,
             normalize_tex_table,
         )
@@ -94,10 +96,12 @@ def verify_latex_full(file_path, results_data=None):
         table_generators = [
             ("tab:main_benchmark", generate_table1),
             ("tab:subdomain_breakdown", generate_table2),
-            ("tab:loto_results", generate_table3),
             ("tab:robustness_benchmarks", generate_table4),
+            ("tab:ablations", generate_table_ablations),
             ("tab:latency", generate_table_latency),
         ]
+        if results_data.get("loto_cross_generator_benchmark"):
+            table_generators.append(("tab:loto_results", generate_table3))
 
         print("\n--- Verifying LaTeX tables against generator output ---")
         for label, gen_fn in table_generators:
