@@ -11,7 +11,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from kaggle_pipeline.run_release1_kaggle import train_dual_stream_backbone
+from scripts.run_release1_kaggle import train_dual_stream_backbone
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.training.ema import ExponentialMovingAverage
 from src.training.optimization import create_scheduler, get_differential_param_groups

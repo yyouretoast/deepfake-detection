@@ -11,7 +11,7 @@ from torch import nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 sys.path.insert(0, ".")
-from kaggle_pipeline.run_release1_kaggle import (
+from scripts.run_release1_kaggle import (
     DatasetResolver,
     DomainClassifier,
     FaceCropDataset,

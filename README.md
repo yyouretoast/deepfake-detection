@@ -397,6 +397,8 @@ deepfake-detection/
 ├── manuscript/                        # IEEE manuscript source and vector assets
 │   ├── main.tex                       # Primary LaTeX publication document
 │   └── figures/                       # Publication vector PDFs and figures
+├── notebooks/                         # Turnkey Jupyter reproduction notebooks
+│   └── master_pipeline.ipynb          # End-to-end multi-GPU training, evaluation & export
 ├── predict.py                         # Turnkey unified inference CLI tool
 ├── scripts/                           # Standalone CLI execution entry points
 │   ├── benchmark_latency.py           # Latency & throughput benchmarking (PyTorch CUDA/CPU & ONNX Runtime)
@@ -414,6 +416,7 @@ deepfake-detection/
 │   ├── package_arxiv.py               # ArXiv submission bundle packager
 │   ├── profile_latency_live.py        # Live GPU/CPU event-based profiling
 │   ├── run_lomo_canonical.py          # 4-fold Leave-One-Manipulation-Out evaluation
+│   ├── run_release1_kaggle.py         # Standalone 2× T4 Kaggle reproduction pipeline
 │   ├── train_dual_stream_ddp.py       # Multi-GPU DDP training (ResSE architecture)
 │   ├── train_loto_experiment.py       # LOTO cross-generator training runner
 │   ├── train_temporal_head.py         # Dual-Path Bi-GRU spatiotemporal video training

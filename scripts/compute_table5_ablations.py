@@ -37,7 +37,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.abspath("."))
 
-from kaggle_pipeline.run_release1_kaggle import (
+from scripts.run_release1_kaggle import (
     DatasetResolver,
     FaceCropDataset,
     get_transforms,
