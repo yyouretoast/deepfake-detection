@@ -8,6 +8,7 @@ exclude = [
     ".ruff_cache",
     "__pycache__",
     ".venv",
+    ".venv_gpu",
     "venv",
     "env",
     "scratch",

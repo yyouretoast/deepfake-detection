@@ -22,6 +22,7 @@ dist/
 *.h5
 /models/
 checkpoint_state/
+checkpoints_loto/
 
 # Heavy Binary Data & Datasets
 *.npz
@@ -56,5 +57,9 @@ MASTER_FORENSIC_ENGINEERING_COMPENDIUM.md
 REPO_AUDIT_PROMPT_TITAN.md
 .venv_gpu/
 .cache/
+.mpl_cache/
+manuscript_arxiv.zip
+manuscript_arxiv.tar.gz
+manuscript/paper_preview.html
 smoke_test_run/
 
