@@ -1,62 +1,44 @@
 {
   "deepfakes": {
-    "display_name": "DEEPFAKES",
-    "fakes_count": 480,
-    "real_count": 756,
-    "auc": 0.9625220458553793,
-    "balanced_accuracy": 0.8527612433862434,
-    "f1": 0.8129370629370629,
-    "precision": 0.7003012048192772,
-    "recall": 0.96875
+    "fake_crops": 192,
+    "auc": 0.9591889880952382,
+    "f1": 0.5868852459016394,
+    "precision": 0.42822966507177035,
+    "recall": 0.9322916666666666
   },
   "face2face": {
-    "display_name": "FACE2FACE",
-    "fakes_count": 72,
-    "real_count": 756,
-    "auc": 0.997501469723692,
-    "balanced_accuracy": 0.8683862433862434,
-    "f1": 0.4198250728862974,
-    "precision": 0.2656826568265683,
-    "recall": 1.0
+    "fake_crops": 576,
+    "auc": 0.9462869957010582,
+    "f1": 0.7844891871737509,
+    "precision": 0.6875816993464052,
+    "recall": 0.9131944444444444
   },
   "faceswap": {
-    "display_name": "FACESWAP",
-    "fakes_count": 24,
-    "real_count": 756,
-    "auc": 0.9091435185185186,
-    "balanced_accuracy": 0.8267195767195767,
-    "f1": 0.17959183673469387,
-    "precision": 0.09954751131221719,
-    "recall": 0.9166666666666666
+    "fake_crops": 240,
+    "auc": 0.9658097718253968,
+    "f1": 0.6353276353276354,
+    "precision": 0.48268398268398266,
+    "recall": 0.9291666666666667
   },
   "neuraltextures": {
-    "display_name": "NEURALTEXTURES",
-    "fakes_count": 12,
-    "real_count": 756,
-    "auc": 0.9749228395061728,
-    "balanced_accuracy": 0.8683862433862434,
-    "f1": 0.10762331838565023,
-    "precision": 0.05687203791469194,
-    "recall": 1.0
+    "fake_crops": 348,
+    "auc": 0.950944170771757,
+    "f1": 0.6941045606229144,
+    "precision": 0.5662431941923775,
+    "recall": 0.896551724137931
   },
   "celeb": {
-    "display_name": "CELEB",
-    "fakes_count": 11992,
-    "real_count": 756,
-    "auc": 0.8166483233090137,
-    "balanced_accuracy": 0.7476807730727011,
-    "f1": 0.8546599022923713,
-    "precision": 0.9785929432013769,
-    "recall": 0.7585890593729153
+    "fake_crops": 5700,
+    "auc": 0.912787206315488,
+    "f1": 0.8753894080996885,
+    "precision": 0.9161871883390871,
+    "recall": 0.8380701754385965
   },
-  "unknown": {
-    "display_name": "UNKNOWN",
-    "fakes_count": 108,
-    "real_count": 756,
-    "auc": 0.9727243778169703,
-    "balanced_accuracy": 0.8637566137566137,
-    "f1": 0.5169082125603864,
-    "precision": 0.34967320261437906,
-    "recall": 0.9907407407407407
+  "dfd": {
+    "fake_crops": 11992,
+    "auc": 0.8651115128339528,
+    "f1": 0.8201418029228765,
+    "precision": 0.9726575906646837,
+    "recall": 0.7089726484322882
   }
 }

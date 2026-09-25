@@ -1,0 +1,69 @@
+{
+  "train": {
+    "total_crops": 37104,
+    "authentic_crops": 11052,
+    "synthetic_crops": 26052,
+    "unique_videos": 3092,
+    "domains": {
+      "celeb_df_v2": 19824,
+      "faceforensics": 17280
+    },
+    "generators": {
+      "celeb_synthesis": 17412,
+      "authentic_celeb": 2412,
+      "deepfakes": 912,
+      "face2face": 2496,
+      "faceswap": 1860,
+      "neuraltextures": 1752,
+      "ffpp_extended": 1620,
+      "authentic_ffpp": 8640
+    },
+    "csv_manifest": "splits/train_split.csv"
+  },
+  "val": {
+    "total_crops": 35016,
+    "authentic_crops": 4008,
+    "synthetic_crops": 31008,
+    "unique_videos": 2918,
+    "domains": {
+      "celeb_df_v2": 31656,
+      "faceforensics": 3360
+    },
+    "generators": {
+      "celeb_synthesis": 29328,
+      "authentic_celeb": 2328,
+      "deepfakes": 96,
+      "face2face": 528,
+      "faceswap": 300,
+      "neuraltextures": 300,
+      "ffpp_extended": 456,
+      "authentic_ffpp": 1680
+    },
+    "csv_manifest": "splits/val_split.csv"
+  },
+  "test": {
+    "total_crops": 26981,
+    "authentic_crops": 7609,
+    "synthetic_crops": 19372,
+    "unique_videos": 2250,
+    "domains": {
+      "celeb_df_v2": 8029,
+      "google_dfd": 11992,
+      "faceforensics": 3360,
+      "youtube": 3600
+    },
+    "generators": {
+      "celeb_synthesis": 5700,
+      "deepfake_detection": 11992,
+      "authentic_celeb": 2329,
+      "deepfakes": 192,
+      "face2face": 576,
+      "faceswap": 240,
+      "neuraltextures": 348,
+      "ffpp_extended": 324,
+      "authentic_ffpp": 1680,
+      "authentic_youtube": 3600
+    },
+    "csv_manifest": "splits/test_split.csv"
+  }
+}

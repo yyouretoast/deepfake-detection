@@ -52,12 +52,12 @@ Intermediate representations extracted across the spatial, residual steganograph
 
 ## System Methodology
 
-* **Dual-Domain Gated Fusion**: Combines semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a **4-Stage ResSE-Spectral Tower** (~2.99M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
+* **Dual-Domain Gated Fusion**: Combines semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a **4-Stage ResSE-Spectral Tower** (~2.4M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
 * **Spectral SNR-Adaptive Gating**: Attenuates the spectral branch ($\gamma \to 0$) when high-frequency noise residual power drops below threshold (e.g., under severe Gaussian blur or compression), dynamically shifting classification weight to the spatial ConvNeXt branch.
 * **Disjoint Identity Graph Partitioning**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity overlap ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
-* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8719` ROC AUC** (+4.71% over single-frame baseline) and capturing transient manipulation artifacts that can be diluted under sequence averaging.
-* **Bayesian 3-Zone Decision Boundaries**: Post-hoc probability calibration ($T^* = 4.288$, $\tau^* = 0.4200$) establishes operational decision thresholds ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving $\ge$ 98% empirical precision on confirmed synthetic samples while routing borderline inputs to manual review.
-* **Inference Throughput**: 60.9 FPS inference throughput on an NVIDIA Tesla T4 with dynamic batching.
+* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8994` ROC AUC** (-0.89% EER reduction over naive frame averaging) and capturing transient manipulation artifacts that can be diluted under sequence averaging.
+* **Bayesian 3-Zone Decision Boundaries**: Post-hoc affine Platt scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$, $\tau^* = 0.2600$) slashes Expected Calibration Error by 49.4% ($0.1965 \to 0.0994$) and establishes operational decision thresholds ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving 90.51% empirical precision on test while routing borderline inputs to manual review.
+* **Inference Throughput**: 71.0 FPS inference throughput on an NVIDIA GeForce RTX 4060 Laptop GPU with dynamic batching (14.08 ms amortized per frame at batch size 32; 23.77 ms single-frame forward at $B=1$).
 
 ---
 
@@ -67,8 +67,8 @@ All model weights are hosted on the Hugging Face Model Hub: [`yyouretoast/deepfa
 
 | Model Checkpoint | Weights File | Parameters | Size | Task / Domain | ROC AUC | Calibrated Threshold ($\tau^*$) | SHA-256 Checksum | Direct Download |
 | :--- | :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: |
-| **Dual-Stream Detector** | `dual_stream_calibrated.pth` | 53.6M | **214.7 MB** | Single-Frame Spatial + Spectral | **`0.8248`** | `0.4200` ($T^*=4.288$) | `cacdd1f6...fd5237` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
-| **Bi-GRU Temporal Head** | `temporal_head_best.pth` | 3.32M | **13.3 MB** | Spatiotemporal Video Sequences | **`0.8719`** | `0.3895` | `5976689a...d0700e` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
+| **Dual-Stream Detector** | `dual_stream_calibrated.pth` | 52.9M | **204.7 MB** | Single-Frame Spatial + Spectral | **`0.8656`** | `0.2600` ($T_{\text{eff}}=3.5931$) | `e2184689...a5c3ba` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
+| **Bi-GRU Temporal Head** | `temporal_head_best.pth` | 1.8M | **12.7 MB** | Spatiotemporal Video Sequences | **`0.8994`** | `0.1100` | `b81eed74...72951abf` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
 
 ### Automated Download via CLI
 
@@ -95,7 +95,19 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. CLI Test Set Evaluation
+### 2. Turnkey Inference CLI (`predict.py`)
+
+Run face detection, dual-stream feature extraction, Platt calibration, and Bayesian 3-zone triaging directly on any image or video crop:
+
+```bash
+# Human-readable forensic report
+python predict.py suspect_face.jpg
+
+# Structured JSON output for automated ingestion
+python predict.py suspect_face.jpg --json
+```
+
+### 3. CLI Test Set Evaluation
 
 Run the held-out test split evaluation with pre-calibrated temperature scaling and Bayesian thresholding:
 
@@ -162,126 +174,75 @@ Access the application at `http://localhost:8501` supporting:
 
 ## Empirical Benchmarks & Literature Comparison
 
-### 1. In-Distribution & Cross-Dataset Baseline Comparison
+### 1. Held-Out Evaluation Benchmark ($N = 26,981$ crops, $2,248$ video sequences)
 
-Evaluated under standard literature benchmark protocols on FaceForensics++ (c23 / lightly compressed) and Celeb-DF v2 (cross-dataset zero-shot):
+Evaluated across the strictly disjoint held-out test cohort (7,609 authentic, 19,372 synthetic crops; pair-disjoint FaceForensics++, actor-disjoint Celeb-DF v2, zero-shot Google DFD):
 
-| Model Architecture | Input Stream(s) | FF++ (c23) ROC AUC | Celeb-DF v2 (Cross-Dataset) AUC | Sequence Modeling | Inference Latency (T4) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **MesoInception-4** (Afchar et al., 2018) | Spatial RGB | `0.8310` | `0.6120` | ❌ No | **8.2 ms** |
-| **XceptionNet** (Rössler et al., 2019) | Spatial RGB | `0.9630` | `0.6550` | ❌ No | 22.4 ms |
-| **F3-Net** (Qian et al., ECCV 2020) | Spatial + Frequency | `0.9790` | `0.6920` | ❌ No | 28.5 ms |
-| **SPSL** (Liu et al., CVPR 2021) | Spatial + Phase Spectrum | `0.9690` | `0.6880` | ❌ No | 31.0 ms |
-| **Ours (Single-Frame Spatial+ResSE)** | **Spatial + SRM/Bayar 2D FFT** | **`0.9810`** | **`0.7000`** | ❌ No | **16.4 ms (60.9 FPS)** |
-| **Ours (Dual-Path Bi-GRU Video)** | **Spatial + Spectral + Temporal** | **`0.9904`** | **`0.7420`** | **✅ Dual-Path (Attn+Max)** | **18.6 ms (53.7 FPS)** |
-
----
-
-### 2. Complete Held-Out Multimodal Test Split Performance
-
-Evaluated across the full held-out test split (13,444 facial crops: 756 authentic real faces, 12,688 deepfakes across all 5 generator families at 16.78:1 class skew; 1,120 video sequences) on an NVIDIA Tesla T4:
-
-| Metric | Single-Frame Spatial Model | Video Spatiotemporal Bi-GRU | Delta / Impact |
-| :--- | :---: | :---: | :--- |
-| **ROC AUC** | **`0.8248`** | **`0.8719`** | **+4.71%** discriminative improvement |
-| **PR AUC** | **`0.9860`** *(1:1 Bal: `0.8298`)* | **`0.9904`** | Precision-recall area under curve (16.78:1 skew) |
-| **Equal Error Rate (EER)** | `24.73%` | **`18.98%`** | **-5.75%** biometric verification error drop |
-| **Fake Precision** | **`98.00%`** | **`98.60%`** | **+0.60%** false alarm suppression |
-| **Fake Recall** | **`77.04%`** | **`79.75%`** | **+2.71%** detection coverage |
-| **Overall Accuracy** | **`76.85%`** | **`79.82%`** | **+2.97%** classification rate |
-| **Balanced Accuracy** | **`75.36%`** | **`80.35%`** | **+4.99%** balanced accuracy gain |
-| **Fake F1-Score** | **`0.8627`** | **`0.8818`** | **+0.0191** F1 balance |
-| **Macro F1-Score** | **`0.5631`** | **`0.5964`** | Balanced across real/fake classes |
-| **Optimal Threshold ($\tau^*$)** | `0.4200` | `0.3895` | Derived via Youden's $J$ statistic |
-| **Calibrated Temperature ($T^*$)**| `4.2880` | -- | SciPy L-BFGS-B log-temperature scaling |
-| **Expected Calibration Error (ECE)** | **`0.0785`** | -- | Temperature-calibrated ($69.8\%$ error drop from raw $0.2597$) |
-
-#### Balanced 1:1 Prevalence-Invariant Test Benchmark (63 Real vs 63 Fake Sequences)
-
-To account for the $16.8:1$ test class imbalance, the model was evaluated on a prevalence-normalized $1:1$ subset:
-* **Balanced ROC AUC:** `0.8610` | **Balanced Accuracy:** `76.98%`
-* **Real Class Performance:** Precision: `75.00%` | Recall: `80.95%` | F1-Score: `0.7786`
-* **Fake Class Performance:** Precision: `79.31%` | Recall: `73.02%` | F1-Score: `0.7603`
-
-<div align="center">
-  <img src="figures/roc_curve.png" width="48%" alt="ROC Curve" />
-  <img src="figures/ece_reliability.png" width="48%" alt="ECE Reliability Diagram" />
-</div>
-
-*Figure 1: Left: ROC comparison on held-out test split (13,444 crops, 1,120 video sequences). Right: Expected Calibration Error (ECE) reliability diagram showing probability alignment before and after Platt temperature scaling.*
-
-<div align="center">
-  <img src="figures/precision_recall_curve.png" width="48%" alt="Precision-Recall Curve" />
-  <img src="figures/confusion_matrices.png" width="48%" alt="Normalized Confusion Matrices" />
-</div>
-
-*Figure 2: Left: Precision-Recall curves evaluating detector operating characteristics under the 16.78:1 synthetic-to-authentic class skew alongside operational F1-score threshold sweeps. Right: Normalized confusion matrices at calibrated decision thresholds demonstrating exact sample counts for Type I errors (false positives / authentic flagged as synthetic) and Type II errors (false negatives / synthetic undetected).*
+| Method / Architecture Variant | Modality | Input Resolution | ROC AUC $\uparrow$ | PR AUC $\uparrow$ | Fake F1 $\uparrow$ | Balanced Acc. $\uparrow$ | Fake Prec. $\uparrow$ | Fake Rec. $\uparrow$ | EER (\%) $\downarrow$ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Trivial Baseline (Always Fake) | Frame | $256 \times 256$ | 0.5000 | 0.7180 | 0.8358 | 50.00% | 71.80% | 100.00% | 50.00% |
+| Spatial Baseline (ConvNeXt-Small) | Frame | $256 \times 256$ | 0.8370 | 0.9226 | 0.7810 | 75.17% | 90.50% | 68.68% | 24.43% |
+| **Dual-Stream Gated Fusion (Ours)** | **Frame** | **$256 \times 256$** | **0.8656** | **0.9374** | **0.8292** | **78.04%** | **90.51%** | **76.50%** | **21.82%** |
+| Naive Uniform Frame Averaging | Video | $8 \times 256^2$ | 0.8962 | 0.9559 | 0.8515 | 81.98% | 93.28% | 78.31% | 19.43% |
+| Temporal Max-Pooling | Video | $8 \times 256^2$ | 0.8544 | 0.9167 | 0.8785 | 77.48% | 87.00% | 88.72% | 21.48% |
+| **Spatiotemporal Bi-GRU (Ours)** | **Video** | **$8 \times 256^2$** | **0.8994** | **0.9571** | **0.8517** | **82.28%** | **93.62%** | **78.13%** | **18.54%** |
 
 ---
 
-### 3. In-Distribution Per-Generator Breakdown
+### 2. Fine-Grained Subdomain Performance Breakdown
 
-Evaluated on 756 real face crops against each respective manipulation generator in the held-out test split:
+Evaluated on held-out test synthetic media alongside matched authentic controls across manipulation architectures:
 
-| Generator Sub-Domain | Manipulation Family | Test ROC AUC | Balanced Acc | Fake Precision | Fake Recall |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **FF++ Face2Face** | Facial Reenactment (Pairs 100–399) | **`0.9975`** | **`86.84%`** | 26.57% | **100.00%** |
-| **FF++ NeuralTextures** | Neural Texture Rendering (Pairs 600–799) | **`0.9749`** | **`86.84%`** | 5.69% | **100.00%** |
-| **FF++ Deepfakes** | Autoencoder Face Replacement (Pairs 0–99) | **`0.9625`** | **`85.28%`** | 70.03% | **96.88%** |
-| **FF++ FaceSwap** | Classical Graphics Face Swapping (Pairs 400–599) | **`0.9091`** | **`82.67%`** | 9.95% | **91.67%** |
-| **Celeb-DF v2** | High-Quality DeepFake Synthesis | **`0.8166`** | **`74.77%`** | **97.86%** | **75.86%** |
-| **FF++ Miscellaneous** | Unspecified Manipulation Pairs (108 crops) | **`0.9727`** | **`86.38%`** | 34.97% | **99.07%** |
-
-<div align="center">
-  <img src="figures/per_generator_auc.png" width="75%" alt="Per-Generator AUC Breakdown" />
-</div>
-
-*Figure: Per-generator discriminative capacity across all sub-domain manipulation technologies in the held-out test set.*
+| Manipulation Subdomain | Test Fakes ($N$) | ROC AUC | Fake F1 | Fake Precision | Fake Recall | Test Class Skew |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **FF++ Deepfakes** | 192 | 0.9592 | 0.5869 | 0.4282 | 0.9323 | 1 : 8.75 |
+| **FF++ Face2Face** | 576 | 0.9463 | 0.7845 | 0.6876 | 0.9132 | 1 : 2.92 |
+| **FF++ FaceSwap** | 240 | 0.9658 | 0.6353 | 0.4827 | 0.9292 | 1 : 7.00 |
+| **FF++ NeuralTextures** | 348 | 0.9509 | 0.6941 | 0.5662 | 0.8966 | 1 : 4.83 |
+| **Celeb-DF v2** | 5,700 | 0.9128 | 0.8754 | 0.9162 | 0.8381 | 2.45 : 1 |
+| **Google DFD (Zero-Shot)** | 11,992 | 0.8651 | 0.8201 | 0.9727 | 0.7090 | 7.14 : 1 |
+| **Complete Test Cohort** | **19,372** | **0.8656** | **0.8292** | **0.9051** | **0.7650** | **2.55 : 1** |
 
 ---
 
-### 4. Leave-One-Type-Out (LOTO) Cross-Generator Generalization
+### 3. Cross-Generator Generalization & Canonical 4-Fold LOMO Benchmark
 
-To evaluate whether the detector memorizes generator-specific signatures or learns fundamental synthesis artifacts, a 5-fold Leave-One-Type-Out experiment was conducted by systematically excluding an entire generator family from training:
+A primary challenge in media forensics is generalizing to unseen synthesis algorithms. In strict accordance with the FaceForensics++ benchmark standard, we evaluate a canonical 4-Fold Leave-One-Manipulation-Out (LOMO) cross-generator protocol evaluated on 1:1 balanced cohorts ($N_{\text{real}} = N_{\text{fake}}$) where all synthetic media from the targeted architecture is quarantined from training and validation splits:
 
-| LOTO Fold | Excluded Holdout Generator | Zero-Shot AUC | Zero-Shot F1 (τ=0.50) | Precision | Recall | Manipulation Category |
-| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Fold 1** | `FF++ Deepfakes` (Pairs 0–99) | **`0.9563`** | **`0.9233`** | 95.02% | 89.79% | Autoencoder Face Replacement |
-| **Fold 2** | `FF++ Face2Face` (Pairs 100–399) | **`0.9915`** | **`0.9530`** | 92.21% | 98.61% | 3DMM Facial Reenactment |
-| **Fold 3** | `FF++ FaceSwap` (Pairs 400–599) | **`0.8972`** | **`0.7220`** | 63.69% | 83.33% | Graphics Face Swapping |
-| **Fold 4** | `FF++ NeuralTextures` (Pairs 600–799) | **`0.9379`** | **`0.6081`** | 51.14% | 75.00% | Neural Texture Rendering |
-| **Fold 5** | `Celeb-DF v2` (Cross-Dataset) | **`0.7000`** | **`0.4336`** | 97.63% | 27.87% | Cross-Dataset DeepFake Synthesis |
+| Fold | Held-Out Generator Target | Holdout Fakes | Fitted $T^*$ | Zero-Shot ROC AUC $\uparrow$ | Balanced Acc. $\uparrow$ | Fake F1 $\uparrow$ | Precision $\uparrow$ | EER (\%) $\downarrow$ |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Fold 1** | FF++ Deepfakes (Pairs 0–99) | 192 | 2.3923 | **0.9413** | 88.54% | **0.8785** | 93.53% | 12.24% |
+| **Fold 2** | FF++ Face2Face (Pairs 100–399) | 576 | 2.3647 | **0.9434** | 88.45% | **0.8783** | 92.84% | 12.33% |
+| **Fold 3** | FF++ FaceSwap (Pairs 400–599) | 240 | 2.1169 | **0.9558** | 87.29% | **0.8732** | 87.14% | 12.29% |
+| **Fold 4** | FF++ NeuralTextures (Pairs 600–799) | 348 | 1.9302 | **0.9651** | 89.08% | **0.8848** | 93.59% | 10.06% |
+| **Macro** | **Macro-Average Across All 4 Folds** | **1,356** | — | **0.9514** | **88.34%** | **0.8787** | **91.77%** | **11.73%** |
 
-<div align="center">
-  <img src="figures/loto_generalization.png" width="75%" alt="LOTO Generalization" />
-</div>
-
-*Figure: Zero-shot cross-generator generalization across all 5 LOTO folds. Within-dataset FaceForensics++ holdouts average `0.9457` AUC, while cross-dataset Celeb-DF v2 achieves `0.7000` AUC under the ResSE architecture (overall 5-fold macro-average: `0.8966` AUC).*
+*For complete cross-dataset acquisition shifts, zero-shot transfer on Celeb-DF v2 without adaptation yields 0.5961 ROC AUC (matching published literature baselines: MesoNet 0.548, Capsule 0.575, Xception 0.653, F3-Net 0.652), while our primary model achieves 0.9128 ROC AUC on Celeb-DF v2 and 0.8651 zero-shot ROC AUC on Google DeepFakeDetection.*
 
 ---
 
-### 5. Robustness Under Real-World Degradation
+### 4. Robustness Stress-Testing Under Forensic Degradations
 
-Evaluated across 4 real-world distortion families on the held-out test split:
+Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 discrete degradation profiles):
 
-<div align="center">
-  <img src="figures/robustness_degradation.png" width="85%" alt="Robustness Degradation Sweeps" />
-</div>
-
-| Perturbation Attack | Severity Parameter | ROC AUC | F1-Score | Retention vs. Clean |
-| :--- | :--- | :---: | :---: | :---: |
-| **Clean Baseline** | Unperturbed | `0.7834` | `0.7042` | 100.0% |
-| **JPEG Compression** | Quality = 90 | `0.7581` | `0.6961` | 96.8% |
-| **JPEG Compression** | Quality = 50 (Social Media Recompression) | `0.7172` | `0.6769` | 91.5% |
-| **JPEG Compression** | Quality = 30 (Aggressive Compression) | `0.6496` | `0.6046` | 82.9% |
-| **Spatial Downscale** | Scale = 0.75× | `0.7660` | `0.7028` | 97.8% |
-| **Spatial Downscale** | Scale = 0.50× | `0.7449` | `0.7192` | 95.1% |
-| **Spatial Downscale** | Scale = 0.25× | `0.5358` | `0.6723` | 68.4% |
-| **Gaussian Blur** | $\sigma = 0.5$ | `0.7746` | `0.7143` | 98.9% |
-| **Gaussian Blur** | $\sigma = 1.0$ | `0.7307` | `0.6911` | 93.3% |
-| **Gaussian Blur** | $\sigma = 1.5$ | `0.6351` | `0.6766` | 81.1% |
-| **Gaussian Noise** | $\sigma = 5$ | `0.6441` | `0.6780` | 82.2% |
-| **Gaussian Noise** | $\sigma = 15$ | `0.5484` | `0.6735` | 70.0% |
+| Perturbation Type | Perturbation Setting | ROC AUC | $\Delta\text{AUC}$ (%) |
+| :--- | :--- | :---: | :---: |
+| **Clean Baseline** | **No Perturbation ($256 \times 256$)** | **0.8656** | **0.00%** |
+| JPEG Compression | Quality Factor $Q = 90$ | 0.8408 | -2.87% |
+| | Quality Factor $Q = 70$ | 0.7973 | -7.90% |
+| | Quality Factor $Q = 50$ | 0.7626 | -11.91% |
+| | Quality Factor $Q = 30$ | 0.7410 | -14.40% |
+| Spatial Downscaling | Downscale Factor $2\times$ | 0.8634 | -0.26% |
+| | Downscale Factor $4\times$ | 0.8354 | -3.50% |
+| | Downscale Factor $8\times$ | 0.6961 | -19.59% |
+| Additive Gaussian Noise | Noise Std. Dev. $\sigma = 5.0$ | 0.7886 | -8.90% |
+| | Noise Std. Dev. $\sigma = 10.0$ | 0.7576 | -12.48% |
+| | Noise Std. Dev. $\sigma = 15.0$ | 0.7429 | -14.18% |
+| | Noise Std. Dev. $\sigma = 20.0$ | 0.7274 | -15.97% |
+| Gaussian Low-Pass Blur | Blur Std. Dev. $\sigma = 1.0$ | 0.8596 | -0.69% |
+| | Blur Std. Dev. $\sigma = 2.0$ | 0.8021 | -7.34% |
+| | Blur Std. Dev. $\sigma = 3.0$ | 0.7232 | -16.46% |
+| | Blur Std. Dev. $\sigma = 4.0$ | 0.6722 | -22.35% |
 
 ---
 
@@ -313,7 +274,7 @@ Evaluated across 4 real-world distortion families on the held-out test split:
 • ConvNeXt-Small Backbone                       • 1 Learnable Bayar-Stamm Conv (1 ch)
 • LayerNorm2d Feature Normalization             • 2D Real FFT (torch.fft.fft2, FP32)
 • 512-d Spatial Embedding (f_s)                 • 10 Log-Mag + 10 Phase Angle Maps
-                                                • ResSE-Spectral Tower (4 stages + SE, 2.99M)
+                                                • ResSE-Spectral Tower (4 stages + SE, 2.4M)
                                                 • 512-d Spectral Embedding (f_f)
                                                 • Auxiliary Supervision Head (λ = 0.3)
        │                                                │
@@ -330,10 +291,10 @@ Evaluated across 4 real-world distortion families on the held-out test split:
        ▼                                                ▼
 [ Frame-Level Classifier Head ]              [ Spatiotemporal Dual-Path Bi-GRU ]
 • Linear(1024, 256) -> ReLU -> Linear(256, 1) • Input: [e_t || Δe_t] ∈ R^1024 (Motion Velocity)
-• Scaled Logit: z / T* (T* = 4.2880)         • 2-Layer Bidirectional GRU (3.32M params)
+• Affine Platt Scaling: a=0.2783, b=0.4089    • 2-Layer Bidirectional GRU (1.8M params)
 • Bayesian Dual Thresholds (τ_real, τ_fake)  • Dual Pooling: Attention (c_attn) + Max (c_max)
 • 3 Forensic Certainty Zones                 • Classifier: Linear(1024, 128) -> Linear(128, 1)
-• Single-Frame AUC: 0.8248                   • Video Sequence AUC: 0.8719 (60.9 FPS Engine)
+• Single-Frame AUC: 0.8656 (τ* = 0.2600)     • Video Sequence AUC: 0.8994 (60.9 FPS Engine)
 ```
 
 <div align="center">
@@ -341,26 +302,26 @@ Evaluated across 4 real-world distortion families on the held-out test split:
   <img src="figures/temporal_attention_dynamics.png" width="48%" alt="Spatiotemporal Anomaly Dynamics" />
 </div>
 
-*Figure: Dual-path decision metrics. Left: Probability density separation under Bayesian 3-zone decision boundaries with ≥98% confirmed synthetic precision. Right: Spatiotemporal frame-by-frame attention dynamics isolating transient manipulation artifacts in video sequences.*
+*Figure: Dual-path decision metrics. Left: Probability density separation under Bayesian 3-zone decision boundaries with ≥90.5% confirmed synthetic precision. Right: Spatiotemporal frame-by-frame attention dynamics isolating transient manipulation artifacts in video sequences.*
 
 ---
 
 ## Dataset Layout & Split Protocol
 
-To guarantee **100% zero identity leakage**, actor IDs (`id0_id16`) are partitioned using `networkx.Graph` connected components:
+To guarantee **100% zero identity leakage**, splits enforce pair-disjoint separation on FaceForensics++, actor-disjoint identity separation on Celeb-DF v2 (`networkx.Graph` connected components), and hold Google DeepFakeDetection strictly out for zero-shot testing:
 
 $$
 \text{Actors}_{\text{train}} \cap \text{Actors}_{\text{val}} \cap \text{Actors}_{\text{test}} = \emptyset
 $$
 
-| Split | Total Samples | % of Dataset | Real Faces | Fake Faces | Fake:Real Ratio |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Train** | 45,972 | 40.2% | 17,256 | 28,716 | 1.66 : 1 |
-| **Validation** | 54,913 | 48.0% | 4,657 | 50,256 | 10.79 : 1 |
-| **Test** | 13,444 | 11.8% | 756 | 12,688 | 16.78 : 1 |
-| **Total** | **114,329** | **100.0%** | **22,669** | **91,660** | **4.04 : 1** |
+| Split | Total Samples | % of Dataset | Real Faces | Fake Faces | Fake:Real Ratio | Video Sequences |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Train** | 37,104 | 37.4% | 11,052 | 26,052 | 2.36 : 1 | 3,092 |
+| **Validation** | 35,016 | 35.3% | 4,008 | 31,008 | 7.74 : 1 | 2,918 |
+| **Test** | 26,981 | 27.2% | 7,609 | 19,372 | 2.55 : 1 | 2,250 |
+| **Total** | **99,101** | **100.0%** | **22,669** | **76,432** | **3.37 : 1** | **8,260** |
 
-*Note: All counts reflect deduplicated unique face crops across disjoint actor identity partitions (`splits.json`). Pre-deduplication sequence frame extractions total 162,329 crops (Train: 91,188; Val: 54,913; Test: 16,228).*
+*Note: All counts reflect verified unique face crops across disjoint actor identity partitions. Pair-disjoint FF++ partitions: 720 train, 140 val, 140 test videos. Actor-disjoint Celeb-DF v2 partitions: 21 train, 19 val, 19 test identities. Unseen zero-shot Google DFD: 1,300 videos (15,592 crops).*
 
 ---
 
@@ -477,18 +438,26 @@ deepfake-detection/
 
 ---
 
+## Data Use Agreements & Ethical Compliance
+
+This repository distributes **only** algorithmic source code, neural network weight tensors, and deterministic graph split metadata manifests (`splits/`). In strict compliance with institutional data use agreements:
+- **FaceForensics++ (TUM)**: Subject to the FaceForensics Terms of Use. No original video sequences or facial crops are hosted or redistributed.
+- **Celeb-DF v2 (SUNY Buffalo)**: Subject to the Celeb-DF Research Agreement. Images of public figures were utilized exclusively for non-commercial academic benchmarking.
+- **Google DeepFakeDetection (DFD)**: Utilized strictly as an external zero-shot test set. No source frames are redistributed.
+
+---
+
 ## Academic Citation
 
 If you use this codebase, models, or empirical benchmarks in your research, please cite:
 
 ```bibtex
-@misc{deepfake_forensics_2026,
-  author = {Yassin},
-  title = {Dual-Stream Deepfake Forensics Engine: Spatial ConvNeXt and ResSE-Spectral Gated Fusion with Spatiotemporal Sequence Modeling},
-  year = {2026},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/yyouretoast/deepfake-detection}}
+@article{yasser2026dualstream,
+  author    = {Yassin Yasser},
+  title     = {Dual-Stream Spatial-Frequency Feature Fusion with SNR-Adaptive Gating for Deepfake Detection: An Empirical Evaluation on Disjoint Partitions},
+  journal   = {arXiv preprint arXiv:cs.CV/cs.CR},
+  year      = {2026},
+  url       = {https://github.com/yyouretoast/deepfake-detection}
 }
 ```
 
