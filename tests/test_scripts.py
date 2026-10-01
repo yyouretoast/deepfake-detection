@@ -1,8 +1,10 @@
 """Unit tests for executable script helpers in scripts/*.py."""
 
+import json
 import os
 import sys
 
+import cv2
 import numpy as np
 import pytest
 
@@ -118,3 +120,35 @@ class TestExportONNX:
 
         assert os.path.exists(onnx_out), "Exported ONNX file does not exist"
         assert os.path.getsize(onnx_out) > 1000, "Exported ONNX file is empty"
+
+
+class TestPredictCLI:
+    """Verifies standalone predict.py CLI argument parsing and execution."""
+
+    def test_predict_cli_positional_and_json(self, tmp_path):
+        import subprocess
+
+        img_path = str(tmp_path / "dummy_face.png")
+        cv2.imwrite(img_path, np.full((256, 256, 3), 128, dtype=np.uint8))
+
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        cmd = [
+            sys.executable,
+            "predict.py",
+            img_path,
+            "--is_crop",
+            "--device",
+            "cpu",
+            "--json",
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root)
+        assert proc.returncode == 0, f"predict.py failed: {proc.stderr}"
+        # Filter stdout for JSON payload (logging goes to stderr or before JSON)
+        stdout_clean = proc.stdout.strip()
+        json_start = stdout_clean.find("{")
+        assert json_start != -1, f"No JSON object found in output: {stdout_clean}"
+        data = json.loads(stdout_clean[json_start:])
+        assert "calibrated_posterior_probability" in data
+        assert "triage" in data
+        assert data["triage"]["binary_decision"] in ["AUTHENTIC", "SYNTHETIC"]
+

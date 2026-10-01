@@ -254,13 +254,19 @@ def predict_video(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Turnkey Forensic Deepfake Inference CLI")
-    parser.add_argument("--input", "-i", type=str, required=True, help="Path to input image or video")
+    parser.add_argument("input_pos", nargs="?", default=None, help="Path to input image or video (positional)")
+    parser.add_argument("--input", "-i", type=str, default=None, help="Path to input image or video")
     parser.add_argument("--weights", "-w", type=str, default=None, help="Path to dual-stream weights checkpoint")
     parser.add_argument("--temporal_weights", type=str, default=None, help="Path to temporal head checkpoint")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--json", action="store_true", help="Output JSON directly to stdout")
     parser.add_argument("--json_output", "-o", type=str, default=None, help="Path to save output JSON")
     parser.add_argument("--is_crop", action="store_true", help="Input image is already a pre-cropped facial patch; bypass full-frame face detection.")
     args = parser.parse_args()
+
+    input_target = args.input or args.input_pos
+    if not input_target:
+        parser.error("The input path is required (provide as positional argument or via --input/-i).")
 
     device = torch.device(args.device)
     dual_ckpt, temp_ckpt = find_default_weights()
@@ -286,27 +292,30 @@ def main() -> None:
         except Exception as e:
             logger.warning("Could not load temporal head: %s", e)
 
-    inp = args.input.lower()
+    inp = input_target.lower()
     is_video = inp.endswith((".mp4", ".avi", ".mov", ".mkv", ".webm"))
 
     if is_video:
-        result = predict_video(args.input, model, temporal_model, cropper, calib, device)
+        result = predict_video(input_target, model, temporal_model, cropper, calib, device)
     else:
-        result = predict_image(args.input, model, cropper, calib, device, is_crop=args.is_crop)
+        result = predict_image(input_target, model, cropper, calib, device, is_crop=args.is_crop)
 
-    # Print clean CLI report
-    triage = result["triage"]
-    print("\n" + "=" * 60)
-    print("       FORENSIC MEDIA VERIFICATION REPORT")
-    print("=" * 60)
-    print(f" Target Media:    {result['input_path']}")
-    print(f" Media Type:      {result['media_type'].upper()}")
-    print(f" Posterior Prob:  {result['calibrated_posterior_probability']:.4f}")
-    print(f" Decision:        {triage['binary_decision']}")
-    print(f" Bayesian Zone:   {triage['zone']}")
-    print(f" Triage Action:   {triage['action']}")
-    print(f" Forensic Risk:   {triage['risk_level']}")
-    print("=" * 60 + "\n")
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        # Print clean CLI report
+        triage = result["triage"]
+        print("\n" + "=" * 60)
+        print("       FORENSIC MEDIA VERIFICATION REPORT")
+        print("=" * 60)
+        print(f" Target Media:    {result['input_path']}")
+        print(f" Media Type:      {result['media_type'].upper()}")
+        print(f" Posterior Prob:  {result['calibrated_posterior_probability']:.4f}")
+        print(f" Decision:        {triage['binary_decision']}")
+        print(f" Bayesian Zone:   {triage['zone']}")
+        print(f" Triage Action:   {triage['action']}")
+        print(f" Forensic Risk:   {triage['risk_level']}")
+        print("=" * 60 + "\n")
 
     if args.json_output:
         with open(args.json_output, "w", encoding="utf-8") as f:
