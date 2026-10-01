@@ -31,7 +31,7 @@ training:
   lr_head: 1.0e-4  # Classifier head learning rate
   weight_decay: 1.0e-2
   use_amp: true  # PyTorch Automatic Mixed Precision (fp16)
-  warmup_ratio: 0.1
+  warmup_ratio: 0.2
   patience: 4
   seq_len: 16
   pos_weight: 1.0
@@ -46,4 +46,4 @@ manipulation_types:
 
 app:
   frames_to_sample: 16
-  classification_threshold: 0.5
+  classification_threshold: 0.26

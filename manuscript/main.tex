@@ -44,7 +44,7 @@
 \begin{document}
 
 \maketitle
-\def\thefootnote{*}\footnotetext{Corresponding author. Technical Report / arXiv Preprint (cs.CV, cs.CR). Code, pretrained checkpoints, evaluation splits, and benchmarks are publicly available at \url{https://github.com/yyouretoast/deepfake-detection}.}\def\thefootnote{\arabic{footnote}}
+\def\thefootnote{*}\footnotetext{Corresponding author. Technical Report. Code, pretrained checkpoints, evaluation splits, and benchmarks are publicly available at \url{https://github.com/yyouretoast/deepfake-detection}.}\def\thefootnote{\arabic{footnote}}
 
 % -------------------------------------------------------------------------
 % Abstract
@@ -162,7 +162,7 @@ To resolve these architectural and methodological challenges, this paper present
 \begin{enumerate}
 \item \textbf{Methodological Rigor \& Disjoint Partitioning}: We audit and expose identity leakage across facial manipulation benchmarks, formulating dataset splitting as a bipartite graph connected-component decomposition. We enforce pair-disjoint separation for FaceForensics++ and actor-disjoint identity separation for Celeb-DF v2, holding Google DeepFakeDetection (DFD) entirely held-out for zero-shot cross-dataset evaluation.
 \item \textbf{Dual-Stream Spatial-Frequency Architecture with ResSE-Spectral Tower}: We architect a unified multi-stream network combining an ImageNet-modernized ConvNeXt-Small spatial stream with a dedicated 20-channel \texttt{ResSE-Spectral} tower. The spectral tower isolates high-pass residuals using nine fixed Spatial Rich Model (SRM) kernels and a learnable Bayar-Stamm prediction-error convolution, mapped into FP32-stabilized 2D Fourier log-magnitude and sub-epsilon masked phase angle spectra. Gradient starvation is eliminated via a dedicated auxiliary classification head.
-\item \textbf{SNR-Adaptive Gating \& Spatiotemporal Velocity Modeling}: We introduce an SNR-adaptive complementary gating mechanism ($\mathbf{g}_{\mathrm{eff}} = \mathbf{g} \odot \gamma$) that monitors noise residual power $P_{\mathrm{noise}}$ to prevent spectral hallucination under compression. For video sequences, a two-layer Bidirectional GRU models first-order feature velocity deltas ($\Delta \mathbf{e}_t$) combined with dual-path self-attention and extreme-value max-pooling, achieving \textbf{0.8994 ROC AUC} and \textbf{18.54\% EER} (a $-0.89\%$ EER reduction over naive averaging and $-3.28\%$ absolute reduction vs. single-frame baseline).
+\item \textbf{SNR-Adaptive Gating \& Spatiotemporal Velocity Modeling}: We introduce an SNR-adaptive complementary gating mechanism ($\mathbf{g}_{\mathrm{eff}} = \mathbf{g} \odot \gamma$) that monitors noise residual power $P_{\mathrm{noise}}$ to prevent spectral hallucination under compression. For video sequences, a two-layer Bidirectional GRU models first-order feature velocity deltas ($\Delta \mathbf{e}_t$) combined with dual-path self-attention and extreme-value max-pooling, achieving \textbf{0.8994 ROC AUC} and \textbf{18.54\% EER} (a $-0.89$ percentage point (pp) absolute EER reduction over naive averaging and a $-3.28$\,pp absolute reduction vs. the single-frame baseline).
 \item \textbf{Operational Probability Calibration \& Degradation Dynamics}: We implement post-hoc affine Platt scaling ($a = 0.2783, b = 0.4089$, $T_{\mathrm{eff}} = 3.5931$), reducing Expected Calibration Error by \textbf{49.4\%} (0.1965 $\to$ \textbf{0.0994}) and deriving Youden's optimal threshold ($\tau^* = 0.2600$, 90.51\% test precision) alongside an operational 3-zone Bayesian triage rule ($\tau_{\mathrm{real}} = 0.40, \tau_{\mathrm{fake}} = 0.60$). We provide an empirical stress-test characterization across four degradation types (JPEG, downscaling, noise, blur), demonstrating that SNR-adaptive gating prevents complete performance collapse under low-pass filtering (0.6722 ROC AUC at $\sigma = 4.0$).
 \end{enumerate}
 
@@ -177,7 +177,7 @@ To resolve these architectural and methodological challenges, this paper present
 
 Early efforts in facial forgery detection relied on hand-crafted visual artifacts, such as unnatural eye-blinking rates~\cite{li2018ictu}, head pose inconsistencies~\cite{yang2019exposing}, and asymmetric corneal specular highlights~\cite{hu2021exposing}. While conceptually interpretable, these heuristics became obsolete as generative autoencoders incorporated anatomical loss functions and multi-view 3D landmark constraints.
 
-With the release of large-scale manipulation benchmarks such as FaceForensics++~\cite{roessler2019faceforensicspp}, Celeb-DF~\cite{li2020celebdf}, and the Deepfake Detection Challenge (DFDC)~\cite{dolhansky2020deepfake}, the community shifted toward end-to-end deep convolutional neural networks (CNNs). Afchar \etal~\cite{afchar2018mesonet} proposed Meso-4 and MesoInception-4, designing compact networks focused on mesoscopic facial properties in compressed video. R\"ossler \etal~\cite{roessler2019faceforensicspp} demonstrated that XceptionNet~\cite{chollet2017xception}, pretrained on ImageNet, significantly outperformed shallow forensically designed architectures by leveraging depthwise separable convolutions to capture local texture inconsistencies. Subsequent works explored EfficientNet~\cite{tan2019efficientnet} variants and Vision Transformers (ViT)~\cite{dosovitskiy2020image,wodajo2021deepfake}, utilizing self-attention to model long-range spatial discrepancies.
+With the release of large-scale manipulation benchmarks such as FaceForensics++~\cite{roessler2019faceforensicspp}, Celeb-DF~\cite{li2020celebdf}, and the Deepfake Detection Challenge (DFDC)~\cite{dolhansky2020deepfake}, the community shifted toward end-to-end deep convolutional neural networks (CNNs). Afchar \etal~\cite{afchar2018mesonet} proposed Meso-4 and MesoInception-4, designing compact networks focused on mesoscopic facial properties in compressed video. R\"ossler \etal~\cite{roessler2019faceforensicspp} demonstrated that XceptionNet~\cite{chollet2017xception}, pretrained on ImageNet, significantly outperformed shallow forensically designed architectures by leveraging depthwise separable convolutions to capture local texture inconsistencies. Subsequent works explored EfficientNet~\cite{tan2019efficientnet} variants and Vision Transformers (ViT)~\cite{dosovitskiy2020image,wodajo2021deepfake}, utilizing self-attention to model long-range spatial discrepancies. To capture localized blending boundaries without complete facial generation, Shiohara and Matsuo~\cite{shiohara2022sbi} formulated Self-Blended Images (SBI), synthesizing generic boundary seams to train cross-generator spatial detectors.
 
 Recently, Liu \etal~\cite{liu2022convnet} introduced ConvNeXt, modernizing standard convolutional networks by integrating inverted bottleneck designs, $7 \times 7$ depthwise separable convolutions, and LayerNorm normalization. In forensic applications, ConvNeXt offers distinct advantages over Vision Transformers: its depthwise separable kernels maintain a large effective receptive field capable of identifying global structural inconsistencies (e.g., lighting directional discrepancies across facial halves) while preserving fine boundary gradient information without the quadratic computational complexity $\mathcal{O}(N^2)$ of global self-attention. However, pure spatial RGB backbones remain vulnerable to cross-generator domain shifts because they inevitably optimize for high-level semantic abstractions rather than generative synthesis physics.
 
@@ -188,9 +188,7 @@ Recognizing the limitations of spatial appearance modeling, researchers turned t
 
 To isolate subtle manipulation traces from dominant low-frequency image semantics, media forensics borrows techniques from digital image steganography. Fridrich and Kodovsk{\'y}~\cite{fridrich2012rich} introduced the Spatial Rich Model (SRM), utilizing an extensive bank of discrete high-pass filter kernels designed to expose least-significant-bit (LSB) embedding residuals. In media forensics, SRM filters suppress facial morphology and isolate sub-pixel sensor noise (PRNU) discontinuities. Concurrently, Bayar and Stamm~\cite{bayar2018constrained} formulated the constrained adaptive convolutional layer, forcing the center weight of a $5 \times 5$ kernel to $-1$ while constraining surrounding weights to sum to $+1$. This constraint transforms the layer into an adaptive prediction-error filter that dynamically suppresses scene content and amplifies inter-pixel interpolation errors during backpropagation.
 
-Building upon these filtering primitives, Qian \etal~\cite{qian2020thinking} developed F3-Net, utilizing the Discrete Cosine Transform (DCT) to decompose images into low, medium, and high-frequency sub-bands, alongside a Frequency-Aware Decomposition (FAD) and Local Frequency Statistics (LFS) module. Liu \etal~\cite{liu2021spatial} proposed SPSL, combining spatial features with phase spectrum analysis via the Fast Fourier Transform (FFT) to identify boundary blending artifacts. 
-
-Despite their advancements, existing frequency-based detectors suffer from three critical shortcomings: (i) \textit{Modality Collapse}: naive feature concatenation causes the high-capacity spatial stream to starve the randomly initialized frequency stream of gradients during early training; (ii) \textit{Numerical Instability}: unconstrained phase calculation ($\mathrm{atan2}$) in mixed precision triggers severe gradient explosions near zero-frequency bins; and (iii) \textit{Degradation Fragility}: fixed frequency branches lack signal-to-noise ratio (SNR) awareness, causing models to mistake lossy compression or low-pass filtering for synthetic manipulation.
+Building upon these filtering primitives, Qian \etal~\cite{qian2020thinking} developed F3-Net, utilizing the Discrete Cosine Transform (DCT) to decompose images into low, medium, and high-frequency sub-bands, alongside a Frequency-Aware Decomposition (FAD) and Local Frequency Statistics (LFS) module. Liu \etal~\cite{liu2021spatial} proposed SPSL, combining spatial features with phase spectrum analysis via the Fast Fourier Transform (FFT) to identify boundary blending artifacts. More recently, Tan \etal~\cite{tan2024npr} introduced Neighboring Pixel Relationships (NPR) to expose generalized spatial and spectral interpolation traces left by upsampling layers. For universal and diffusion-domain detection, Ojha \etal~\cite{ojha2023univfd} leveraged frozen vision-language representations to generalize across architectures, while Wang \etal~\cite{wang2023dire} formulated Diffusion Reconstruction Error (DIRE) to expose generative diffusion artifacts via reconstruction residuals.
 
 \subsection{Spatiotemporal Video Modeling}
 \label{sec:related_video}
@@ -223,7 +221,7 @@ To overcome the twin vulnerabilities of semantic memorization and high-frequency
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/system_architecture.pdf}
-\caption{\textbf{System Architecture of the Proposed Dual-Stream Spatial-Frequency Detector.} Input $256 \times 256$ face crops undergo 5-point landmark similarity alignment via LMEDS and Hann edge tapering ($H_{\mathrm{taper}}=16$). The \textbf{Spatial Stream} extracts 768-d structural context $\mathbf{f}_s$ via ConvNeXt-Small. Concurrently, the \textbf{Spectral Stream} extracts 10 noise residuals via 9 fixed SRM filters and 1 learnable Bayar convolution, decomposes them via an FP32-isolated 2D Real FFT into 10 log-magnitude and 10 phase maps ($\mathbf{X}_{\mathrm{spec}} \in \mathbb{R}^{20 \times 256 \times 256}$), and processes them through the \texttt{ResSE-Spectral} Tower to produce spectral features $\mathbf{f}_f \in \mathbb{R}^{256}$ with auxiliary supervision $z_{\mathrm{aux}}$. An \textbf{SNR-Adaptive Complementary Gate} dynamically modulates spectral contributions ($\mathbf{g}_{\mathrm{eff}} = \mathbf{g} \odot \gamma$) according to measured noise power $P_{\mathrm{noise}}$. For video sequences, a 2-layer Bi-GRU with first-order velocity deltas ($\Delta \mathbf{e}_t$) and dual-path (attention + max-pooling) aggregation captures transient inter-frame glitches, followed by affine Platt temperature scaling for Bayesian 3-zone triage.}
+\caption{\textbf{System Architecture of the Proposed Dual-Stream Spatial-Frequency Detector.} Input $256 \times 256$ face crops undergo 5-point landmark similarity alignment via LMEDS and Hann edge tapering ($H_{\mathrm{taper}}=16$). The \textbf{Spatial Stream} extracts 512-d structural context $\mathbf{f}_s$ via ConvNeXt-Small (projected from 768-d Stage 4). Concurrently, the \textbf{Spectral Stream} extracts 10 noise residuals via 9 fixed SRM filters and 1 learnable Bayar convolution, decomposes them via an FP32-isolated 2D Real FFT into 10 log-magnitude and 10 phase maps ($\mathbf{X}_{\mathrm{spec}} \in \mathbb{R}^{20 \times 256 \times 256}$), and processes them through the \texttt{ResSE-Spectral} Tower to produce spectral features $\mathbf{f}_f \in \mathbb{R}^{512}$ with auxiliary supervision $z_{\mathrm{aux}}$. An \textbf{SNR-Adaptive Complementary Gate} dynamically modulates spectral contributions ($\mathbf{g}_{\mathrm{eff}} = \mathbf{g} \odot \gamma$) according to measured noise power $P_{\mathrm{noise}}$. For video sequences, a 2-layer Bi-GRU with first-order velocity deltas ($\Delta \mathbf{e}_t$) and dual-path (attention + max-pooling) aggregation captures transient inter-frame glitches, followed by affine Platt temperature scaling for Bayesian 3-zone triage.}
 \label{fig:system_architecture}
 \end{figure*}
 
@@ -275,7 +273,7 @@ When faces appear proximate to frame borders, the $1.50\times$ expansion require
 \label{eq:fourier_step_decay}
 \mathcal{F}\{\Theta(x)\} = \frac{1}{j \omega} + \pi \delta(\omega) \implies |\mathcal{F}\{\Theta(x)\}| \propto \frac{1}{\omega}.
 \end{equation}
-This slow $1/\omega$ spectral roll-off injects high-frequency cross-shaped spectral leakage artifacts that overwhelm subtle PRNU sensor residuals. To enforce $C^1$-smooth boundary continuity, padded borders are constructed via edge replication (\texttt{BORDER\_REPLICATE}) and modulated by a separable 2D Hann-cosine tapering window over the outer boundary fraction ($\delta = 0.05$, $H_{\mathrm{taper}} = \lfloor \delta H \rfloor$):
+This slow $1/\omega$ spectral roll-off injects high-frequency cross-shaped spectral leakage artifacts that overwhelm subtle PRNU sensor residuals. To enforce $C^1$-smooth boundary continuity, padded borders are constructed via edge replication (\texttt{BORDER\_REPLICATE}) and modulated by a separable 2D Hann-cosine tapering window over outer boundary fraction $\delta = 0.05$ (evaluated as $H_{\mathrm{taper}} = \max(1, \lfloor \delta \cdot H \rfloor) = 12$\,pixels on standard $256 \times 256$ facial crops, corresponding to nominally $16$\,pixels on raw unscaled $\sim 320\text{px}$ video bounding boxes):
 \begin{equation}
 \label{eq:hann_window_1d}
 w_y(y) = \begin{cases}
@@ -294,7 +292,7 @@ Standard computer vision loaders apply ImageNet channel normalization $\mathbf{I
 
 The spatial analysis stream processes normalized facial crops $\mathbf{I}_{\mathrm{norm}} = (\mathbf{I} - \boldsymbol{\mu}_{\mathrm{img}}) / \boldsymbol{\sigma}_{\mathrm{img}} \in \mathbb{R}^{B \times 3 \times 256 \times 256}$ to identify macro-level semantic anomalies, facial asymmetry, and unnatural lighting reflections.
 
-We instantiate an ImageNet-1k pretrained ConvNeXt-Small~\cite{liu2022convnet} backbone (50.2M parameters). ConvNeXt modernizes classical convolutional networks by adopting Vision Transformer design principles while maintaining pure convolutional inductive biases. Specifically, ConvNeXt processes features through four hierarchical stages with channel dimensions $(96, 192, 384, 768)$. Crucially, the backbone replaces standard $3 \times 3$ dense convolutions with $7 \times 7$ depthwise separable convolutions. In standard convolutions, spatial filtering and cross-channel feature mixing are coupled, yielding a computational complexity of:
+We instantiate an ImageNet-1k pretrained ConvNeXt-Small~\cite{liu2022convnet} backbone (50.2M parameters in base ImageNet configuration; 49.98M parameters when adapted with forensic projection and classification heads). ConvNeXt modernizes classical convolutional networks by adopting Vision Transformer design principles while maintaining pure convolutional inductive biases. Specifically, ConvNeXt processes features through four hierarchical stages with channel dimensions $(96, 192, 384, 768)$. Crucially, the backbone replaces standard $3 \times 3$ dense convolutions with $7 \times 7$ depthwise separable convolutions. In standard convolutions, spatial filtering and cross-channel feature mixing are coupled, yielding a computational complexity of:
 \begin{equation}
 \label{eq:standard_flops}
 \mathrm{FLOPs}_{\mathrm{standard}} = K^2 \cdot C_{\mathrm{in}} \cdot C_{\mathrm{out}} \cdot H \cdot W.
@@ -535,7 +533,7 @@ Video deepfake synthesis creates subtle inter-frame temporal inconsistencies—s
 Standard forensic architectures evaluate video sequences by computing frame-level probabilities $\hat{p}_t$ and averaging them uniformly across the video: $\bar{p} = \frac{1}{T}\sum_{t=1}^T \hat{p}_t$. In realistic video manipulations, forgeries are frequently transient: an artifact may manifest prominently for only 1 or 2 frames during an abrupt head turn or blink. In a 30-frame video sequence where two frames display clear manipulation artifacts ($p = 0.98$) and 28 frames appear visually convincing ($p = 0.02$), arithmetic averaging yields $\bar{p} = \frac{2(0.98) + 28(0.02)}{30} = 0.084$. The manipulation is completely diluted, causing a fatal false negative.
 
 \paragraph{First-Order Feature Velocity Deltas ($\Delta \mathbf{e}_t$).}
-To model dynamic motion continuity, we extract per-frame fused embeddings:
+While the single-frame classification head operates on concatenated representations $[(1 - \mathbf{g}_{\mathrm{eff}}) \odot \mathbf{f}_s \parallel \mathbf{g}_{\mathrm{eff}} \odot \mathbf{f}_f] \in \mathbb{R}^{1024}$ (Eq.~\ref{eq:fused_effective}) to preserve separate spatial and spectral coordinate subspaces for dense classification, video sequence modeling requires per-frame representations to reside in a shared, homogeneous metric space so that temporal displacement vectors remain physically meaningful. We therefore evaluate the convex combination:
 \begin{equation}
 \label{eq:frame_embedding_extract}
 \mathbf{e}_t = (1 - \mathbf{g}_{\mathrm{eff}}) \odot \mathbf{f}_s^{(t)} + \mathbf{g}_{\mathrm{eff}} \odot \mathbf{f}_f^{(t)} \in \mathbb{R}^{512}.
@@ -584,17 +582,27 @@ The dual context vectors are concatenated into a 1024-dimensional sequence descr
 \end{equation}
 which is projected via an MLP ($\text{Linear}(1024 \to 128) \to \text{ReLU} \to \text{Dropout}(0.30) \to \text{Linear}(128 \to 1)$) to produce the final video logit $z_{\mathrm{video}} \in \mathbb{R}$.
 
-\subsection{Joint Optimization Objective}
+\subsection{Optimization Objectives and Staged Training Protocol}
 \label{sec:method_loss}
 
-The complete model is trained using a multi-task objective that jointly optimizes spatial-frequency fusion, spectral representation learning, and spatiotemporal sequence classification:
+The framework is optimized through a two-stage training procedure that decouples multi-task spatial-frequency representation learning from recurrent temporal sequence dynamics:
+
+\paragraph{Stage 1: Multi-Task Spatial-Frequency Optimization.}
+In Stage~1, the dual-stream backbone is trained end-to-end using a multi-task classification objective balancing fused and auxiliary spectral predictions:
 \begin{equation}
 \label{eq:joint_loss}
-\mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{fused}} + \lambda_{\mathrm{aux}} \mathcal{L}_{\mathrm{aux}} + \lambda_{\mathrm{temp}} \mathcal{L}_{\mathrm{temporal}},
+\mathcal{L}_{\mathrm{backbone}} = \mathcal{L}_{\mathrm{fused}} + \lambda_{\mathrm{aux}} \mathcal{L}_{\mathrm{aux}},
 \end{equation}
-where $\mathcal{L}_{\mathrm{fused}} = \mathrm{BCEWithLogits}(z, y)$, $\mathcal{L}_{\mathrm{aux}} = \mathrm{BCEWithLogits}(z_{\mathrm{aux}}, y)$, and $\mathcal{L}_{\mathrm{temporal}} = \mathrm{BCEWithLogits}(z_{\mathrm{video}}, y)$. We set $\lambda_{\mathrm{aux}} = 0.30$ to maintain balanced auxiliary supervision, and activate $\lambda_{\mathrm{temp}} = 1.0$ during temporal head optimization.
+where $\mathcal{L}_{\mathrm{fused}} = \mathrm{BCEWithLogits}(z, y)$ penalizes errors from the fused representation, $\mathcal{L}_{\mathrm{aux}} = \mathrm{BCEWithLogits}(z_{\mathrm{aux}}, y)$ provides non-vanishing supervision directly to the spectral tower (Sec.~\ref{sec:method_resse}), and $\lambda_{\mathrm{aux}} = 0.30$.
 
-Optimization is executed using AdamW~\cite{loshchilov2019decoupled} with cosine annealing learning rate scheduling and a warm-up phase. To protect pretrained ImageNet representations in ConvNeXt from catastrophic forgetting while accelerating convergence in randomly initialized spectral layers, we implement four differential parameter groups:
+\paragraph{Stage 2: Spatiotemporal Sequence Head Optimization.}
+In Stage~2, the converged dual-stream backbone parameters are frozen ($p.\mathrm{requires\_grad} = \mathrm{False}$) to strictly bound peak GPU memory consumption during video sequence processing. The lightweight Bi-GRU temporal sequence head is then optimized on extracted first-order feature trajectories using:
+\begin{equation}
+\label{eq:temporal_loss}
+\mathcal{L}_{\mathrm{temporal}} = \mathrm{BCEWithLogits}(z_{\mathrm{video}}, y).
+\end{equation}
+
+Optimization is executed using AdamW~\cite{loshchilov2019decoupled} with cosine annealing learning rate scheduling and a warm-up phase. To protect pretrained ImageNet representations in ConvNeXt from catastrophic forgetting while accelerating convergence in randomly initialized spectral layers, Stage~1 implements four differential parameter groups:
 \begin{itemize}
 \item \textbf{Group 1}: ConvNeXt backbone weights: $\eta = 10^{-5}$, weight decay $10^{-2}$.
 \item \textbf{Group 2}: ConvNeXt normalization/biases: $\eta = 10^{-5}$, weight decay $0.0$.
@@ -683,7 +691,7 @@ In this section, we present an exhaustive empirical evaluation of our dual-strea
 All experiments, training cycles, and inference benchmarks were executed on an engineering workstation equipped with an NVIDIA GeForce RTX 4060 Laptop GPU (8\,GB GDDR6 VRAM, Ada Lovelace microarchitecture, 3,072 CUDA Cores), an Intel host CPU, and 32\,GB host memory. The software environment is grounded on Windows 11, CUDA 12.4, PyTorch 2.6.0, and torchvision 0.21.0.
 
 \paragraph{Optimization and Hyperparameters.}
-Model optimization is performed using AdamW~\cite{loshchilov2019decoupled} with decoupled weight decay $\lambda_{\mathrm{wd}} = 10^{-4}$, momentum parameters $(\beta_1, \beta_2) = (0.9, 0.999)$, and numerical stabilizer $\epsilon = 10^{-8}$. To prevent gradient shock when combining a pre-trained vision backbone with freshly initialized forensic layers, we deploy a differential learning rate schedule:
+Model optimization is performed using AdamW~\cite{loshchilov2019decoupled} with decoupled weight decay $\lambda_{\mathrm{wd}} = 10^{-2}$, momentum parameters $(\beta_1, \beta_2) = (0.9, 0.999)$, and numerical stabilizer $\epsilon = 10^{-8}$. To prevent gradient shock when combining a pre-trained vision backbone with freshly initialized forensic layers, we deploy a differential learning rate schedule:
 \begin{itemize}
 \item \textbf{Spatial Stream}: The ImageNet-1K pre-trained ConvNeXt-Small backbone is fine-tuned at a conservative base learning rate of $\eta_0^{(s)} = 1 \times 10^{-5}$ to retain generic visual representations while adapting low-level filters.
 \item \textbf{Spectral Stream \& Gating Head}: The learnable Bayar kernel, the \texttt{ResSE-Spectral} residual tower, the SNR-adaptive gating MLP, and dense classification projections are initialized randomly (He normal initialization) and optimized at a higher rate of $\eta_0^{(f)} = \eta_0^{(h)} = 1 \times 10^{-4}$.
@@ -693,13 +701,13 @@ Learning rates decay from $\eta_0$ to $\eta_{\min} = 10^{-6}$ according to a cos
 \paragraph{Batching, Precision, and Regularization.}
 Training mini-batches are constructed with batch size $B = 32$. We leverage PyTorch Automatic Mixed Precision (AMP) with FP16 tensor cores for convolutional and dense linear layers. However, as derived in Sec.~\ref{sec:method_spectral}, the 2D Real Fast Fourier Transform (\texttt{torch.fft.rfft2}) and complex phase angle extraction (\texttt{atan2}) are strictly quarantined under FP32 precision (`torch.amp.autocast(enabled=False)`) to eliminate numerical underflow and infinite gradient artifacts.
 
-To guard against severe overfitting on facial textures, we incorporate stochastic depth regularization~\cite{liu2022convnet} with drop-path rate $p_d = 0.20$ across ConvNeXt stages, standard dropout $p = 0.30$ immediately preceding dense projection layers, and global gradient clipping with maximum $L_2$ norm $\norm{\mathbf{g}}_2 \le 1.0$. Multi-task loss balancing weights (Eq.~\ref{eq:joint_loss}) are set to $\lambda_{\mathrm{aux}} = 0.30$ and $\lambda_{\mathrm{temp}} = 1.00$.
+To guard against severe overfitting on facial textures, we incorporate stochastic depth regularization~\cite{liu2022convnet} with drop-path rate $p_d = 0.20$ across ConvNeXt stages, standard dropout $p = 0.30$ immediately preceding dense projection layers, and global gradient clipping with maximum $L_2$ norm $\norm{\mathbf{g}}_2 \le 1.0$. In Stage~1, the auxiliary multi-task balancing weight (Eq.~\ref{eq:joint_loss}) is set to $\lambda_{\mathrm{aux}} = 0.30$, while Stage~2 temporal sequence optimization is supervised by $\mathcal{L}_{\mathrm{temporal}}$ (Eq.~\ref{eq:temporal_loss}).
 
 \paragraph{Data Augmentation Discipline.}
 Training augmentations are restricted to geometric and non-destructive radiometric perturbations: random horizontal flipping ($p = 0.50$), random affine translation ($\pm 5\%$) and rotation ($\pm 10^\circ$), and subtle color jittering (brightness, contrast, saturation factor $\pm 0.10$). Crucially, no JPEG compression, downscaling, or low-pass blurring is applied during training. This strict discipline guarantees that downstream degradation stress tests (Sec.~\ref{sec:exp_robustness}) measure genuine out-of-distribution physical resilience rather than trivial data-augmentation memorization.
 
 \paragraph{Evaluation Split Rigor.}
-All performance benchmarks are executed on the disjoint split detailed in Sec.~\ref{sec:method_alignment}, enforcing pair-disjoint separation across FaceForensics++ and identity-disjoint separation across Celeb-DF v2. In the pre-extracted FaceForensics++ archive, sequences are structured as actor pairs ($A\_B$) without explicit subfolder tags for manipulation methods; per-generator attribution is assigned according to the standard pair-index allocation ranges (0--99 Deepfakes, 100--399 Face2Face, 400--599 FaceSwap, 600--799 NeuralTextures) under the c23 H.264 compression tier. To ensure zero identity or studio shortcut learning, Google DeepFakeDetection (DFD) synthetic sequences (11,992 crops across 1,000 video sequences) are strictly quarantined from both training and validation: they are held out exclusively as an unseen, zero-shot cross-dataset evaluation benchmark. Because authentic actor studio recordings for DFD were not included in the crop archive, DFD synthetic sequences are evaluated against authentic FaceForensics++ sequences and Celeb-DF v2 YouTube-real sequences separately, explicitly reporting the cross-source distribution gap. The held-out test cohort consists of 26,981 test crops (7,609 authentic across 634 videos, and 19,372 synthetic across 1,614 videos from FaceForensics++, Celeb-DF v2, and Google DeepFakeDetection) spanning 2,248 unique video sequences.
+All performance benchmarks are executed on the disjoint split detailed in Sec.~\ref{sec:method_alignment}, enforcing pair-disjoint separation across FaceForensics++ and identity-disjoint separation across Celeb-DF v2. In the full FaceForensics++ source release, all four manipulation methods are generated for each of the 1,000 original sequences under separate method subdirectories. In our pre-extracted face crop benchmark archive, however, crops are flattened into actor pair folders ($A\_B$) where manipulation methods are partitioned across disjoint pair-index ranges (0--99 Deepfakes, 100--399 Face2Face, 400--599 FaceSwap, 600--799 NeuralTextures) under the c23 H.264 compression tier to ensure actor-disjoint splits without redundant face extraction. To ensure zero identity or studio shortcut learning, Google DeepFakeDetection (DFD) synthetic sequences (11,992 crops across 999 valid video sequences decoded from the 1,000-video archive; one corrupted sequence was dropped during ingestion) are strictly quarantined from both training and validation: they are held out exclusively as an unseen, zero-shot cross-dataset evaluation benchmark. Because authentic actor studio recordings for DFD were not included in the crop archive, DFD synthetic sequences are evaluated against authentic FaceForensics++ sequences and Celeb-DF v2 YouTube-real sequences separately, explicitly reporting the cross-source distribution gap. The held-out test cohort consists of 26,981 test crops (7,609 authentic across 634 videos, and 19,372 synthetic across 1,614 videos from FaceForensics++, Celeb-DF v2, and Google DeepFakeDetection) spanning 2,248 unique video sequences.
 
 \begin{table*}[t]
 \centering
@@ -793,9 +801,9 @@ To understand manipulation-specific sensitivities, Table~\ref{tab:subdomain_brea
 We explicitly disclose that the lower precision observed on low-count partitions (42.82\% on Deepfakes, 48.27\% on FaceSwap) is an arithmetic consequence of Bayes' rule under severe base-rate class skew rather than weak sensitivity (recalls exceed 92.9\%). At our operational decision threshold ($\tau^* = 0.2600$), the detector exhibits a measured overall False Positive Rate of \textbf{20.42\%} across the complete held-out pool of 7,609 unshared authentic crops (True Negative Rate / Specificity of \textbf{79.58\%}, producing 1,554 false positives). In Table~\ref{tab:subdomain_breakdown}, synthetic partitions are evaluated against cohort-matched authentic controls: on the 1,680 FaceForensics++ authentic controls, the detector achieves an FPR of \textbf{14.23\%} (Specificity of \textbf{85.77\%}, producing 239 false positives). On low-volume synthetic partitions such as Deepfakes ($N = 192$ fakes, 179 True Positives at $93.23\%$ recall), the 239 false positives from matched controls yield precision $\frac{179}{179 + 239} = \mathbf{42.82\%}$; on FaceSwap ($N = 240$, 223 True Positives at $92.92\%$ recall), they yield precision $\frac{223}{223 + 239} = \mathbf{48.27\%}$. Were these low-count partitions evaluated against the full unshared 7,609-crop authentic pool, the overall 20.42\% FPR (1,554 false positives) under $1:40$ skew would yield precision of $10.33\%$ (Deepfakes) and $12.55\%$ (FaceSwap). We report both the measured FPR and precision directly so deployers can evaluate operational false alarms against target deployment prevalence. When evaluated against Google DFD, the model achieves 0.8651 AUC vs. studio FF++ reals, but drops to 0.8141 AUC vs. YouTube in-the-wild reals ($\Delta\mathrm{AUC} = -0.0510$). Crucially, the 95\% video-level clustered bootstrap confidence intervals ([0.8460, 0.8850] vs. [0.7915, 0.8359]) do not overlap, demonstrating that this 5.1 point confound gap is statistically significant ($p < 0.05$) and attributable to in-the-wild acquisition artifacts confounding forensic classification. This is consistent with our frozen representation domain probe: a linear classifier trained on validation embeddings separates FaceForensics++ studio crops from Celeb-DF v2 in-the-wild crops with 95.06\% and 86.92\% recall respectively. While this high separability may partly reflect legitimate task-relevant generative differences between datasets, it demonstrates that representations remain domain-structured, which is consistent with acquisition-channel disparities contributing to the observed DFD confound.
 
 \paragraph{Spatiotemporal Video Sequence Benchmark.}
-When evaluating full video sequences across 2,248 held-out test videos, naive frame-level probability averaging achieves an ROC AUC of 0.8962 and EER of 19.43\%, while temporal max-pooling achieves an ROC AUC of 0.8544 and EER of 21.48\% (Table~\ref{tab:main_benchmark}). Our complete spatiotemporal Bi-GRU architecture—integrating first-order feature velocity deltas ($\Delta \mathbf{e}_t = \mathbf{e}_t - \mathbf{e}_{t-1}$) alongside dual-path temporal self-attention and extreme-value max-pooling—achieves an ROC AUC of \textbf{0.8994}, PR AUC of \textbf{0.9571}, Fake F1 of \textbf{0.8517}, and an Equal Error Rate of \textbf{18.54\%}. This achieves a $-0.89\%$ overall EER reduction over naive frame averaging and a $-3.28\%$ absolute EER reduction relative to single-frame dual-stream inference.
+When evaluating full video sequences across 2,248 held-out test videos, naive frame-level probability averaging achieves an ROC AUC of 0.8962 and EER of 19.43\%, while temporal max-pooling achieves an ROC AUC of 0.8544 and EER of 21.48\% (Table~\ref{tab:main_benchmark}). Our complete spatiotemporal Bi-GRU architecture—integrating first-order feature velocity deltas ($\Delta \mathbf{e}_t = \mathbf{e}_t - \mathbf{e}_{t-1}$) alongside dual-path temporal self-attention and extreme-value max-pooling—achieves an ROC AUC of \textbf{0.8994}, PR AUC of \textbf{0.9571}, Fake F1 of \textbf{0.8517}, and an Equal Error Rate of \textbf{18.54\%}. This achieves a $-0.89$ percentage point absolute EER reduction over naive frame averaging (a 4.58\% relative reduction) and a $-3.28$\,pp absolute EER reduction relative to single-frame dual-stream inference.
 
-To determine whether the 7.56-point shift between validation video AUC (0.9750) and overall test video AUC (0.8994) stems from temporal aggregation dynamics or generator shift, we evaluate the Bi-GRU head across per-source test video subsets. On in-distribution FaceForensics++ test videos (140 fakes vs. 140 authentic reals, perfectly balanced $1:1$), the Bi-GRU achieves an ROC AUC of \textbf{0.9762} and an EER of \textbf{2.14\%} (compared to 0.9760 AUC and 9.28\% EER for naive frame averaging, demonstrating a substantial $-7.14\%$ biometric error reduction). This 0.9762 test AUC closely replicates the 0.9750 validation AUC, proving zero sequence-level overfitting. On Celeb-DF v2 test videos (475 fakes vs. 194 authentic reals), the Bi-GRU achieves \textbf{0.9642 ROC AUC} and \textbf{10.31\% EER} (0.9477 AUC when evaluated against all 494 authentic controls). As with frame-level evaluation, the overall sequence score is moderated by the unseen Google DFD cohort (999 of 1,614 test fake sequences), where the Bi-GRU records 0.9043 AUC vs. studio FF++ reals and 0.8376 AUC vs. YouTube in-the-wild reals (25.00\% EER). This confirms that temporal modeling maintains high discrimination ($>0.964$ AUC) across known manipulation generators, while pinpointing cross-dataset domain shifts as the primary source of error.
+To determine whether the 7.56-point shift between validation video AUC (0.9750) and overall test video AUC (0.8994) stems from temporal aggregation dynamics or generator shift, we evaluate the Bi-GRU head across per-source test video subsets. On in-distribution FaceForensics++ test videos (140 fakes vs. 140 authentic reals, perfectly balanced $1:1$), the Bi-GRU achieves an ROC AUC of \textbf{0.9762} and an EER of \textbf{2.14\%} (compared to 0.9760 AUC and 9.28\% EER for naive frame averaging, demonstrating a substantial $-7.14\%$ biometric error reduction). This 0.9762 test AUC closely replicates the 0.9750 validation AUC, proving zero sequence-level overfitting. On Celeb-DF v2 test videos evaluated against identity-matched authentic controls (475 fakes vs. 194 subject-paired reals), the Bi-GRU achieves \textbf{0.9642 ROC AUC} and \textbf{10.31\% EER}; when expanded to include all available authentic controls (475 fakes vs. 494 total reals including non-paired YouTube controls), it achieves \textbf{0.9477 ROC AUC} (11.94\% EER). As with frame-level evaluation, the overall sequence score is moderated by the unseen Google DFD cohort (999 of 1,614 test fake sequences), where the Bi-GRU records 0.9043 AUC vs. studio FF++ reals and 0.8376 AUC vs. YouTube in-the-wild reals (25.00\% EER). This confirms that temporal modeling maintains high discrimination ($>0.964$ AUC) across known manipulation generators, while pinpointing cross-dataset domain shifts as the primary source of error.
 
 \begin{table}[t]
 \centering
@@ -840,6 +848,7 @@ A critical requirement of operational media forensics is quantifying generalizat
 \item \textbf{Fold 3 (Holdout Partition C, Pairs 400--599)}: Excludes classical graphic face swaps (FaceSwap), testing Poisson gradient seam detection under unseen warp geometries.
 \item \textbf{Fold 4 (Holdout Partition D, Pairs 600--799)}: Excludes neural rendering (NeuralTextures), evaluating zero-shot sensitivity to synthetic facial reflectance and mouth interior synthesis.
 \end{itemize}
+Across the composite training pool ($N = 37,104$ crops), in strict compliance with the FaceForensics++ benchmark protocol~\cite{roessler2019faceforensicspp}, all Celeb-DF~v2 media ($19,824$ crops: $17,412$ fake, $2,412$ real) is excised to isolate pure cross-generator generalization, leaving $17,280$ FaceForensics++ training crops ($8,640$ pristine real and $8,640$ manipulated across the four families). In Fold~1 (Deepfakes held out), strictly quarantining the $912$ Deepfake training crops leaves exactly $16,368$ retained training crops ($8,640$ real and $7,728$ manipulated from Partitions B, C, and D). Similarly, Folds~2, 3, and 4 retain exactly $14,784$, $15,420$, and $15,528$ training crops upon quarantining their respective $2,496$ Face2Face, $1,860$ FaceSwap, and $1,752$ NeuralTextures training crops (Table~\ref{tab:loto_ledger}).
 
 \begin{table*}[t]
 \centering
@@ -891,7 +900,7 @@ Under Gaussian low-pass filtering, subtle blur ($\sigma = 1.0$) causes negligibl
 \subsection{Component-Wise Architectural Ablation Study}
 \label{sec:exp_ablations}
 
-To isolate the individual contribution of each physical filtering component, representation space, and fusion mechanism in our architecture, we conduct an exhaustive component-wise ablation study on the held-out actor-disjoint evaluation split ($N = 26,981$ crops; $N = 2,250$ video sequences). Results are summarized in Table~\ref{tab:ablations}.
+To isolate the individual contribution of each physical filtering component, representation space, and fusion mechanism in our architecture, we conduct an exhaustive component-wise ablation study on the held-out actor-disjoint evaluation split ($N = 26,981$ crops; $N = 2,248$ video sequences). In Table~\ref{tab:ablations}, all configurations are evaluated at the operational deployment threshold $\tau^* = 0.2600$, matching the primary benchmark in Table~\ref{tab:main_benchmark} (yielding Fake F1 of \textbf{0.8292} for the full model). Results are summarized in Table~\ref{tab:ablations}.
 
 \begin{table}[t]
 \centering
@@ -909,7 +918,7 @@ Spatial Backbone Alone & ConvNeXt-Small Only & 0.8370 & 0.9226 & 0.7810 & 24.43 
 \multicolumn{6}{l}{\textit{Cross-Stream Fusion Dynamics}} \\
 Fusion: Elementwise Addition & Elementwise Sum $\mathbf{f}_s + \mathbf{f}_f$ & 0.8522 & 0.9286 & 0.8339 & 22.85 \\
 Fusion: Static Softmax Gate & Gating Gate $\mathbf{g}$ (No SNR Modulation $\gamma = 1$) & 0.8508 & 0.9230 & 0.8361 & 22.65 \\
-\textbf{Fusion: SNR-Adaptive (Ours)} & \textbf{Effective Gate $\mathbf{g}_{\mathrm{eff}} = \mathbf{g} \odot \gamma$} & \textbf{0.8656} & \textbf{0.9374} & \textbf{0.8466} & \textbf{21.82} \\
+\textbf{Fusion: SNR-Adaptive (Ours)} & \textbf{Effective Gate $\mathbf{g}_{\mathrm{eff}} = \mathbf{g} \odot \gamma$} & \textbf{0.8656} & \textbf{0.9374} & \textbf{0.8292} & \textbf{21.82} \\
 \midrule
 \multicolumn{6}{l}{\textit{Spatiotemporal Video Sequence Modeling ($N = 2,248$ Sequences)}} \\
 Temporal Max Pooling & Extreme-Value Pooling ($\max_t p_t$) & 0.8544 & 0.9167 & 0.8785 & 21.48 \\
@@ -921,10 +930,10 @@ Temporal Average Pooling & Uniform Temporal Mean ($\frac{1}{T}\sum p_t$) & 0.896
 \end{table}
 
 \paragraph{Efficacy of Dual-Stream Residual Decomposition.}
-Evaluating the ConvNeXt-Small spatial stream alone yields an ROC AUC of 0.8370, PR AUC of 0.9226, and Fake F1 of 0.7810 (EER 24.43\%). While spatial convolutions capture facial anatomy and macroscopic blending seams, they lack explicit sensitivity to high-frequency transposed-convolution checkerboard artifacts. Conversely, our dual-stream spatial-frequency architecture harnesses both representations to achieve \textbf{0.8656 ROC AUC} and \textbf{0.8466 Fake F1} (EER \textbf{21.82\%}), demonstrating that spectral residuals provide critical complementary forensic signals that boost discrimination across challenging manipulation regimes.
+Evaluating the ConvNeXt-Small spatial stream alone yields an ROC AUC of 0.8370, PR AUC of 0.9226, and Fake F1 of 0.7810 (EER 24.43\%). While spatial convolutions capture facial anatomy and macroscopic blending seams, they lack explicit sensitivity to high-frequency transposed-convolution checkerboard artifacts. Conversely, our dual-stream spatial-frequency architecture harnesses both representations to achieve \textbf{0.8656 ROC AUC}, \textbf{0.8292 Fake F1}, and \textbf{21.82\% EER}, demonstrating that spectral residuals provide critical complementary forensic signals that boost discrimination across challenging manipulation regimes.
 
 \paragraph{Impact of SNR-Adaptive Gating.}
-Replacing naive elementwise addition ($\mathbf{f}_s + \mathbf{f}_f$, 0.8522 AUC, 0.8339 F1) and static gating without SNR modulation (0.8508 AUC, 0.8361 F1) with our physical signal-to-noise ratio modulation factor $\gamma = \mathrm{clip}\left(\frac{P_{\mathrm{noise}} - \epsilon_0}{\epsilon_1 - \epsilon_0}, 0, 1\right)$ yields the highest single-crop performance of \textbf{0.8656 ROC AUC}, \textbf{0.9374 PR AUC}, and \textbf{0.8466 Fake F1} (EER \textbf{21.82\%}). As established in Sec.~\ref{sec:blur_derivation}, when media experiences lossy compression or low-pass filtering, unmodulated spectral streams inject degraded high-frequency noise into the decision boundary; the SNR term dynamically attenuates the spectral stream, delegating decision weight back to the spatial stream.
+Replacing naive elementwise addition ($\mathbf{f}_s + \mathbf{f}_f$, 0.8522 AUC, 0.8339 F1) and static gating without SNR modulation (0.8508 AUC, 0.8361 F1) with our physical signal-to-noise ratio modulation factor $\gamma = \mathrm{clip}\left(\frac{P_{\mathrm{noise}} - \epsilon_0}{\epsilon_1 - \epsilon_0}, 0, 1\right)$ yields the highest single-crop performance of \textbf{0.8656 ROC AUC}, \textbf{0.9374 PR AUC}, and \textbf{0.8292 Fake F1} (EER \textbf{21.82\%}). As established in Sec.~\ref{sec:blur_derivation}, when media experiences lossy compression or low-pass filtering, unmodulated spectral streams inject degraded high-frequency noise into the decision boundary; the SNR term dynamically attenuates the spectral stream, delegating decision weight back to the spatial stream.
 
 \paragraph{Sequence-Level Spatiotemporal Modeling.}
 At the video sequence level ($N = 2,248$ videos), extreme-value max pooling achieves 0.8544 ROC AUC (0.8785 Fake F1), while uniform temporal mean pooling achieves 0.8962 ROC AUC and 0.8515 Fake F1 (EER 19.43\%). Our 2-layer bidirectional GRU equipped with first-order velocity deltas ($\Delta \mathbf{e}_t = \mathbf{e}_t - \mathbf{e}_{t-1}$) and dual-path (attention + max-pooling) aggregation elevates sequence performance to \textbf{0.8994 ROC AUC}, \textbf{0.9571 PR AUC}, and \textbf{0.8517 Fake F1}, reducing the Equal Error Rate down to \textbf{18.54\%}.
@@ -1101,8 +1110,12 @@ Benchmarked on our disjoint evaluation protocol (37,104 training, 35,016 validat
 % -------------------------------------------------------------------------
 % Acknowledgments
 % -------------------------------------------------------------------------
-\section*{Acknowledgments}
-This work was supported in part by open-science computing infrastructure and research grants in media forensics and information integrity. We gratefully acknowledge the creators and maintainers of the FaceForensics++, Celeb-DF v2, and Google DeepFakeDetection benchmark corpora for providing open forensic datasets to the academic community.
+\section*{Acknowledgments and Reproducibility}
+We gratefully acknowledge the creators and maintainers of the FaceForensics++, Celeb-DF v2, and Google DeepFakeDetection benchmark corpora for providing open forensic datasets to the academic community.
+
+\paragraph{Data and Code Availability.} All implementation modules, evaluation manifests, and configuration scripts are publicly available at \url{https://github.com/yyouretoast/deepfake-detection}. Calibrated model weights are hosted on Hugging Face Hub at \url{https://huggingface.co/spaces/yyouretoast/deepfake-detector}, accompanied by an interactive Streamlit forensic demonstration interface.
+
+\paragraph{Conflict of Interest.} The author declares no competing financial or non-financial interests.
 
 % -------------------------------------------------------------------------
 % Appendices
@@ -1112,48 +1125,39 @@ This work was supported in part by open-science computing infrastructure and res
 \section{Spatial Rich Model (SRM) Filters and Bayar Constraint}
 \label{app:srm_kernels}
 
-Our spectral stream employs 9 deterministic Spatial Rich Model (SRM) integer residual kernels~\cite{fridrich2012rich} alongside one data-driven constrained Bayar prediction-error convolution~\cite{bayar2018constrained}. The SRM kernels suppress semantic low-frequency facial morphology and amplify microscopic noise residuals:
-\begin{enumerate}
-\item \textbf{1st-Order Horizontal/Vertical Differences}:
+Our spectral stream employs a fixed 9-channel Spatial Rich Model (SRM) integer residual convolution~\cite{fridrich2012rich} alongside one data-driven constrained Bayar prediction-error convolution~\cite{bayar2018constrained}. The SRM and Bayar filters suppress semantic low-frequency facial morphology and amplify microscopic noise residuals before 2D real Fourier decomposition.
+
+\paragraph{Grouped 9-Channel SRM Filter Bank.}
+The SRM filter layer $\mathbf{K}_{\mathrm{SRM}} \in \mathbb{R}^{9 \times 1 \times 5 \times 5}$ applies the three canonical discrete 2D high-pass filters $\mathbf{K}_1, \mathbf{K}_2, \mathbf{K}_3 \in \mathbb{R}^{5 \times 5}$ defined in Eq.~\ref{eq:srm_kernels} across the three RGB color channels independently using grouped convolution ($\text{groups} = 3$):
 \begin{equation}
-\mathbf{K}_{\mathrm{1st}, h} = \begin{bmatrix} 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ 0 & -1 & 1 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \end{bmatrix}, \quad
-\mathbf{K}_{\mathrm{1st}, v} = \mathbf{K}_{\mathrm{1st}, h}^T.
+\label{eq:srm_grouped_conv}
+\mathbf{I}_{\mathrm{SRM}} = \mathrm{Conv2D}\left(\mathbf{I}, \, \mathbf{W}_{\mathrm{SRM}}, \, \text{stride}=1, \, \text{padding}=2, \, \text{groups}=3\right) \in \mathbb{R}^{B \times 9 \times H \times W},
 \end{equation}
-\item \textbf{2nd-Order Central Differences}:
+where $\mathbf{W}_{\mathrm{SRM}} \in \mathbb{R}^{9 \times 1 \times 5 \times 5}$ stacks $[\mathbf{K}_1, \mathbf{K}_2, \mathbf{K}_3]$ repeated across each color channel:
 \begin{equation}
-\mathbf{K}_{\mathrm{2nd}, h} = \begin{bmatrix} 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ 0 & 1 & -2 & 1 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \end{bmatrix}, \quad
-\mathbf{K}_{\mathrm{2nd}, v} = \mathbf{K}_{\mathrm{2nd}, h}^T.
+\mathbf{W}_{\mathrm{SRM}} = \begin{bmatrix} \mathbf{K}_1 \\ \mathbf{K}_2 \\ \mathbf{K}_3 \\ \mathbf{K}_1 \\ \mathbf{K}_2 \\ \mathbf{K}_3 \\ \mathbf{K}_1 \\ \mathbf{K}_2 \\ \mathbf{K}_3 \end{bmatrix}, \quad
+\text{with} \quad
+\begin{aligned}
+\mathbf{K}_1 &= \frac{1}{4} \begin{bmatrix} 0 & 0 & 0 & 0 & 0 \\ 0 & -1 & 2 & -1 & 0 \\ 0 & 2 & -4 & 2 & 0 \\ 0 & -1 & 2 & -1 & 0 \\ 0 & 0 & 0 & 0 & 0 \end{bmatrix}, \\[1ex]
+\mathbf{K}_2 &= \frac{1}{12} \begin{bmatrix} -1 & 2 & -2 & 2 & -1 \\ 2 & -6 & 8 & -6 & 2 \\ -2 & 8 & -12 & 8 & -2 \\ 2 & -6 & 8 & -6 & 2 \\ -1 & 2 & -2 & 2 & -1 \end{bmatrix}, \\[1ex]
+\mathbf{K}_3 &= \frac{1}{2} \begin{bmatrix} 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ 0 & 1 & -2 & 1 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \end{bmatrix}.
+\end{aligned}
 \end{equation}
-\item \textbf{3rd-Order Edge Residuals}:
-\begin{equation}
-\mathbf{K}_{\mathrm{3rd}, h} = \begin{bmatrix} 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ -1 & 3 & -3 & 1 & 0 \\ 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \end{bmatrix}, \quad
-\mathbf{K}_{\mathrm{3rd}, v} = \mathbf{K}_{\mathrm{3rd}, h}^T.
-\end{equation}
-\item \textbf{2D Laplacian \& Diagonal Corners}:
-\begin{equation}
-\mathbf{K}_{\mathrm{Lap}} = \begin{bmatrix} 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 1 & 0 & 0 \\ 0 & 1 & -4 & 1 & 0 \\ 0 & 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & 0 & 0 \end{bmatrix}, \quad
-\mathbf{K}_{\mathrm{diag}} = \begin{bmatrix} 0 & 0 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 & 0 \\ 0 & 0 & -2 & 0 & 0 \\ 0 & 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 0 & 0 \end{bmatrix}.
-\end{equation}
-\item \textbf{$5 \times 5$ High-Pass Square Cross}:
-\begin{equation}
-\mathbf{K}_{\mathrm{cross}} = \frac{1}{12}\begin{bmatrix} -1 & 2 & -2 & 2 & -1 \\ 2 & -6 & 8 & -6 & 2 \\ -2 & 8 & -12 & 8 & -2 \\ 2 & -6 & 8 & -6 & 2 \\ -1 & 2 & -2 & 2 & -1 \end{bmatrix}.
-\end{equation}
-\end{enumerate}
+All three kernels satisfy $\sum_{i,j} \mathbf{K}_m(i, j) = 0$, guaranteeing zero DC response on smooth skin tones while preserving high-frequency boundary transients.
 
 \paragraph{Bayar-Stamm Constrained Normalization.}
-The adaptive Bayar prediction-error filter $W \in \mathbb{R}^{5 \times 5}$ enforces the zero-sum normalization constraint during every forward pass:
+The adaptive Bayar prediction-error filter maintains learnable weights $\mathbf{W}_{\mathrm{B}} \in \mathbb{R}^{1 \times 3 \times 5 \times 5}$. Before each forward convolution, the kernel enforces the zero-sum prediction-error constraint $\sum_{(p, q) \neq (0, 0)} \mathbf{K}_{\mathrm{Bayar}}(p, q) = 1$ and $\mathbf{K}_{\mathrm{Bayar}}(0, 0) = -1.0$. The unconstrained surrounding weights are dynamically projected via signed sum normalization with sign-clamping safeguard:
 \begin{equation}
 \label{eq:bayar_constraint_formal}
-\sum_{(u,v) \ne (0,0)} W(u, v) = -W(0, 0), \quad \text{with } W(0, 0) = -1.
+S = \sum_{(p, q) \neq (0, 0)} \mathbf{W}_{\mathrm{B}}(p, q), \quad S_{\mathrm{safe}} = \mathrm{sgn}(S) \cdot \max(|S|, 10^{-5}),
 \end{equation}
-In practice, unconstrained weights $W_{\mathrm{raw}}$ are projected via:
 \begin{equation}
-W(u, v) = \begin{cases}
-\frac{W_{\mathrm{raw}}(u, v)}{\sum_{(i,j) \ne (0,0)} |W_{\mathrm{raw}}(i, j)|}, & (u, v) \ne (0, 0), \\
--1.0, & (u, v) = (0, 0).
+\mathbf{K}_{\mathrm{Bayar}}(i, j) = \begin{cases}
+\frac{\mathbf{W}_{\mathrm{B}}(i, j)}{S_{\mathrm{safe}}}, & (i, j) \ne (0, 0), \\
+-1.0, & (i, j) = (0, 0).
 \end{cases}
 \end{equation}
-This mathematical restriction guarantees zero DC gain ($\int G(u,v)\,du\,dv = 0$), forcing the filter to destroy facial identity and extract purely residual high-pass prediction errors.
+The signed denominator preserves gradient directionality during backpropagation while $S_{\mathrm{safe}}$ bounds denominator magnitudes away from zero, ensuring numerical stability throughout FP16 training without requiring ad-hoc absolute value summation.
 
 \section{Hyperparameter Ledger and Optimization Specifications}
 \label{app:hyperparameters}
@@ -1171,8 +1175,8 @@ In Table~\ref{tab:hyperparams}, we provide the exhaustive hyperparameter specifi
 \midrule
 Input Resolution & $256 \times 256 \times 3$ (RGB) \\
 Face Detector & OpenCV YuNet ($300 \times 300$ input, LMEDS) \\
-Edge Tapering Window & 2D Cosine window ($H_{\mathrm{taper}} = 16$ pixels) \\
-Spatial Backbone & ConvNeXt-Small (50.2M parameters) \\
+Edge Tapering Window & 2D Cosine window ($\delta = 0.05$, $H_{\mathrm{taper}} = 12$ pixels on $256 \times 256$, nominal $\approx 16$ on raw detections) \\
+Spatial Backbone & ConvNeXt-Small (49.98M params, 50.2M base) \\
 Spectral Tower & \texttt{ResSE-Spectral} (2.99M parameters) \\
 Spectral Channels & 20 channels (10 log-magnitude + 10 phase) \\
 Fourier FFT Precision & FP32 isolated real-FFT (\texttt{torch.fft.rfft2}) \\
@@ -1181,7 +1185,7 @@ SNR Cutoffs & $\epsilon_0 = 0.005, \epsilon_1 = 0.025$ \\
 Video Sequence Head & 2-layer Bi-GRU ($D=512, H=256$, dual-path) \\
 Auxiliary Loss Weight & $\lambda_{\mathrm{aux}} = 0.30$ \\
 Optimizer & AdamW ($\beta_1 = 0.9, \beta_2 = 0.999, \epsilon = 10^{-8}$) \\
-Weight Decay & $1 \times 10^{-4}$ \\
+Weight Decay & $1 \times 10^{-2}$ (AdamW decoupled, Group 1/3) \\
 Spatial Backbone LR & $\eta_{\mathrm{spatial}} = 1 \times 10^{-5}$ \\
 Spectral Tower LR & $\eta_{\mathrm{spectral}} = 1 \times 10^{-4}$ \\
 Bi-GRU Sequence LR & $\eta_{\mathrm{temporal}} = 5 \times 10^{-4}$ \\
@@ -1199,21 +1203,21 @@ Bayesian Triage Zones & $[0.00, 0.40), [0.40, 0.60), [0.60, 1.00]$ \\
 \section{Detailed 4-Fold Leave-One-Manipulation-Out (LOMO) Partition Ledger}
 \label{app:loto_splits}
 
-To guarantee 100\% zero-shot evaluation without cross-pair or cross-generator contamination, the canonical 4-fold Leave-One-Manipulation-Out (LOMO) benchmark partitions data according to Table~\ref{tab:loto_ledger}. In each fold, all synthetic media generated by the targeted architecture is quarantined from training and validation splits, and evaluation is conducted on a canonical 1:1 balanced cohort ($N_{\mathrm{real}} = N_{\mathrm{fake}}$) matching the official FaceForensics++ protocol.
+To guarantee 100\% zero-shot evaluation without cross-pair or cross-generator contamination, the canonical 4-fold Leave-One-Manipulation-Out (LOMO) benchmark partitions data according to Table~\ref{tab:loto_ledger}. In accordance with the FaceForensics++ benchmark standard~\cite{roessler2019faceforensicspp}, all Celeb-DF~v2 media ($19,824$ crops: $17,412$ fake and $2,412$ real) is excised from the $37,104$ multi-domain training pool to isolate cross-generator generalization, establishing a canonical FaceForensics++ base training pool of $17,280$ crops ($8,640$ authentic reals and $8,640$ manipulated fakes across the four manipulation families). In each fold, all synthetic media generated by the targeted architecture is strictly excised from this base pool (e.g., $17,280 - 912 = 16,368$ for Fold~1), and zero-shot evaluation is conducted on a canonical 1:1 balanced cohort ($N_{\mathrm{real}} = N_{\mathrm{fake}}$).
 
 \begin{table}[h]
 \centering
 \small
-\caption{\textbf{4-Fold Leave-One-Manipulation-Out (LOMO) Partition Ledger.}}
+\caption{\textbf{4-Fold Leave-One-Manipulation-Out (LOMO) Partition Ledger.} Base training pool is the $17,280$-crop FaceForensics++ partition ($8,640$ real, $8,640$ fake) after excising the $19,824$ Celeb-DF~v2 crops. In each fold, only synthetic media from the targeted generator is quarantined from training.}
 \label{tab:loto_ledger}
-\begin{tabular}{clccc}
+\begin{tabular}{clcccc}
 \toprule
-\textbf{Fold} & \textbf{Held-Out Generator Target} & \textbf{Retained Train} & \textbf{Eval Fakes} & \textbf{Eval Reals} \\
+\textbf{Fold} & \textbf{Held-Out Generator Target} & \textbf{Excised Fakes} & \textbf{Retained Train} & \textbf{Eval Fakes} & \textbf{Eval Reals} \\
 \midrule
-Fold 1 & Partition A: Deepfakes (Pairs 0--99) & 16,368 & 192 & 192 \\
-Fold 2 & Partition B: Face2Face (Pairs 100--399) & 14,784 & 576 & 576 \\
-Fold 3 & Partition C: FaceSwap (Pairs 400--599) & 15,420 & 240 & 240 \\
-Fold 4 & Partition D: NeuralTextures (Pairs 600--799) & 15,528 & 348 & 348 \\
+Fold 1 & Partition A: Deepfakes (Pairs 0--99) & 912 & 16,368 & 192 & 192 \\
+Fold 2 & Partition B: Face2Face (Pairs 100--399) & 2,496 & 14,784 & 576 & 576 \\
+Fold 3 & Partition C: FaceSwap (Pairs 400--599) & 1,860 & 15,420 & 240 & 240 \\
+Fold 4 & Partition D: NeuralTextures (Pairs 600--799) & 1,752 & 15,528 & 348 & 348 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1221,7 +1225,7 @@ Fold 4 & Partition D: NeuralTextures (Pairs 600--799) & 15,528 & 348 & 348 \\
 \section{Dual-Stream Forensic Inference and Bayesian Triage Algorithm}
 \label{app:algorithm}
 
-The operational screening procedure for arbitrary input video sequences is formalized in Algorithm~\ref{alg:inference}.
+The operational screening procedure for arbitrary input video sequences is formalized in Algorithm~1 (Appendix~\ref{app:algorithm}).
 
 \begin{table}[h]
 \centering
@@ -1237,7 +1241,7 @@ The operational screening procedure for arbitrary input video sequences is forma
 2: \textbf{for} each frame $I_t \in \mathcal{V}$ \textbf{do} \\
 3: \quad Detect facial bounding box and 5 facial landmarks using YuNet. \\
 4: \quad Align face crop $C_t \in \mathbb{R}^{256 \times 256 \times 3}$ via LMEDS similarity transform. \\
-5: \quad Apply 2D Hann edge taper ($H_{\mathrm{taper}} = 16$) to eliminate border steps. \\
+5: \quad Apply 2D Hann edge taper ($H_{\mathrm{taper}} = 12$, $\delta = 0.05$) to eliminate border steps. \\
 6: \quad $\mathbf{f}_s^{(t)} \leftarrow \mathcal{M}_{\mathrm{spatial}}(\mathrm{Normalize}(C_t))$ \\
 7: \quad $\mathbf{R}_t \leftarrow [\mathbf{K}_{\mathrm{SRM}} * C_t \;\parallel\; \mathbf{K}_{\mathrm{Bayar}} * C_t] \in \mathbb{R}^{10 \times 256 \times 256}$ \\
 8: \quad $\mathbf{X}_{\mathrm{spec}}^{(t)} \leftarrow [\log(1 + |\mathcal{F}(\mathbf{R}_t)|) \;\parallel\; \angle\mathcal{F}(\mathbf{R}_t)] \in \mathbb{R}^{20 \times 256 \times 256}$ \\
@@ -1245,7 +1249,7 @@ The operational screening procedure for arbitrary input video sequences is forma
 10: \quad Compute noise power $P_{\mathrm{noise}}^{(t)} \leftarrow \frac{1}{10 \cdot 256^2}\sum \|\mathbf{R}_t\|^2$. \\
 11: \quad $\gamma_t \leftarrow \mathrm{clip}\left(\frac{P_{\mathrm{noise}}^{(t)} - 0.005}{0.025 - 0.005}, 0, 1\right)$ \\
 12: \quad $\mathbf{g}_t \leftarrow \mathcal{G}([\mathbf{f}_s^{(t)} \parallel \mathbf{f}_f^{(t)}])$; \quad $\mathbf{g}_{\mathrm{eff}}^{(t)} \leftarrow \mathbf{g}_t \odot \gamma_t$ \\
-13: \quad $\mathbf{e}_t \leftarrow (1 - \mathbf{g}_{\mathrm{eff}}^{(t)}) \odot \mathbf{f}_s^{(t)} + \mathbf{g}_{\mathrm{eff}}^{(t)} \odot \mathbf{f}_f^{(t)} \in \mathbb{R}^{512}$ \\
+13: \quad $\mathbf{e}_t \leftarrow (1 - \mathbf{g}_{\mathrm{eff}}^{(t)}) \odot \mathbf{f}_s^{(t)} + \mathbf{g}_{\mathrm{eff}}^{(t)} \odot \mathbf{f}_f^{(t)} \in \mathbb{R}^{512}$ \quad\textit{(for static frame classifier, 1024-d concat is passed to MLP)} \\
 14: \textbf{end for} \\
 15: Compute temporal velocity deltas $\Delta \mathbf{e}_t \leftarrow \mathbf{e}_t - \mathbf{e}_{t-1}$ for $t \ge 2$. \\
 16: Extract sequence logit $z \leftarrow \mathcal{H}_{\mathrm{seq}}(\{\mathbf{e}_t, \Delta \mathbf{e}_t\}_{t=1}^T)$. \\
@@ -1473,6 +1477,26 @@ W.~Wu, Y.~Peng, C.~Yu, J.~Xing, K.~Tu, and S.~Yu.
 Y.~Zheng, J.~Bao, D.~Chen, M.~Zeng, and F.~Wen.
 \newblock Exploring temporal coherence for more general video face forgery detection.
 \newblock In \emph{IEEE/CVF International Conference on Computer Vision (ICCV)}, 2021.
+
+\bibitem{shiohara2022sbi}
+K.~Shiohara and T.~Matsuo.
+\newblock Detecting deepfakes with self-blended images.
+\newblock In \emph{IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2022.
+
+\bibitem{tan2024npr}
+C.~Tan, Y.~Zhao, S.~Wei, G.~Gu, and Y.~Wei.
+\newblock Rethinking the up-sampling operations in {CNN}s: Detecting deepfakes from other approaches.
+\newblock In \emph{IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2024.
+
+\bibitem{ojha2023univfd}
+U.~Ojha, Y.~Li, and Y.~J.~Lee.
+\newblock Towards universal fake image detectors that generalize across generative models.
+\newblock In \emph{IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2023.
+
+\bibitem{wang2023dire}
+Z.~Wang, J.~Bao, W.~Zhou, W.~Wang, H.~Li, and T.~He.
+\newblock {DIRE} for diffusion-generated image detection.
+\newblock In \emph{IEEE/CVF International Conference on Computer Vision (ICCV)}, 2023.
 
 \end{thebibliography}
 

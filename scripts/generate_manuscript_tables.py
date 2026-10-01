@@ -309,6 +309,7 @@ def generate_table_ablations(data: dict[str, Any]) -> str:
 
     calib = data.get("calibration", {})
     tau_star = calib.get("optimal_threshold", 0.2600)
+    f1_operational = data.get("test_frame_evaluation", {}).get("overall", {}).get("f1", full.get("f1", 0.8292))
 
     latex = f"""\\begin{{table}}[t]
 \\centering
@@ -326,7 +327,7 @@ Spatial Backbone Alone & ConvNeXt-Small Only & {spatial.get('auc', 0.8370):.4f} 
 \\multicolumn{{6}}{{l}}{{\\textit{{Cross-Stream Fusion Dynamics}}}} \\\\
 Fusion: Elementwise Addition & Elementwise Sum $\\mathbf{{f}}_s + \\mathbf{{f}}_f$ & {sum_fusion.get('auc', 0.8522):.4f} & {sum_fusion.get('pr_auc', 0.9286):.4f} & {sum_fusion.get('f1', 0.8339):.4f} & {sum_fusion.get('eer', 22.85):.2f} \\\\
 Fusion: Static Softmax Gate & Gating Gate $\\mathbf{{g}}$ (No SNR Modulation $\\gamma = 1$) & {static_gate.get('auc', 0.8508):.4f} & {static_gate.get('pr_auc', 0.9230):.4f} & {static_gate.get('f1', 0.8361):.4f} & {static_gate.get('eer', 22.65):.2f} \\\\
-\\textbf{{Fusion: SNR-Adaptive (Ours)}} & \\textbf{{Effective Gate $\\mathbf{{g}}_{{\\mathrm{{eff}}}} = \\mathbf{{g}} \\odot \\gamma$}} & \\textbf{{{full.get('auc', 0.8656):.4f}}} & \\textbf{{{full.get('pr_auc', 0.9374):.4f}}} & \\textbf{{{full.get('f1', 0.8466):.4f}}} & \\textbf{{{full.get('eer', 21.82):.2f}}} \\\\
+\\textbf{{Fusion: SNR-Adaptive (Ours)}} & \\textbf{{Effective Gate $\\mathbf{{g}}_{{\\mathrm{{eff}}}} = \\mathbf{{g}} \\odot \\gamma$}} & \\textbf{{{full.get('auc', 0.8656):.4f}}} & \\textbf{{{full.get('pr_auc', 0.9374):.4f}}} & \\textbf{{{f1_operational:.4f}}} & \\textbf{{{full.get('eer', 21.82):.2f}}} \\\\
 \\midrule
 \\multicolumn{{6}}{{l}}{{\\textit{{Spatiotemporal Video Sequence Modeling ($N = {test_videos:,}$ Sequences)}}}} \\\\
 Temporal Max Pooling & Extreme-Value Pooling ($\\max_t p_t$) & {mx.get('auc', 0.8544):.4f} & {mx.get('pr_auc', 0.9167):.4f} & {mx.get('f1', 0.8785):.4f} & {mx.get('eer', 21.48):.2f} \\\\
