@@ -1453,7 +1453,7 @@ def run_loto_experiment(
             num_workers=2 if os.name != "nt" else 0,
         )
 
-        optimizer = torch.optim.AdamW(get_differential_param_groups(model), lr=1e-4, weight_decay=1e-4)
+        optimizer = torch.optim.AdamW(get_differential_param_groups(model, lr_backbone=1e-5, lr_head=1e-4, weight_decay=1e-2), weight_decay=1e-2)
         criterion = nn.BCEWithLogitsLoss(reduction="none")
         scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
 
@@ -1483,9 +1483,10 @@ def run_loto_experiment(
         logits = logits[mask]
         targets = targets[mask]
 
-        t_fold = fit_temperature_log(logits, targets)
-        probs = 1.0 / (1.0 + np.exp(-(logits / t_fold)))
+        # Zero-shot evaluation using uncalibrated logits to prevent test-set temperature leakage
+        probs = 1.0 / (1.0 + np.exp(-logits))
         preds = (probs >= 0.50).astype(int)
+        t_fold = fit_temperature_log(logits, targets)  # Diagnostic post-hoc oracle check only
         if len(np.unique(targets)) > 1:
             fold_auc = float(roc_auc_score(targets, probs))
         else:

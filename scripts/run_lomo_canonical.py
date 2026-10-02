@@ -92,7 +92,7 @@ def run_single_fold(fold_name, holdout_key, display_name, data_root, splits, dev
     )
 
     model = HybridDeepfakeDetector(pretrained=True, frequency_backbone="resse").to(device)
-    optimizer = torch.optim.AdamW(get_differential_param_groups(model), lr=1e-4, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(get_differential_param_groups(model, lr_backbone=1e-5, lr_head=1e-4, weight_decay=1e-2), weight_decay=1e-2)
     criterion = nn.BCEWithLogitsLoss(reduction="none")
     scaler = torch.amp.GradScaler(enabled=(device.type == "cuda"))
 
@@ -133,9 +133,10 @@ def run_single_fold(fold_name, holdout_key, display_name, data_root, splits, dev
     logits = logits[mask]
     targets = targets[mask]
 
-    t_fold = fit_temperature_log(logits, targets)
-    probs = 1.0 / (1.0 + np.exp(-(logits / t_fold)))
+    # Zero-shot evaluation using uncalibrated logits to prevent test-set temperature leakage
+    probs = 1.0 / (1.0 + np.exp(-logits))
     preds = (probs >= 0.50).astype(int)
+    t_fold = fit_temperature_log(logits, targets)  # Diagnostic post-hoc oracle check only
 
     auc = float(roc_auc_score(targets, probs))
     bacc = float(balanced_accuracy_score(targets, preds))

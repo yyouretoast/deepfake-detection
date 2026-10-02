@@ -782,6 +782,7 @@ def main() -> None:
             return path_str
         candidates = [
             os.path.join("results", os.path.basename(path_str)),
+            os.path.join("results", "release1_run", os.path.basename(path_str)),
             os.path.join("/kaggle/working", os.path.basename(path_str)),
         ]
         for c in candidates:

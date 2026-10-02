@@ -53,8 +53,8 @@ A PyTorch deepfake detection architecture coupling an ImageNet-modernized **Conv
 - **Developed by**: Yassin Yasser (Department of Artificial Intelligence, Sadat Academy for Management Sciences, Cairo, Egypt)
 - **Model Type**: Dual-Stream Spatial + Frequency Hybrid Deepfake Detector
 - **Spatial Backbone**: ConvNeXt-Small (512-d feature projection, 50.2M parameters)
-- **Frequency Backbone**: ResSE-Spectral Tower (4 stages, 20-channel SRM/Bayar 2D Real FFT input, Squeeze-and-Excitation channel attention, 2.4M parameters)
-- **Video Temporal Head**: 2-Layer Bidirectional GRU with First-Order Feature Velocity ($\Delta \mathbf{e}_t$) and Dual-Path Pooling (Attention + Extreme-Value Max-Pooling, 1.8M parameters)
+- **Frequency Backbone**: ResSE-Spectral Tower (4 stages, 20-channel SRM/Bayar 2D Real FFT input, Squeeze-and-Excitation channel attention, 2.99M parameters)
+- **Video Temporal Head**: 2-Layer Bidirectional GRU with First-Order Feature Velocity ($\Delta \mathbf{e}_t$) and Dual-Path Pooling (Attention + Extreme-Value Max-Pooling, 3.32M parameters)
 - **Calibration**: Affine Platt Scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$) with Bayesian 3-Zone Bands ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$) and Youden's optimal threshold ($\tau^* = 0.2600$)
 
 ---

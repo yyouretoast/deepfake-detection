@@ -92,7 +92,7 @@ def classify_zone(prob: float, tau_star: float = 0.26) -> dict[str, Any]:
         zone = "Zone 1: Authentic Clearance"
         action = "Cleared (Low synthetic probability)"
         risk = "Low"
-    elif prob <= 0.60:
+    elif prob < 0.60:
         zone = "Zone 2: Human Forensic Review"
         action = "Flagged for manual expert review (Ambiguous posterior)"
         risk = "Moderate (High forensic entropy)"

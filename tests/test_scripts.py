@@ -141,7 +141,7 @@ class TestPredictCLI:
             "cpu",
             "--json",
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root)
+        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root, check=False)
         assert proc.returncode == 0, f"predict.py failed: {proc.stderr}"
         # Filter stdout for JSON payload (logging goes to stderr or before JSON)
         stdout_clean = proc.stdout.strip()

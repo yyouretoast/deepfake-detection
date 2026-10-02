@@ -73,30 +73,32 @@ def generate_table1(data: dict[str, Any]) -> str:
     latex = f"""\\begin{{table*}}[t]
 \\centering
 \\small
-\\caption{{\\textbf{{Comprehensive Media Forensics Benchmark on the Unconditionally Actor-Disjoint Evaluation Cohort.}} Performance across {test_total:,} held-out single-frame test crops ({test_reals:,} authentic, {test_fakes:,} synthetic; {skew:.2f}:1 real:fake skew) and video sequence models. Models receive standard $3 \\times 256^2$ RGB crops; dual-stream models internally extract 20 Fourier log-magnitude and phase channels into the spectral stream. Evaluated using optimal Youden's $J$ threshold ($\\tau^* = {tau_star:.4f}$). Per-source metrics report 95\\% video-level clustered bootstrap confidence intervals. Best results highlighted in bold.}}
+\\caption{{\\textbf{{Comprehensive Media Forensics Benchmark on the Unconditionally Actor-Disjoint Evaluation Cohort.}} Performance across {test_total:,} held-out single-frame test crops ({test_reals:,} authentic, {test_fakes:,} synthetic; {skew:.2f}:1 fake:real skew) and video sequence models. Models receive standard $3 \\times 256^2$ RGB crops; dual-stream models internally extract 20 Fourier log-magnitude and phase channels into the spectral stream. Evaluated using optimal Youden's $J$ threshold ($\\tau^* = {tau_star:.4f}$). Per-source metrics report 95\\% video-level clustered bootstrap confidence intervals. Best results highlighted in bold.}}
 \\label{{tab:main_benchmark}}
+\\resizebox{{\\textwidth}}{{!}}{{
 \\begin{{tabular}}{{llccccccc}}
 \\toprule
 \\textbf{{Model Pipeline}} & \\textbf{{Forensic Modality}} & \\textbf{{Input Dim}} & \\textbf{{ROC AUC}} $\\uparrow$ & \\textbf{{PR AUC}} $\\uparrow$ & \\textbf{{Fake F1}} $\\uparrow$ & \\textbf{{Bal. Acc.}} $\\uparrow$ & \\textbf{{Precision}} $\\uparrow$ & \\textbf{{EER (\\%)}} $\\downarrow$ \\\\
 \\midrule
 \\multicolumn{{9}}{{l}}{{\\textit{{Frame-Level Single-Crop Evaluation ($N = {test_total:,}$ Held-Out Crops; Skew = {skew:.2f}:1)}}}} \\\\
 Always-Predict-Fake & Trivial Majority Baseline & --- & 0.5000 & {trivial.get('pr_auc', 0.7180):.4f} & {trivial.get('f1', 0.8358):.4f} & 0.5000 & {trivial.get('precision', 0.7180):.4f} & 50.00 \\\\
-ConvNeXt-Small~\\cite{{liu2022convnet}} & Spatial Only (Baseline) & $3 \\times 256^2$ & {spatial.get('auc', 0.8012):.4f} & {spatial.get('pr_auc', 0.9782):.4f} & {spatial.get('f1', 0.8415):.4f} & {spatial.get('balanced_accuracy', 0.7845):.4f} & {spatial.get('precision', 0.8650):.4f} & {spatial.get('eer', 27.84):.2f} \\\\
-\\textbf{{Dual-Stream (Ours)}} & \\textbf{{Spatial-Frequency (SNR Gate $\\mathbf{{g}}_{{\\mathrm{{eff}}}}$)}} & \\textbf{{$3 \\times 256^2$}} & \\textbf{{{overall.get('auc', 0.8248):.4f}}} & \\textbf{{{overall.get('pr_auc', 0.9864):.4f}}} & \\textbf{{{overall.get('f1', 0.8627):.4f}}} & \\textbf{{{overall.get('balanced_accuracy', 0.7536):.4f}}} & \\textbf{{{overall.get('precision', 0.8845):.4f}}} & \\textbf{{{overall.get('eer', 24.73):.2f}}} \\\\
+ConvNeXt-Small~\\cite{{liu2022convnet}} & Spatial Only (Baseline) & $3 \\times 256^2$ & {spatial.get('auc', 0.8370):.4f} & {spatial.get('pr_auc', 0.9226):.4f} & {spatial.get('f1', 0.7810):.4f} & {spatial.get('balanced_accuracy', 0.7517):.4f} & {spatial.get('precision', 0.9050):.4f} & {spatial.get('eer', 24.43):.2f} \\\\
+\\textbf{{Dual-Stream (Ours)}} & \\textbf{{Spatial-Frequency (SNR Gate $\\mathbf{{g}}_{{\\mathrm{{eff}}}}$)}} & \\textbf{{$3 \\times 256^2$}} & \\textbf{{{overall.get('auc', 0.8656):.4f}}} & \\textbf{{{overall.get('pr_auc', 0.9374):.4f}}} & \\textbf{{{overall.get('f1', 0.8292):.4f}}} & \\textbf{{{overall.get('balanced_accuracy', 0.7804):.4f}}} & \\textbf{{{overall.get('precision', 0.9051):.4f}}} & \\textbf{{{overall.get('eer', 21.82):.2f}}} \\\\
 \\midrule
 \\multicolumn{{9}}{{l}}{{\\textit{{Per-Source Generalization (Held-Out Test Crops against Matched Authentic Baselines)}}}} \\\\
-FaceForensics++ (Pair-Disjoint) & Fused Dual-Stream & $3 \\times 256^2$ & {ff_auc} & {ff.get('pr_auc', 0.9850):.4f} & {ff.get('f1', 0.9410):.4f} & {ff.get('balanced_accuracy', 0.9380):.4f} & {ff.get('precision', 0.9450):.4f} & {ff.get('eer', 6.20):.2f} \\\\
-Celeb-DF v2 (Identity-Disjoint) & Fused Dual-Stream & $3 \\times 256^2$ & {cl_id_auc} & {cl_id.get('pr_auc', 0.9250):.4f} & {cl_id.get('f1', 0.8720):.4f} & {cl_id.get('balanced_accuracy', 0.8210):.4f} & {cl_id.get('precision', 0.8820):.4f} & {cl_id.get('eer', 17.50):.2f} \\\\
-Celeb-DF v2 (with YouTube-reals) & Fused Dual-Stream & $3 \\times 256^2$ & {cl_all_auc} & {cl_all.get('pr_auc', 0.9310):.4f} & {cl_all.get('f1', 0.8750):.4f} & {cl_all.get('balanced_accuracy', 0.8250):.4f} & {cl_all.get('precision', 0.8850):.4f} & {cl_all.get('eer', 17.20):.2f} \\\\
-Google DFD (vs FF++ reals) & Fused Dual-Stream & $3 \\times 256^2$ & {df_ff_auc} & {df_ff.get('pr_auc', 0.9410):.4f} & {df_ff.get('f1', 0.8547):.4f} & {df_ff.get('balanced_accuracy', 0.7420):.4f} & {df_ff.get('precision', 0.9786):.4f} & {df_ff.get('eer', 25.10):.2f} \\\\
-Google DFD (vs YouTube-reals) & Fused Dual-Stream & $3 \\times 256^2$ & {df_yt_auc} & {df_yt.get('pr_auc', 0.9350):.4f} & {df_yt.get('f1', 0.8510):.4f} & {df_yt.get('balanced_accuracy', 0.7380):.4f} & {df_yt.get('precision', 0.9750):.4f} & {df_yt.get('eer', 25.50):.2f} \\\\
+FaceForensics++ (Pair-Disjoint) & Fused Dual-Stream & $3 \\times 256^2$ & {ff_auc} & {ff.get('pr_auc', 0.9633):.4f} & {ff.get('f1', 0.8904):.4f} & {ff.get('balanced_accuracy', 0.8872):.4f} & {ff.get('precision', 0.8657):.4f} & {ff.get('eer', 10.71):.2f} \\\\
+Celeb-DF v2 (Identity-Disjoint) & Fused Dual-Stream & $3 \\times 256^2$ & {cl_id_auc} & {cl_id.get('pr_auc', 0.9616):.4f} & {cl_id.get('f1', 0.8754):.4f} & {cl_id.get('balanced_accuracy', 0.8252):.4f} & {cl_id.get('precision', 0.9162):.4f} & {cl_id.get('eer', 17.39):.2f} \\\\
+Celeb-DF v2 (with YouTube-reals) & Fused Dual-Stream & $3 \\times 256^2$ & {cl_all_auc} & {cl_all.get('pr_auc', 0.8913):.4f} & {cl_all.get('f1', 0.8102):.4f} & {cl_all.get('balanced_accuracy', 0.8081):.4f} & {cl_all.get('precision', 0.7841):.4f} & {cl_all.get('eer', 18.83):.2f} \\\\
+Google DFD (vs FF++ reals) & Fused Dual-Stream & $3 \\times 256^2$ & {df_ff_auc} & {df_ff.get('pr_auc', 0.9771):.4f} & {df_ff.get('f1', 0.8201):.4f} & {df_ff.get('balanced_accuracy', 0.7834):.4f} & {df_ff.get('precision', 0.9727):.4f} & {df_ff.get('eer', 20.83):.2f} \\\\
+Google DFD (vs YouTube-reals) & Fused Dual-Stream & $3 \\times 256^2$ & {df_yt_auc} & {df_yt.get('pr_auc', 0.9234):.4f} & {df_yt.get('f1', 0.7956):.4f} & {df_yt.get('balanced_accuracy', 0.7325):.4f} & {df_yt.get('precision', 0.9064):.4f} & {df_yt.get('eer', 26.48):.2f} \\\\
 \\midrule
 \\multicolumn{{9}}{{l}}{{\\textit{{Video Sequence-Level Modeling (Stride = 2 Frames)}}}} \\\\
-Naive Frame Average & Temporal Mean Pooling & $1024 \\times T$ & {avg.get('auc', 0.8633):.4f} & {avg.get('pr_auc', 0.9852):.4f} & {avg.get('f1', 0.8705):.4f} & {avg.get('balanced_accuracy', 0.7901):.4f} & {avg.get('precision', 0.8912):.4f} & {avg.get('eer', 24.73):.2f} \\\\
-Temporal Max Pooling & Extreme-Value Pooling & $1024 \\times T$ & {mx.get('auc', 0.8610):.4f} & {mx.get('pr_auc', 0.9839):.4f} & {mx.get('f1', 0.8680):.4f} & {mx.get('balanced_accuracy', 0.7865):.4f} & {mx.get('precision', 0.8875):.4f} & {mx.get('eer', 25.10):.2f} \\\\
-\\textbf{{Spatiotemporal Bi-GRU (Ours)}} & \\textbf{{Bi-GRU + Velocity Deltas ($\\Delta \\mathbf{{e}}_t$) + Attn/Max}} & \\textbf{{$1024 \\times T$}} & \\textbf{{{bigru.get('auc', 0.8719):.4f}}} & \\textbf{{{bigru.get('pr_auc', 0.9904):.4f}}} & \\textbf{{{bigru.get('f1', 0.8818):.4f}}} & \\textbf{{{bigru.get('balanced_accuracy', 0.8035):.4f}}} & \\textbf{{{bigru.get('precision', 0.8980):.4f}}} & \\textbf{{{bigru.get('eer', 18.98):.2f}}} \\\\
+Naive Frame Average & Temporal Mean Pooling & $1 \\times T$ & {avg.get('auc', 0.8962):.4f} & {avg.get('pr_auc', 0.9559):.4f} & {avg.get('f1', 0.8515):.4f} & {avg.get('balanced_accuracy', 0.8198):.4f} & {avg.get('precision', 0.9328):.4f} & {avg.get('eer', 19.43):.2f} \\\\
+Temporal Max Pooling & Extreme-Value Pooling & $1 \\times T$ & {mx.get('auc', 0.8544):.4f} & {mx.get('pr_auc', 0.9167):.4f} & {mx.get('f1', 0.8785):.4f} & {mx.get('balanced_accuracy', 0.7748):.4f} & {mx.get('precision', 0.8700):.4f} & {mx.get('eer', 21.48):.2f} \\\\
+\\textbf{{Spatiotemporal Bi-GRU (Ours)}} & \\textbf{{Bi-GRU + Velocity Deltas ($\\Delta \\mathbf{{e}}_t$) + Attn/Max}} & \\textbf{{$1024 \\times T$}} & \\textbf{{{bigru.get('auc', 0.8994):.4f}}} & \\textbf{{{bigru.get('pr_auc', 0.9571):.4f}}} & \\textbf{{{bigru.get('f1', 0.8517):.4f}}} & \\textbf{{{bigru.get('balanced_accuracy', 0.8228):.4f}}} & \\textbf{{{bigru.get('precision', 0.9362):.4f}}} & \\textbf{{{bigru.get('eer', 18.54):.2f}}} \\\\
 \\bottomrule
-\\end{{tabular}}
+\\end{{tabular}}%
+}}
 \\end{{table*}}"""
     return latex
 
@@ -137,15 +139,17 @@ def generate_table2(data: dict[str, Any]) -> str:
 \\small
 \\caption{{\\textbf{{Fine-Grained Subdomain Performance Across Manipulation Partitions.}} Evaluated on the held-out test cohort against authentic baseline crops ($N_{{\\mathrm{{real}}}} = {real_total:,}$) at operational threshold $\\tau^* = {tau_star:.4f}$. Partition ranges A--D represent FaceForensics++ pair allocations ($N=1{{,}}356$; an additional 324 crops from pair sequences $\\ge 800$ are included in the complete test cohort of {test_fakes:,} synthetic crops). Precision on low-count partitions (Deepfakes $N=192$, FaceSwap $N=240$) reflects base-rate skew under severe 1:40 class imbalance against the full unshared authentic pool.}}
 \\label{{tab:subdomain_breakdown}}
+\\resizebox{{\\columnwidth}}{{!}}{{
 \\begin{{tabular}}{{lccccc}}
 \\toprule
 \\textbf{{Manipulation Cohort}} & \\textbf{{Fakes}} & \\textbf{{ROC AUC}} & \\textbf{{Fake F1}} & \\textbf{{Precision}} & \\textbf{{Recall}} \\\\
 \\midrule
 {body_str}
 \\midrule
-\\textbf{{Complete Test Cohort}} & \\textbf{{{test_fakes:,}}} & \\textbf{{{overall.get('auc', 0.8248):.4f}}} & \\textbf{{{overall.get('f1', 0.8627):.4f}}} & \\textbf{{{overall.get('precision', 0.8845):.4f}}} & \\textbf{{{overall.get('recall', 0.8420):.4f}}} \\\\
+\\textbf{{Complete Test Cohort}} & \\textbf{{{test_fakes:,}}} & \\textbf{{{overall.get('auc', 0.8656):.4f}}} & \\textbf{{{overall.get('f1', 0.8292):.4f}}} & \\textbf{{{overall.get('precision', 0.9051):.4f}}} & \\textbf{{{overall.get('recall', 0.7650):.4f}}} \\\\
 \\bottomrule
-\\end{{tabular}}
+\\end{{tabular}}%
+}}
 \\end{{table}}"""
     return latex
 
@@ -193,6 +197,7 @@ def generate_table3(data: dict[str, Any]) -> str:
 \\small
 \\caption{{{caption_str}}}
 \\label{{tab:loto_results}}
+\\resizebox{{\\textwidth}}{{!}}{{%
 \\begin{{tabular}}{{clccccc}}
 \\toprule
 \\textbf{{Fold}} & \\textbf{{Held-Out Unseen Target}} & \\textbf{{Holdout Samples}} & \\textbf{{Fitted $T^*$}} & \\textbf{{Zero-Shot ROC AUC}} $\\uparrow$ & \\textbf{{Zero-Shot Fake F1}} $\\uparrow$ & \\textbf{{Zero-Shot Precision}} $\\uparrow$ \\\\
@@ -201,7 +206,8 @@ def generate_table3(data: dict[str, Any]) -> str:
 \\midrule
 {macro_label} & --- & \\textbf{{{macro_auc:.4f}}} & \\textbf{{{macro_f1:.4f}}} & \\textbf{{{macro_prec:.4f}}} \\\\
 \\bottomrule
-\\end{{tabular}}
+\\end{{tabular}}%
+}}
 \\end{{table*}}"""
     return latex
 
@@ -209,7 +215,7 @@ def generate_table3(data: dict[str, Any]) -> str:
 def generate_table4(data: dict[str, Any]) -> str:
     """Table 4: Robustness Stress-Testing."""
     rob = data.get("robustness_stress_tests", {})
-    clean_auc = data.get("test_frame_evaluation", {}).get("overall", {}).get("auc", 0.7834)
+    clean_auc = data.get("test_frame_evaluation", {}).get("overall", {}).get("auc", 0.8656)
 
     jpegs = rob.get("jpeg", {})
     blurs = rob.get("gaussian_blur", {})
@@ -278,13 +284,15 @@ def generate_table4(data: dict[str, Any]) -> str:
 \\small
 \\caption{{\\textbf{{Forensic Perturbation \\& Degradation Stress Testing.}} The detector was trained strictly on clean crops without data augmentation for compression or blur, evaluating genuine physical signal resilience under real-world transmission channels. Evaluated across $N = 1{{,}}000$ stratified held-out crops per level under deterministic perturbation transformations with fixed seed 42 to balance computation across 15 degradation regimes. Relative degradation $\\Delta\\mathrm{{AUC}} = (\\mathrm{{AUC}}_{{\\mathrm{{pert}}}} - \\mathrm{{AUC}}_{{\\mathrm{{clean}}}}) / \\mathrm{{AUC}}_{{\\mathrm{{clean}}}}$. Relative retention reports $\\mathrm{{AUC}}_{{\\mathrm{{pert}}}} / \\mathrm{{AUC}}_{{\\mathrm{{clean}}}} \\times 100\\%$.}}
 \\label{{tab:robustness_benchmarks}}
+\\resizebox{{\\columnwidth}}{{!}}{{
 \\begin{{tabular}}{{llccc}}
 \\toprule
 \\textbf{{Perturbation Type}} & \\textbf{{Perturbation Severity / Level}} & \\textbf{{ROC AUC}} & \\textbf{{$\\Delta\\mathrm{{AUC}}$ (\\%)}} & \\textbf{{Retention (\\%)}} \\\\
 \\midrule
 {rows_str}
 \\bottomrule
-\\end{{tabular}}
+\\end{{tabular}}%
+}}
 \\end{{table}}"""
     return latex
 
@@ -325,7 +333,7 @@ def generate_table_ablations(data: dict[str, Any]) -> str:
 Spatial Backbone Alone & ConvNeXt-Small Only & {spatial.get('auc', 0.8370):.4f} & {spatial.get('pr_auc', 0.9226):.4f} & {spatial.get('f1', 0.7810):.4f} & {spatial.get('eer', 24.43):.2f} \\\\
 \\midrule
 \\multicolumn{{6}}{{l}}{{\\textit{{Cross-Stream Fusion Dynamics}}}} \\\\
-Fusion: Elementwise Addition & Elementwise Sum $\\mathbf{{f}}_s + \\mathbf{{f}}_f$ & {sum_fusion.get('auc', 0.8522):.4f} & {sum_fusion.get('pr_auc', 0.9286):.4f} & {sum_fusion.get('f1', 0.8339):.4f} & {sum_fusion.get('eer', 22.85):.2f} \\\\
+Fusion: Fixed Uniform Concat & Fixed Uniform Concat $[0.5\\,\\mathbf{{f}}_s \\parallel 0.5\\,\\mathbf{{f}}_f]$ & {sum_fusion.get('auc', 0.8522):.4f} & {sum_fusion.get('pr_auc', 0.9286):.4f} & {sum_fusion.get('f1', 0.8339):.4f} & {sum_fusion.get('eer', 22.85):.2f} \\\\
 Fusion: Static Softmax Gate & Gating Gate $\\mathbf{{g}}$ (No SNR Modulation $\\gamma = 1$) & {static_gate.get('auc', 0.8508):.4f} & {static_gate.get('pr_auc', 0.9230):.4f} & {static_gate.get('f1', 0.8361):.4f} & {static_gate.get('eer', 22.65):.2f} \\\\
 \\textbf{{Fusion: SNR-Adaptive (Ours)}} & \\textbf{{Effective Gate $\\mathbf{{g}}_{{\\mathrm{{eff}}}} = \\mathbf{{g}} \\odot \\gamma$}} & \\textbf{{{full.get('auc', 0.8656):.4f}}} & \\textbf{{{full.get('pr_auc', 0.9374):.4f}}} & \\textbf{{{f1_operational:.4f}}} & \\textbf{{{full.get('eer', 21.82):.2f}}} \\\\
 \\midrule
@@ -358,6 +366,7 @@ def generate_table_latency(data: dict[str, Any]) -> str:
 \\small
 \\caption{{\\textbf{{Execution Latency and Throughput Profiling on NVIDIA GeForce RTX 4060 Laptop GPU.}} Benchmark conducted with FP16 mixed precision at resolution $256 \\times 256$. The full inference pipeline incurs an amortized per-frame latency of {lat_32:.2f}\\,ms under batch size $B = 32$ ({fps_32:.1f} FPS throughput), while isolated model forward execution requires {lat_1:.2f}\\,ms ($B = 1$, {fps_1:.1f} FPS) and {lat_model_32:.2f}\\,ms ($B = 32$, {fps_model_32:.1f} FPS amortized).}}
 \\label{{tab:latency}}
+\\resizebox{{\\columnwidth}}{{!}}{{
 \\begin{{tabular}}{{lcc}}
 \\toprule
 \\textbf{{Pipeline Stage}} & \\textbf{{Latency (ms)}} & \\textbf{{Fraction (\\%)}} \\\\
@@ -375,7 +384,8 @@ SNR Fusion Gating \\& Classification Heads & 0.06 & 0.4 \\\\
 \\textbf{{Model Forward Latency ($B = 1$)}} & \\multicolumn{{2}}{{c}}{{\\textbf{{{lat_1:.2f} ms}} ({fps_1:.1f} FPS)}} \\\\
 \\textbf{{Model Forward Latency ($B = 32$)}} & \\multicolumn{{2}}{{c}}{{\\textbf{{{lat_model_32:.2f} ms/frame}} ({fps_model_32:.1f} FPS amortized)}} \\\\
 \\bottomrule
-\\end{{tabular}}
+\\end{{tabular}}%
+}}
 \\end{{table}}"""
     return latex
 

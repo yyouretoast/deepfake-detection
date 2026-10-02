@@ -52,10 +52,10 @@ Intermediate representations extracted across the spatial, residual steganograph
 
 ## System Methodology
 
-* **Dual-Domain Gated Fusion**: Combines semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a **4-Stage ResSE-Spectral Tower** (~2.4M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
+* **Dual-Domain Gated Fusion**: Combines semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a **4-Stage ResSE-Spectral Tower** (2.99M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
 * **Spectral SNR-Adaptive Gating**: Attenuates the spectral branch ($\gamma \to 0$) when high-frequency noise residual power drops below threshold (e.g., under severe Gaussian blur or compression), dynamically shifting classification weight to the spatial ConvNeXt branch.
 * **Disjoint Identity Graph Partitioning**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity overlap ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
-* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8994` ROC AUC** (-0.89% EER reduction over naive frame averaging) and capturing transient manipulation artifacts that can be diluted under sequence averaging.
+* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8994` ROC AUC** (0.89 percentage point absolute / 4.58% relative EER reduction over naive frame averaging: 19.43% -> 18.54%) and capturing transient manipulation artifacts that can be diluted under sequence averaging.
 * **Bayesian 3-Zone Decision Boundaries**: Post-hoc affine Platt scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$, $\tau^* = 0.2600$) slashes Expected Calibration Error by 49.4% ($0.1965 \to 0.0994$) and establishes operational decision thresholds ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving 90.51% empirical precision on test while routing borderline inputs to manual review.
 * **Inference Throughput**: 71.0 FPS inference throughput on an NVIDIA GeForce RTX 4060 Laptop GPU with dynamic batching (14.08 ms amortized per frame at batch size 32; 23.77 ms single-frame forward at $B=1$).
 
@@ -67,8 +67,8 @@ All model weights are hosted on the Hugging Face Model Hub: [`yyouretoast/deepfa
 
 | Model Checkpoint | Weights File | Parameters | Size | Task / Domain | ROC AUC | Calibrated Threshold ($\tau^*$) | SHA-256 Checksum | Direct Download |
 | :--- | :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: |
-| **Dual-Stream Detector** | `dual_stream_calibrated.pth` | 52.9M | **204.7 MB** | Single-Frame Spatial + Spectral | **`0.8656`** | `0.2600` ($T_{\text{eff}}=3.5931$) | `e2184689...a5c3ba` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
-| **Bi-GRU Temporal Head** | `temporal_head_best.pth` | 1.8M | **12.7 MB** | Spatiotemporal Video Sequences | **`0.8994`** | `0.1100` | `b81eed74...72951abf` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
+| **Dual-Stream Detector** | `dual_stream_calibrated.pth` | 53.62M | **204.7 MB** | Single-Frame Spatial + Spectral | **`0.8656`** | `0.2600` ($T_{\text{eff}}=3.5931$) | `e2184689...a5c3ba` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth) |
+| **Bi-GRU Temporal Head** | `temporal_head_best.pth` | 3.32M | **12.7 MB** | Spatiotemporal Video Sequences | **`0.8994`** | `0.1100` | `b81eed74...72951abf` | [Download](https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/temporal_head_best.pth) |
 
 ### Automated Download via CLI
 
