@@ -1,6 +1,40 @@
-figures/
+# Large models and checkpoints (downloaded dynamically via hf_hub_download)
+models/
 *.pth
+*.pt
 *.onnx
-loto_results.json
-robustness_results.json
-test_predictions.json
+
+# Academic research manuscript, LaTeX sources and compiled PDFs
+manuscript/
+
+# Dataset split CSV manifests
+splits/
+
+# Benchmark evaluation, training, and paper generation scripts
+scripts/
+
+# Pytest regression suite
+tests/
+
+# Interactive Jupyter notebooks
+notebooks/
+
+# Documentation and README attention figures
+figures/
+
+# GitHub CI/CD workflows and developer tooling
+.github/
+.gitignore
+pyproject.toml
+predict.py
+MODEL_CARD.md
+
+# Local runtime results, scratch, and caches
+results/
+smoke_test_run/
+deepfake_crops_512/
+.cache/
+.mpl_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/

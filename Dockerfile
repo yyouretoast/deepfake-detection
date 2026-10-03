@@ -17,12 +17,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy application modules, config, and tests
+# Copy application modules and config
 COPY app.py ./
 COPY config ./config
 COPY src ./src
-COPY scripts ./scripts
-COPY tests ./tests
 
 # Run as non-root user for security
 RUN useradd -m -u 1000 appuser

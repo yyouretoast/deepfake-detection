@@ -22,5 +22,21 @@ jobs:
       - name: Deploy to Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          hf upload yyouretoast/deepfake-detector . . --repo-type=space --token="$HF_TOKEN" --exclude "figures/*" --exclude "*.pth" --exclude "*.onnx" --exclude "data/*" --exclude ".git/*" --exclude ".github/*"
+          hf upload yyouretoast/deepfake-detector . . --repo-type=space --token="$HF_TOKEN" \
+            --exclude "manuscript/*" \
+            --exclude "splits/*" \
+            --exclude "scripts/*" \
+            --exclude "tests/*" \
+            --exclude "notebooks/*" \
+            --exclude "figures/*" \
+            --exclude "models/*" \
+            --exclude "results/*" \
+            --exclude "deepfake_crops_512/*" \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --exclude "*.pth" \
+            --exclude "*.onnx" \
+            --exclude "pyproject.toml" \
+            --exclude "predict.py" \
+            --exclude "MODEL_CARD.md"
+
