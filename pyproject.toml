@@ -27,3 +27,8 @@ exclude = [
 # here — they were masking dead code. Suppress them per-line where genuinely needed.
 ignore = ["E402", "BLE001", "LOG015", "S110", "UP035"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["scratch", ".*", "build", "dist", "venv", ".venv", "env"]
+python_files = ["test_*.py"]
+

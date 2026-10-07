@@ -16,7 +16,7 @@ license: mit
 **A dual-stream deepfake detection pipeline fusing spatial representations with Fourier phase/magnitude spectral noise and spatiotemporal sequence modeling.**
 
 [![CI Test Suite](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-145%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/tests-146%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
 [![Python 3.10 | 3.11](https://img.shields.io/badge/Python-3.10%20%7C%203.11-3776AB?style=flat&logo=python&logoColor=white)](pyproject.toml)
 
 [![PyTorch 2.1+](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -115,7 +115,7 @@ Run the held-out test split evaluation with pre-calibrated temperature scaling a
 python scripts/evaluate_test_set.py --weights_path models/dual_stream_calibrated.pth
 ```
 
-### 3. Python API (Single Image Inference)
+### 4. Python API (Single Image Inference)
 
 Analyze any static image file with YuNet face alignment, dual-stream feature extraction, gating ratios, and Bayesian 3-zone decision output:
 
@@ -135,7 +135,7 @@ else:
     print(f"Laplacian Noise (σ²): {res['laplacian_var']:.1f}")
 ```
 
-### 4. Python API (Video Sequence Inference)
+### 5. Python API (Video Sequence Inference)
 
 Analyze a complete video file with OpenCV keyframe seeking and Bi-GRU temporal anomaly detection:
 
@@ -157,7 +157,7 @@ if res is not None:
         print(f"Bi-GRU Attention Weights:     {res['temporal_attention']}")
 ```
 
-### 5. Launch Interactive Forensic Web Dashboard
+### 6. Launch Interactive Forensic Web Dashboard
 
 ```bash
 # Option A: Local Streamlit
@@ -249,16 +249,30 @@ Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 di
 ## Zero-GPU Figure Reproduction
 
 > [!TIP]
-> **Replicate All 9 Benchmark Figures (Zero GPU Required)**:
-> Pre-computed validation and test set inference fixtures are bundled in [`test_predictions.json`](test_predictions.json) and [`temporal_test_predictions.json`](temporal_test_predictions.json). You can replicate all 9 benchmark figures locally without requiring the dataset or GPU hardware:
+> **Replicate All 11 Publication Figures**:
+> The complete suite of peer-review publication figures (vector PDF and 300 DPI PNG) can be generated with:
+> ```bash
+> # 1. Generate 10 consolidated publication figures
+> python scripts/generate_publication_figures.py
+>
+> # 2. Generate 1D azimuthal radial power spectral profiles
+> python scripts/compute_radial_spectral_profiles.py
+> ```
+> Generates `system_architecture`, `roc_pr_curves`, `temporal_attention_dynamics`, `lifecycle_flaws`, `radial_spectral_profiles`, `loto_generalization_matrix`, `robustness_curves`, `gating_attenuation_dynamics`, `calibration_reliability`, `bayesian_decision_zones`, and `qualitative_attention` in both `manuscript/figures/` and `figures/`.
+>
+> **Replicate Diagnostic Benchmark Suite**:
+> Pre-computed validation and test set inference fixtures are bundled in [`test_predictions.json`](test_predictions.json) and [`temporal_test_predictions.json`](temporal_test_predictions.json):
 > ```bash
 > python scripts/generate_benchmark_plots.py
 > ```
-> Generates `roc_curve.png`, `ece_reliability.png`, `precision_recall_curve.png`, `bayesian_decision_zones.png`, `confusion_matrices.png`, `per_generator_auc.png`, `loto_generalization.png`, `robustness_degradation.png`, and `temporal_attention_dynamics.png` in `figures/`.
 
 ---
 
 ## System Architecture & Methodology
+
+<div align="center">
+  <img src="figures/system_architecture.png" width="100%" alt="System Architecture Schematic" />
+</div>
 
 ```text
 [ Input Video / Image Stream ]
@@ -334,16 +348,41 @@ $$
 
 | Execution Device | Engine / Precision | Batch Size | Latency per Crop | Throughput | Environment |
 | :--- | :---: | :---: | :---: | :---: | :--- |
+| **NVIDIA GeForce RTX 4060 Laptop GPU** | PyTorch FP16 | BS = 1 | `23.77 ms` | `42.1 FPS` | Host GPU (Isolated Model Forward) |
+| **NVIDIA GeForce RTX 4060 Laptop GPU** | PyTorch FP16 | BS = 32 | `9.70 ms` | `103.1 FPS` | Host GPU (Isolated Model Forward Amortized) |
+| **NVIDIA GeForce RTX 4060 Laptop GPU** | PyTorch FP16 | BS = 32 | `14.08 ms` | `71.0 FPS` | Host GPU (Full Pipeline End-to-End) |
 | **NVIDIA Tesla T4 GPU** | PyTorch FP16 | BS = 1 | `18.62 ms` | `53.7 FPS` | Kaggle Dual-T4 Kernel |
 | **NVIDIA Tesla T4 GPU** | PyTorch FP16 | BS = 32 | `16.41 ms` | `60.9 FPS` | Kaggle Dual-T4 Kernel |
 | **Intel Xeon CPU (Multi-thread)** | PyTorch FP32 | BS = 1 | `182.90 ms` | `5.5 FPS` | Multi-threaded Host |
 | **Intel Xeon CPU (Multi-thread)** | PyTorch FP32 | BS = 32 | `4.77 ms` | `209.6 FPS` | Multi-threaded Host |
 | **Host CPU** | ONNX Runtime FP32 | BS = 1 | `303.54 ms` | `3.3 FPS` | ONNX Runtime CPUExecutionProvider |
 
+**Stage-by-Stage Latency Breakdown (NVIDIA GeForce RTX 4060, FP16, $B = 32$):**
+
+| Pipeline Stage | Latency per Crop | Latency Fraction |
+| :--- | :---: | :---: |
+| YuNet Detection + Affine Warp + Hann Window | `3.42 ms` | 24.3% |
+| SRM & Bayar Residual Convolutions | `0.14 ms` | 1.0% |
+| FP32 2D Real FFT Decomposition | `0.97 ms` | 6.9% |
+| ConvNeXt-Small Spatial Backbone | `7.81 ms` | 55.5% |
+| `ResSE-Spectral` Tower | `1.67 ms` | 11.9% |
+| SNR Fusion Gating & Classification Heads | `0.06 ms` | 0.4% |
+| **Total End-to-End Pipeline Latency** | **`14.08 ms`** | **100.0%** |
+
 </details>
 
 <details>
 <summary><b>Kaggle 2× Tesla T4 Full Pipeline Reproduction Guide (Click to expand)</b></summary>
+
+#### Automated Turnkey Execution:
+Run the complete end-to-end training, calibration, and temporal evaluation pipeline in a single command:
+```bash
+python scripts/run_release1_kaggle.py \
+    --data_dir /kaggle/input/deepfake-detection \
+    --output_dir /kaggle/working/
+```
+
+#### Step-by-Step Execution:
 
 ```bash
 # 1. Run unit test suite
@@ -383,16 +422,18 @@ deepfake-detection/
 ├── app.py                             # Streamlit web application & serving dashboard
 ├── config/default.yaml                # Hyperparameters and preprocessing resolution
 ├── Dockerfile                         # Production-grade headless container definition
-├── figures/                           # Benchmark figures and diagnostic visualizations
-│   ├── roc_curve.png                  # Single-frame vs Video Bi-GRU ROC comparison
-│   ├── ece_reliability.png            # Expected Calibration Error reliability diagram
-│   ├── precision_recall_curve.png     # Precision-Recall curves & F1 threshold sweeps
-│   ├── bayesian_decision_zones.png    # Probability distributions & Bayesian 3-zone bands
-│   ├── confusion_matrices.png         # Normalized confusion matrices with exact sample counts
-│   ├── per_generator_auc.png          # Sub-domain per-generator breakdown bar chart
-│   ├── loto_generalization.png        # 5-fold Leave-One-Type-Out generalization bars
-│   ├── robustness_degradation.png     # 4-panel robustness degradation curve sweeps
-│   ├── temporal_attention_dynamics.png# Frame-by-frame anomaly tracking & attention
+├── figures/                           # Publication figures and diagnostic visualizations
+│   ├── system_architecture.png/pdf    # Full end-to-end vector architecture schematic
+│   ├── roc_pr_curves.png/pdf          # Diagnostic ROC and Precision-Recall operating curves
+│   ├── temporal_attention_dynamics.png/pdf # Frame-by-frame anomaly tracking & Bi-GRU attention
+│   ├── lifecycle_flaws.png/pdf        # PRNU noise annihilation, Dirac spikes & boundary seams
+│   ├── radial_spectral_profiles.png/pdf # 1D Azimuthal radial power spectrum profiles
+│   ├── loto_generalization_matrix.png/pdf # 4-fold Leave-One-Manipulation-Out transfer matrix
+│   ├── robustness_curves.png/pdf      # 4-panel degradation stress-testing curves
+│   ├── gating_attenuation_dynamics.png/pdf # SNR-adaptive gating attenuation under degradation
+│   ├── calibration_reliability.png/pdf# Platt scaling Expected Calibration Error reliability
+│   ├── bayesian_decision_zones.png/pdf# Posterior KDE distributions & 3-zone triage boundaries
+│   ├── qualitative_attention.png/pdf  # 16-panel qualitative SRM, 2D FFT, and Grad-CAM matrix
 │   └── attention_maps/                # 4-panel Grad-CAM forensic diagnostic maps
 ├── manuscript/                        # IEEE manuscript source and vector assets
 │   ├── main.tex                       # Primary LaTeX publication document
@@ -403,6 +444,7 @@ deepfake-detection/
 ├── scripts/                           # Standalone CLI execution entry points
 │   ├── benchmark_latency.py           # Latency & throughput benchmarking (PyTorch CUDA/CPU & ONNX Runtime)
 │   ├── build_release1_splits.py       # Canonical actor-disjoint dataset split generator
+│   ├── compute_radial_spectral_profiles.py # 1D Azimuthal radial power spectrum generator
 │   ├── compute_table5_ablations.py    # Architecture ablation suite generator
 │   ├── evaluate_robustness.py         # Degradation perturbation stress sweeps
 │   ├── evaluate_subdomain_breakdown.py# Per-generator sub-domain breakdown evaluator
@@ -411,8 +453,9 @@ deepfake-detection/
 │   ├── export_onnx.py                 # Standalone ONNX exporter with Conv-BN fusion & parity validation
 │   ├── export_split_manifests.py      # Split metadata manifest exporter
 │   ├── export_test_predictions.py     # Single-frame probability exporter
-│   ├── generate_benchmark_plots.py    # Publication figure rendering
-│   ├── generate_publication_figures.py# Vector PDF figure compiler
+│   ├── generate_benchmark_plots.py    # Diagnostic benchmark figure rendering
+│   ├── generate_manuscript_tables.py  # Live ledger LaTeX table generator
+│   ├── generate_publication_figures.py# Complete 11 publication figure compiler
 │   ├── package_arxiv.py               # ArXiv submission bundle packager
 │   ├── profile_latency_live.py        # Live GPU/CPU event-based profiling
 │   ├── run_lomo_canonical.py          # 4-fold Leave-One-Manipulation-Out evaluation
@@ -430,7 +473,7 @@ deepfake-detection/
 │   ├── services/                      # Inference engine & Streamlit components
 │   ├── training/                      # Distributed trainer, focal loss, EMA, schedulers
 │   └── utils/                         # Bayesian thresholds, Grad-CAM, checkpoint tools
-└── tests/                             # Comprehensive 145-test PyTest test suite
+└── tests/                             # Comprehensive 146-test PyTest test suite
 ```
 
 </details>

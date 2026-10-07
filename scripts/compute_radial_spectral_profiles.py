@@ -122,18 +122,43 @@ def main():
             profiles[cat_name] = np.mean(cat_profiles, axis=0)
             print(f"  [+] Processed {len(cat_profiles)} crops for '{cat_name}'", flush=True)
 
-    # Plot
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.2), dpi=300)
+    from scipy.ndimage import gaussian_filter1d
+
+    # Professional academic palette matching publication figures
+    DARK_NAVY = "#0F172A"
+    BORDER_GRAY = "#CBD5E1"
+    GREEN_MAIN = "#15803D"
+    RED_MAIN = "#B91C1C"
+    BLUE_MAIN = "#1D4ED8"
+    AMBER_MAIN = "#B45309"
+    PURPLE_MAIN = "#6D28D9"
+    CYAN_MAIN = "#0284C7"
+
+    plt.rcParams.update({
+        "font.family": "DejaVu Sans",
+        "font.size": 9.0,
+        "axes.titlesize": 10.0,
+        "axes.titleweight": "bold",
+        "axes.labelsize": 9.0,
+        "axes.labelcolor": DARK_NAVY,
+        "axes.edgecolor": BORDER_GRAY,
+        "axes.linewidth": 0.8,
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+    })
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10.0, 4.4), dpi=300)
+    plt.subplots_adjust(wspace=0.26)
     radii = np.arange(len(profiles["Authentic Natural"]))
-    freq_normalized = radii / float(len(radii)) # cycles / pixel
+    freq_normalized = radii / float(len(radii))  # cycles / pixel
 
     colors = {
-        "Authentic Natural": "#16A34A",
-        "Deepfakes (Autoencoder)": "#DC2626",
-        "Face2Face (3DMM)": "#2563EB",
-        "FaceSwap (Graphic)": "#D97706",
-        "NeuralTextures (Neural)": "#7C3AED",
-        "Celeb-DF v2": "#0D9488",
+        "Authentic Natural": GREEN_MAIN,
+        "Deepfakes (Autoencoder)": RED_MAIN,
+        "Face2Face (3DMM)": BLUE_MAIN,
+        "FaceSwap (Graphic)": AMBER_MAIN,
+        "NeuralTextures (Neural)": PURPLE_MAIN,
+        "Celeb-DF v2": CYAN_MAIN,
     }
     styles = {
         "Authentic Natural": ("-", 2.2),
@@ -149,18 +174,21 @@ def main():
         ls, lw = styles.get(cat_name, ("-", 1.5))
         c = colors.get(cat_name, "#333333")
         log_p = np.log10(prof + 1e-12)
-        ax1.plot(freq_normalized, log_p, label=cat_name, color=c, linestyle=ls, linewidth=lw)
+        log_p_smooth = gaussian_filter1d(log_p, sigma=1.0)
+        ax1.plot(freq_normalized, log_p_smooth, label=cat_name, color=c, linestyle=ls, linewidth=lw)
 
+    ax1.axvspan(0.35, 0.50, color="#FEE2E2", alpha=0.4, label="High-Freq. Divergence Zone")
     ax1.set_title("(a) Azimuthal Radial Power Spectrum $\\log_{10} P(r)$", fontsize=10, fontweight="bold")
     ax1.set_xlabel("Spatial Frequency Radius $r$ (cycles / pixel)", fontsize=9)
     ax1.set_ylabel("Log Power $\\log_{10} P(r)$", fontsize=9)
-    ax1.grid(True, linestyle="--", alpha=0.5)
-    ax1.legend(loc="upper right", fontsize=7.5, framealpha=0.9)
+    ax1.grid(True, linestyle=":", alpha=0.6)
+    ax1.legend(loc="upper right", fontsize=7.6, framealpha=0.92)
     ax1.set_xlim(0.02, 0.50)
 
     # Panel 2: Relative Spectral Elevation Delta P(r) = P_fake(r) - P_real(r) (dB)
     p_real = profiles["Authentic Natural"]
     log_p_real = np.log10(p_real + 1e-12)
+    ax2.axhline(0, color=GREEN_MAIN, linestyle="-", linewidth=1.5, alpha=0.8, label="Authentic Baseline (0 dB)")
     for cat_name, prof in profiles.items():
         if cat_name == "Authentic Natural":
             continue
@@ -168,21 +196,24 @@ def main():
         c = colors.get(cat_name, "#333333")
         log_p_fake = np.log10(prof + 1e-12)
         delta_db = 10.0 * (log_p_fake - log_p_real)
-        ax2.plot(freq_normalized, delta_db, label=cat_name, color=c, linestyle=ls, linewidth=lw)
+        delta_db_smooth = gaussian_filter1d(delta_db, sigma=1.2)
+        ax2.plot(freq_normalized, delta_db_smooth, label=cat_name, color=c, linestyle=ls, linewidth=lw)
 
-    ax2.axhline(0, color="#16A34A", linestyle="-", linewidth=1.5, alpha=0.8, label="Authentic Baseline (0 dB)")
     ax2.set_title("(b) Relative High-Frequency Elevation $\\Delta P(r)$ (dB)", fontsize=10, fontweight="bold")
     ax2.set_xlabel("Spatial Frequency Radius $r$ (cycles / pixel)", fontsize=9)
     ax2.set_ylabel("Power Discrepancy $\\Delta P(r)$ (dB)", fontsize=9)
-    ax2.grid(True, linestyle="--", alpha=0.5)
-    ax2.legend(loc="upper left", fontsize=7.5, framealpha=0.9)
+    ax2.grid(True, linestyle=":", alpha=0.6)
+    ax2.legend(loc="upper left", fontsize=7.6, framealpha=0.92)
     ax2.set_xlim(0.05, 0.50)
 
-    plt.tight_layout()
     out_pdf = os.path.join(REPO_ROOT, "manuscript", "figures", "radial_spectral_profiles.pdf")
     out_png = os.path.join(REPO_ROOT, "manuscript", "figures", "radial_spectral_profiles.png")
     fig.savefig(out_pdf, bbox_inches="tight")
     fig.savefig(out_png, dpi=300, bbox_inches="tight")
+
+    # Also sync to root figures
+    fig.savefig(os.path.join(REPO_ROOT, "figures", "radial_spectral_profiles.pdf"), bbox_inches="tight")
+    fig.savefig(os.path.join(REPO_ROOT, "figures", "radial_spectral_profiles.png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"[+] Successfully saved radial profile figure:\n  - {out_pdf}\n  - {out_png}", flush=True)
 

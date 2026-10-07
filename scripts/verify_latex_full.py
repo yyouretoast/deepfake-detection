@@ -60,6 +60,12 @@ def verify_latex_full(file_path, results_data=None):
     if brace_depth > 0:
         errors.append(f"Unbalanced curly braces: {brace_depth} unclosed '{{'")
 
+    supp_path = os.path.join(os.path.dirname(file_path), "supplementary.tex")
+    supp_content = ""
+    if os.path.exists(supp_path) and os.path.abspath(file_path) != os.path.abspath(supp_path):
+        with open(supp_path, "r", encoding="utf-8") as f:
+            supp_content = f.read()
+
     # 3. Check citations
     cites = set()
     for m in re.findall(r"\\cite\{([^}]+)\}", content):
@@ -67,6 +73,8 @@ def verify_latex_full(file_path, results_data=None):
             cites.add(k.strip())
             
     bibitems = set(re.findall(r"\\bibitem\{([^}]+)\}", content))
+    if supp_content:
+        bibitems.update(re.findall(r"\\bibitem\{([^}]+)\}", supp_content))
     missing_citations = cites - bibitems
     if missing_citations:
         errors.append(f"Missing bibitems for citations: {missing_citations}")
@@ -74,6 +82,8 @@ def verify_latex_full(file_path, results_data=None):
     # 4. Check references
     refs = set(re.findall(r"\\(?:ref|eqref)\{([^}]+)\}", content))
     labels = set(re.findall(r"\\label\{([^}]+)\}", content))
+    if supp_content:
+        labels.update(re.findall(r"\\label\{([^}]+)\}", supp_content))
     missing_labels = refs - labels
     if missing_labels:
         errors.append(f"Missing labels for references: {missing_labels}")
@@ -94,21 +104,25 @@ def verify_latex_full(file_path, results_data=None):
         )
 
         table_generators = [
-            ("tab:main_benchmark", generate_table1),
-            ("tab:subdomain_breakdown", generate_table2),
-            ("tab:robustness_benchmarks", generate_table4),
-            ("tab:ablations", generate_table_ablations),
-            ("tab:latency", generate_table_latency),
+            ("tab:main_benchmark", generate_table1, content, file_path),
+            ("tab:ablations", generate_table_ablations, content, file_path),
         ]
+        target_supp = supp_content if supp_content else content
+        target_supp_path = supp_path if supp_content else file_path
+        table_generators.extend([
+            ("tab:subdomain_breakdown", generate_table2, target_supp, target_supp_path),
+            ("tab:robustness_benchmarks", generate_table4, target_supp, target_supp_path),
+            ("tab:latency", generate_table_latency, target_supp, target_supp_path),
+        ])
         if results_data.get("loto_cross_generator_benchmark"):
-            table_generators.append(("tab:loto_results", generate_table3))
+            table_generators.append(("tab:loto_results", generate_table3, target_supp, target_supp_path))
 
         print("\n--- Verifying LaTeX tables against generator output ---")
-        for label, gen_fn in table_generators:
+        for label, gen_fn, target_doc, doc_path in table_generators:
             expected = gen_fn(results_data)
-            actual = extract_table(content, label)
+            actual = extract_table(target_doc, label)
             if actual is None:
-                errors.append(f"Table environment with label '{label}' not found in {file_path}")
+                errors.append(f"Table environment with label '{label}' not found in {doc_path}")
                 continue
 
             norm_expected = normalize_tex_table(expected)
@@ -118,19 +132,19 @@ def verify_latex_full(file_path, results_data=None):
                     norm_expected.splitlines(keepends=True),
                     norm_actual.splitlines(keepends=True),
                     fromfile=f"expected_{label}",
-                    tofile=f"manuscript_{label}",
+                    tofile=f"{os.path.basename(doc_path)}_{label}",
                 ))
-                print(f"\n[DIFF DETECTED in table '{label}']:")
+                print(f"\n[DIFF DETECTED in table '{label}' in {os.path.basename(doc_path)}]:")
                 for d in diff[:25]:
                     print(d, end="")
                 if len(diff) > 25:
                     print(f"... ({len(diff) - 25} more diff lines)")
                 errors.append(
-                    f"Table '{label}' in manuscript does not match table generated from results JSON! "
+                    f"Table '{label}' in {os.path.basename(doc_path)} does not match table generated from results JSON! "
                     f"Run 'python scripts/generate_manuscript_tables.py --update' to synchronize."
                 )
             else:
-                print(f"  [+] Table '{label}' matches generator exactly.")
+                print(f"  [+] Table '{label}' in {os.path.basename(doc_path)} matches generator exactly.")
     else:
         # Static ledger fallback check
         ledger = [

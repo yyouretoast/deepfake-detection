@@ -298,13 +298,16 @@ def generate_table4(data: dict[str, Any]) -> str:
 
 
 def generate_table_ablations(data: dict[str, Any]) -> str:
-    """Table 5: Component-Wise Architectural Ablation Study."""
+    """Table 2 / Table 5: Component-Wise Architectural Ablation Study."""
     ledger = data.get("dataset_ledger", {})
     test_total = ledger.get("test_total", 26981)
     test_videos = ledger.get("test_videos", 2248)
 
     ablation = data.get("ablation_study", {})
     frame_eval = data.get("test_frame_evaluation", {})
+    srm = ablation.get("fixed_srm_alone", {})
+    bayar = ablation.get("learnable_bayar_alone", {})
+    spectral = ablation.get("spectral_tower_alone", {})
     spatial = ablation.get("spatial_backbone_alone", frame_eval.get("spatial_convnext", {}))
     sum_fusion = ablation.get("fusion_elementwise_sum", {})
     static_gate = ablation.get("fusion_static_gate", {})
@@ -322,14 +325,17 @@ def generate_table_ablations(data: dict[str, Any]) -> str:
     latex = f"""\\begin{{table}}[t]
 \\centering
 \\small
-\\caption{{\\textbf{{Component-Wise Architectural Ablation Study on Held-Out Actor-Disjoint Evaluation Cohort.}} Evaluated across $N = {test_total:,}$ test crops ($N = {test_videos:,}$ video sequences) at optimal operational threshold $\\tau^* = {tau_star:.4f}$. Best configurations highlighted in bold.}}
+\\caption{{\\textbf{{Component-Wise Architectural Ablation Study on Held-Out Actor-Disjoint Evaluation Cohort.}} Evaluated across $N = {test_total:,}$ test crops ($N = {test_videos:,}$ video sequences) at optimal operational threshold $\\tau^* = {tau_star:.4f}$. Micro-ablations isolate individual forensic sub-towers prior to multimodal fusion. Best configurations highlighted in bold.}}
 \\label{{tab:ablations}}
 \\resizebox{{\\columnwidth}}{{!}}{{%
 \\begin{{tabular}}{{llcccc}}
 \\toprule
 \\textbf{{Configuration}} & \\textbf{{Ablation Variant}} & \\textbf{{ROC AUC}} $\\uparrow$ & \\textbf{{PR AUC}} $\\uparrow$ & \\textbf{{Fake F1}} $\\uparrow$ & \\textbf{{EER (\\%)}} $\\downarrow$ \\\\
 \\midrule
-\\multicolumn{{6}}{{l}}{{\\textit{{Stream Modality \\& Baseline Architecture}}}} \\\\
+\\multicolumn{{6}}{{l}}{{\\textit{{Stream Modality \\& Micro-Ablations}}}} \\\\
+Fixed SRM Kernels Alone & 9 Handcrafted Filters Only & {srm.get('auc', 0.4810):.4f} & {srm.get('pr_auc', 0.7074):.4f} & {srm.get('f1', 0.8351):.4f} & {srm.get('eer', 51.42):.2f} \\\\
+Learnable Bayar Filter Alone & Constrained Conv Only & {bayar.get('auc', 0.4899):.4f} & {bayar.get('pr_auc', 0.7089):.4f} & {bayar.get('f1', 0.0018):.4f} & {bayar.get('eer', 50.93):.2f} \\\\
+ResSE-Spectral Tower Alone & 20-Channel Fourier Stream Only & {spectral.get('auc', 0.4867):.4f} & {spectral.get('pr_auc', 0.7088):.4f} & {spectral.get('f1', 0.8341):.4f} & {spectral.get('eer', 51.13):.2f} \\\\
 Spatial Backbone Alone & ConvNeXt-Small Only & {spatial.get('auc', 0.8370):.4f} & {spatial.get('pr_auc', 0.9226):.4f} & {spatial.get('f1', 0.7810):.4f} & {spatial.get('eer', 24.43):.2f} \\\\
 \\midrule
 \\multicolumn{{6}}{{l}}{{\\textit{{Cross-Stream Fusion Dynamics}}}} \\\\
@@ -411,10 +417,16 @@ def normalize_tex_table(text: str) -> str:
 
 
 def update_tex_file(tex_path: str, data: dict[str, Any]) -> bool:
-    """Safely replaces Table 1, Table 2, Table 3, Table 4, Ablations, and Latency in main.tex."""
+    """Safely replaces generated tables in main.tex and supplementary.tex."""
     if not os.path.exists(tex_path):
         logger.error("Target file does not exist: %s", tex_path)
         return False
+
+    supp_path = os.path.join(os.path.dirname(tex_path), "supplementary.tex")
+    supp_content = ""
+    if os.path.exists(supp_path):
+        with open(supp_path, "r", encoding="utf-8") as f:
+            supp_content = f.read()
 
     with open(tex_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -429,32 +441,47 @@ def update_tex_file(tex_path: str, data: dict[str, Any]) -> bool:
     if data.get("loto_cross_generator_benchmark"):
         tables["tab:loto_results"] = generate_table3(data)
 
-    updated = content
+    updated_main = content
+    updated_supp = supp_content
     for label, new_table in tables.items():
         pattern = re.compile(
             rf"\\begin\{{(table\*?)\}}(?:(?!\\begin\{{table\*?\}}|\\end\{{table\*?\}}).)*?\\label\{{{re.escape(label)}\}}.*?\\end\{{\1\}}",
             re.DOTALL,
         )
-        if pattern.search(updated):
-            updated = pattern.sub(lambda _, t=new_table: t, updated, count=1)
-            logger.info("Successfully updated table: %s", label)
+        if pattern.search(updated_main):
+            updated_main = pattern.sub(lambda _, t=new_table: t, updated_main, count=1)
+            logger.info("Successfully updated table '%s' in %s", label, tex_path)
+        elif updated_supp and pattern.search(updated_supp):
+            updated_supp = pattern.sub(lambda _, t=new_table: t, updated_supp, count=1)
+            logger.info("Successfully updated table '%s' in %s", label, supp_path)
         else:
             logger.warning("Could not find table environment with label: %s", label)
 
     with open(tex_path, "w", encoding="utf-8") as f:
-        f.write(updated)
+        f.write(updated_main)
     logger.info("Wrote updated LaTeX manuscript -> %s", tex_path)
+
+    if supp_content and updated_supp != supp_content:
+        with open(supp_path, "w", encoding="utf-8") as f:
+            f.write(updated_supp)
+        logger.info("Wrote updated LaTeX supplementary -> %s", supp_path)
     return True
 
 
 def check_tables_match(tex_path: str, data: dict[str, Any]) -> bool:
-    """Verifies that all tables in main.tex match the generated tables from results JSON."""
+    """Verifies that all tables in main.tex and supplementary.tex match generated tables from results JSON."""
     if not os.path.exists(tex_path):
         logger.error("Target file does not exist: %s", tex_path)
         return False
 
     with open(tex_path, "r", encoding="utf-8") as f:
         content = f.read()
+
+    supp_path = os.path.join(os.path.dirname(tex_path), "supplementary.tex")
+    supp_content = ""
+    if os.path.exists(supp_path):
+        with open(supp_path, "r", encoding="utf-8") as f:
+            supp_content = f.read()
 
     import difflib
 
@@ -471,20 +498,25 @@ def check_tables_match(tex_path: str, data: dict[str, Any]) -> bool:
     all_passed = True
     for label, expected in tables.items():
         actual = extract_table(content, label)
+        doc_name = os.path.basename(tex_path)
+        if actual is None and supp_content:
+            actual = extract_table(supp_content, label)
+            doc_name = os.path.basename(supp_path)
+
         if actual is None:
-            logger.error("CHECK FAILED: Table '%s' not found in %s", label, tex_path)
+            logger.error("CHECK FAILED: Table '%s' not found in %s or supplementary", label, tex_path)
             all_passed = False
             continue
 
         norm_expected = normalize_tex_table(expected)
         norm_actual = normalize_tex_table(actual)
         if norm_expected != norm_actual:
-            logger.error("CHECK FAILED: Table '%s' does not match generator output!", label)
+            logger.error("CHECK FAILED: Table '%s' in %s does not match generator output!", label, doc_name)
             diff = list(difflib.unified_diff(
                 norm_expected.splitlines(keepends=True),
                 norm_actual.splitlines(keepends=True),
                 fromfile=f"expected_{label}",
-                tofile=f"manuscript_{label}",
+                tofile=f"{doc_name}_{label}",
             ))
             for d in diff[:25]:
                 print(d, end="")
@@ -492,7 +524,7 @@ def check_tables_match(tex_path: str, data: dict[str, Any]) -> bool:
                 print(f"... ({len(diff) - 25} more diff lines)")
             all_passed = False
         else:
-            logger.info("CHECK PASSED: Table '%s' verified exact match", label)
+            logger.info("CHECK PASSED: Table '%s' verified exact match in %s", label, doc_name)
 
     return all_passed
 
