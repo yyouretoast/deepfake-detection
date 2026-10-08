@@ -249,16 +249,19 @@ Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 di
 ## Zero-GPU Figure Reproduction
 
 > [!TIP]
-> **Replicate All 11 Publication Figures**:
+> **Replicate All 12 Publication Figures**:
 > The complete suite of peer-review publication figures (vector PDF and 300 DPI PNG) can be generated with:
 > ```bash
-> # 1. Generate 10 consolidated publication figures
+> # 1. Generate Teaser Figure 1 (Spatial-Frequency Asymmetry Paradox)
+> python scripts/generate_teaser_figure.py
+>
+> # 2. Generate consolidated publication figures
 > python scripts/generate_publication_figures.py
 >
-> # 2. Generate 1D azimuthal radial power spectral profiles
+> # 3. Generate 1D azimuthal radial power spectral profiles
 > python scripts/compute_radial_spectral_profiles.py
 > ```
-> Generates `system_architecture`, `roc_pr_curves`, `temporal_attention_dynamics`, `lifecycle_flaws`, `radial_spectral_profiles`, `loto_generalization_matrix`, `robustness_curves`, `gating_attenuation_dynamics`, `calibration_reliability`, `bayesian_decision_zones`, and `qualitative_attention` in both `manuscript/figures/` and `figures/`.
+> Generates `teaser_concept`, `system_architecture`, `roc_pr_curves`, `temporal_attention_dynamics`, `lifecycle_flaws`, `radial_spectral_profiles`, `loto_generalization_matrix`, `robustness_curves`, `gating_attenuation_dynamics`, `calibration_reliability`, `bayesian_decision_zones`, and `qualitative_attention` in both `manuscript/figures/` and `figures/`.
 >
 > **Replicate Diagnostic Benchmark Suite**:
 > Pre-computed validation and test set inference fixtures are bundled in [`test_predictions.json`](test_predictions.json) and [`temporal_test_predictions.json`](temporal_test_predictions.json):
@@ -423,6 +426,7 @@ deepfake-detection/
 ├── config/default.yaml                # Hyperparameters and preprocessing resolution
 ├── Dockerfile                         # Production-grade headless container definition
 ├── figures/                           # Publication figures and diagnostic visualizations
+│   ├── teaser_concept.png/pdf         # Teaser Figure 1: Spatial-Frequency Asymmetry Paradox
 │   ├── system_architecture.png/pdf    # Full end-to-end vector architecture schematic
 │   ├── roc_pr_curves.png/pdf          # Diagnostic ROC and Precision-Recall operating curves
 │   ├── temporal_attention_dynamics.png/pdf # Frame-by-frame anomaly tracking & Bi-GRU attention
@@ -436,7 +440,8 @@ deepfake-detection/
 │   ├── qualitative_attention.png/pdf  # 16-panel qualitative SRM, 2D FFT, and Grad-CAM matrix
 │   └── attention_maps/                # 4-panel Grad-CAM forensic diagnostic maps
 ├── manuscript/                        # IEEE manuscript source and vector assets
-│   ├── main.tex                       # Primary LaTeX publication document
+│   ├── main.tex                       # Primary LaTeX publication document (8 pages)
+│   ├── supplementary.tex              # Standalone Supplementary Material (Appendices A-I)
 │   └── figures/                       # Publication vector PDFs and figures
 ├── notebooks/                         # Turnkey Jupyter reproduction notebooks
 │   └── master_pipeline.ipynb          # End-to-end multi-GPU training, evaluation & export
