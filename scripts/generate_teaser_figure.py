@@ -5,7 +5,6 @@ Illustrates the Spatial-Frequency Asymmetry Paradox in Media Forensics:
 (c) Proposed Solution: SNR-Adaptive Complementary Gating (g_eff = g * gamma) dynamically arbitrating domains.
 """
 
-import json
 import os
 import sys
 
@@ -14,10 +13,8 @@ sys.path.insert(0, os.path.abspath("."))
 import matplotlib
 
 matplotlib.use("Agg")
-import cv2
 import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+from matplotlib.patches import FancyBboxPatch
 
 os.environ["MPLCONFIGDIR"] = os.path.abspath(".mpl_cache")
 os.makedirs(".mpl_cache", exist_ok=True)

@@ -10,9 +10,12 @@
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{graphicx}
+\graphicspath{{figures/}{manuscript/figures/}{../figures/}{./}}
 \usepackage{xcolor}
 \usepackage{cite}
 \usepackage{url}
+\usepackage{xr}
+\externaldocument[supp:]{supplementary}
 \usepackage[pagebackref=false,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false,citecolor=blue,linkcolor=blue,urlcolor=blue]{hyperref}
 
 % Micro-layout float packing
@@ -86,7 +89,7 @@ The rapid democratization of deep generative modeling---spanning Generative Adve
 
 Despite intensive research, deployed deepfake detectors exhibit brittle generalization. Classifiers demonstrating near-perfect discrimination ($>99\%$ ROC AUC) on benchmark corpora frequently collapse when evaluated on out-of-distribution generators or compressed video platforms. This diagnostic failure stems from two interconnected flaws:
 
-\paragraph{1. Semantic Memorization vs. Sensor Invariants.} Standard detectors train high-capacity vision backbones directly on RGB crops. Instead of learning physical manipulation artifacts, models minimize empirical risk by memorizing demographic shortcuts, facial identities, or background scene correlations. Real-world camera image pipelines leave unique physical traces: Photo-Response Non-Uniformity (PRNU)~\cite{chen2008determining}, chromatic aberration, and continuous $1/f^\alpha$ power spectra. Generative pipelines violate these camera physics through up-sampling grid artifacts, phase incoherence, and Poisson boundary blending seams (detailed mathematically and empirically in Appendix~\ref{app:extended_physics}, Figs.~\ref{fig:lifecycle_flaws} and \ref{fig:radial_spectral_profiles}).
+\paragraph{1. Semantic Memorization vs. Sensor Invariants.} Standard detectors train high-capacity vision backbones directly on RGB crops. Instead of learning physical manipulation artifacts, models minimize empirical risk by memorizing demographic shortcuts, facial identities, or background scene correlations. Real-world camera image pipelines leave unique physical traces: Photo-Response Non-Uniformity (PRNU)~\cite{chen2008determining}, chromatic aberration, and continuous $1/f^\alpha$ power spectra. Generative pipelines violate these camera physics through up-sampling grid artifacts, phase incoherence, and Poisson boundary blending seams (detailed mathematically and empirically in Supplementary Appendix~A, Figs.~S1 and S2).
 
 \paragraph{2. Frequency Brittleness Under Transmission.} Conversely, standalone frequency detectors exploit high-frequency residual spectra (e.g., Fourier spikes or steganographic residuals). However, real-world distribution platforms apply lossy H.264/H.265 video compression, chroma subsampling, and Gaussian anti-aliasing. These operations obliterate fragile high-frequency noise, causing standalone spectral detectors to experience catastrophic performance collapse.
 
@@ -152,7 +155,7 @@ Our end-to-end framework (Fig.~\ref{fig:system_architecture}) couples a ConvNeXt
 \subsection{Zero-Leakage Landmark Alignment and Boundary Tapering}
 \label{sec:method_preprocessing}
 
-To eliminate pose and rotation confounders, input frames $\mathbf{I} \in \mathbb{R}^{H \times W \times 3}$ are detected via OpenCV YuNet~\cite{yunet2023opencv}, yielding a bounding box $\mathbf{b}$ and five facial keypoints $\mathbf{P} = \{\mathbf{p}_k\}_{k=1}^5$. We align keypoints to a canonical template using a 4-DoF similarity transform (scale $s$, rotation $\theta$, translation $\mathbf{t}$) solved via Least Median of Squares (LMEDS)~\cite{rousseeuw1984least}, preventing shear warping. To capture outer boundary blending seams (Eq.~\ref{eq:boundary_discontinuity}), we expand bounding boxes by $s_f = 1.50\times$ with inward template landmark contraction ($m_{\mathrm{frac}} = 1/6$). Border padding uses edge replication modulated by a separable 2D Hann-cosine tapering window over outer boundary fraction $\delta = 0.05$ ($H_{\mathrm{taper}} = 12$ pixels on $256 \times 256$ inputs):
+To eliminate pose and rotation confounders, input frames $\mathbf{I} \in \mathbb{R}^{H \times W \times 3}$ are detected via OpenCV YuNet~\cite{yunet2023opencv}, yielding a bounding box $\mathbf{b}$ and five facial keypoints $\mathbf{P} = \{\mathbf{p}_k\}_{k=1}^5$. We align keypoints to a canonical template using a 4-DoF similarity transform (scale $s$, rotation $\theta$, translation $\mathbf{t}$) solved via Least Median of Squares (LMEDS)~\cite{rousseeuw1984least}, preventing shear warping. To capture outer boundary blending seams (Supplementary Eq.~S14), we expand bounding boxes by $s_f = 1.50\times$ with inward template landmark contraction ($m_{\mathrm{frac}} = 1/6$). Border padding uses edge replication modulated by a separable 2D Hann-cosine tapering window over outer boundary fraction $\delta = 0.05$ ($H_{\mathrm{taper}} = 12$ pixels on $256 \times 256$ inputs):
 \begin{equation}
 \label{eq:hann_window_1d}
 w_y(y) = \begin{cases}
@@ -175,7 +178,7 @@ Normalized crops $\mathbf{I}_{\mathrm{norm}} \in \mathbb{R}^{B \times 3 \times 2
 \subsection{Spectral Stream: Steganographic Residuals \& FP32 2D FFT}
 \label{sec:method_spectral}
 
-Raw inputs $\mathbf{I} \in [0, 1]^{B \times 3 \times 256 \times 256}$ pass through dual residual filters. A fixed 9-channel SRM filter bank $\mathbf{K}_{\mathrm{SRM}} \in \mathbb{R}^{9 \times 1 \times 5 \times 5}$ applies canonical high-pass kernels ($\mathbf{K}_1, \mathbf{K}_2, \mathbf{K}_3$~\cite{fridrich2012rich}, Appendix~\ref{app:srm_kernels}) across RGB channels. Concurrently, an adaptive constrained convolution $\mathbf{W}_{\mathrm{B}} \in \mathbb{R}^{1 \times 3 \times 5 \times 5}$~\cite{bayar2018constrained} dynamically optimizes a prediction-error filter enforcing the zero-sum constraint via signed sum normalization:
+Raw inputs $\mathbf{I} \in [0, 1]^{B \times 3 \times 256 \times 256}$ pass through dual residual filters. A fixed 9-channel SRM filter bank $\mathbf{K}_{\mathrm{SRM}} \in \mathbb{R}^{9 \times 1 \times 5 \times 5}$ applies canonical high-pass kernels ($\mathbf{K}_1, \mathbf{K}_2, \mathbf{K}_3$~\cite{fridrich2012rich}, Supplementary Appendix~B) across RGB channels. Concurrently, an adaptive constrained convolution $\mathbf{W}_{\mathrm{B}} \in \mathbb{R}^{1 \times 3 \times 5 \times 5}$~\cite{bayar2018constrained} dynamically optimizes a prediction-error filter enforcing the zero-sum constraint via signed sum normalization:
 \begin{equation}
 \label{eq:bayar_constraint}
 S = \sum_{(p, q) \ne (0, 0)} \mathbf{W}_{\mathrm{B}}(p, q), \quad S_{\mathrm{safe}} = \mathrm{sgn}(S) \cdot \max(|S|, 10^{-5}),
@@ -263,7 +266,7 @@ To evaluate forensic discrimination without biometric identity contamination, we
 The consolidated dataset ledger encompasses 37,104 training crops, 35,016 validation crops, and 26,981 test crops across 2,248 held-out video sequences. The test partition comprises 7,609 authentic and 19,372 synthetic crops (a 2.55:1 fake:real class skew reflecting operational surveillance conditions).
 
 \paragraph{Implementation Details.}
-Models are trained with PyTorch 2.1 on NVIDIA RTX hardware using FP16 Automated Mixed Precision (AMP), while isolating 2D FFT operations within FP32 contexts. We optimize parameters via AdamW ($\beta_1=0.9, \beta_2=0.999$, decoupled weight decay $10^{-2}$) using differential layer-wise learning rates ($\eta_{\mathrm{spatial}}=10^{-5}$ for the pretrained ConvNeXt backbone, $\eta_{\mathrm{spectral}}=10^{-4}$ for the spectral tower and classifier heads) and a Cosine Annealing learning rate schedule ($\eta_{\min}=10^{-6}$, 1 warmup epoch) across 5 full epochs (5,798 optimizer steps with batch size 32). All inputs are resized to $256 \times 256$ pixels. Complete hyperparameter specifications appear in Appendix~\ref{app:hyperparams} (Table~\ref{tab:hyperparams}).
+Models are trained with PyTorch 2.1 on NVIDIA RTX hardware using FP16 Automated Mixed Precision (AMP), while isolating 2D FFT operations within FP32 contexts. We optimize parameters via AdamW ($\beta_1=0.9, \beta_2=0.999$, decoupled weight decay $10^{-2}$) using differential layer-wise learning rates ($\eta_{\mathrm{spatial}}=10^{-5}$ for the pretrained ConvNeXt backbone, $\eta_{\mathrm{spectral}}=10^{-4}$ for the spectral tower and classifier heads) and a Cosine Annealing learning rate schedule ($\eta_{\min}=10^{-6}$, 1 warmup epoch) across 5 full epochs (5,798 optimizer steps with batch size 32). All inputs are resized to $256 \times 256$ pixels. Complete hyperparameter specifications appear in Supplementary Appendix~C (Table~S1).
 
 \begin{table*}[t]
 \centering
@@ -313,7 +316,7 @@ Evaluating per-dataset performance isolates domain dynamics:
 \begin{enumerate}
 \item \textit{FaceForensics++ (Pair-Disjoint)}: Our dual-stream detector achieves \textbf{0.9543} ROC AUC [95\% CI: 0.9345, 0.9712], 0.9633 PR AUC, 0.8904 Fake F1, and 10.71\% EER, demonstrating excellent discrimination on known manipulation pipelines under pair separation.
 \item \textit{Celeb-DF v2 (Identity-Disjoint)}: On strictly held-out celebrity actors evaluated against native pristine videos, the model attains \textbf{0.9128} ROC AUC [95\% CI: 0.8978, 0.9268], 0.9616 PR AUC, 0.8754 Fake F1, and 17.39\% EER. When evaluated against diverse in-the-wild YouTube authentic controls, it maintains 0.8942 ROC AUC and 18.83\% EER, confirming robust identity-disjoint generalization.
-\item \textit{Google DFD (Zero-Shot Cross-Dataset)}: Evaluated zero-shot against FF++ authentic controls, the model obtains \textbf{0.8651} ROC AUC [95\% CI: 0.8460, 0.8850] and 0.9771 PR AUC (20.83\% EER). Under YouTube authentic controls, it maintains 0.8141 ROC AUC and 26.48\% EER. Full subdomain performance breakdowns across manipulation types are reported in Appendix~\ref{app:lomo} (Table~\ref{tab:subdomain_breakdown}).
+\item \textit{Google DFD (Zero-Shot Cross-Dataset)}: Evaluated zero-shot against FF++ authentic controls, the model obtains \textbf{0.8651} ROC AUC [95\% CI: 0.8460, 0.8850] and 0.9771 PR AUC (20.83\% EER). Under YouTube authentic controls, it maintains 0.8141 ROC AUC and 26.48\% EER. Full subdomain performance breakdowns across manipulation types are reported in Supplementary Appendix~D (Table~S2).
 \end{enumerate}
 
 \paragraph{Spatiotemporal Video Sequence Performance.}
@@ -371,22 +374,22 @@ Table~\ref{tab:ablations} systematically dissects the contribution of each archi
 
 Uncalibrated deep networks exhibit severe overconfidence. On held-out validation logits, uncalibrated predictions yield an Expected Calibration Error (ECE) of 0.1965 ($T = 1.0$), with predicted probabilities clustered heavily near 0.0 or 1.0. Applying affine Platt scaling ($a = 0.2783, b = 0.4089$, $T_{\mathrm{eff}} = 3.5931$, Eq.~\ref{eq:platt_scaling}) reduces ECE to \textbf{0.0994} (a 49.4\% relative error reduction). Operating at Youden's optimal threshold ($\tau^* = 0.2600$), the calibrated model delivers 90.51\% fake precision on test data.
 
-Our 3-zone Bayesian triage policy ($\tau_{\mathrm{real}} = 0.40, \tau_{\mathrm{fake}} = 0.60$) routes 78.4\% of test cases to high-confidence automated clearance (Zone 1) or automated interdiction (Zone 3), reserving 21.6\% of ambiguous or degraded samples for mandatory human expert forensic review (Zone 2). Reliability diagrams and triage distributions are illustrated in Appendix~\ref{app:calibration_triage} (Figs.~\ref{fig:calibration_reliability} and \ref{fig:bayesian_decision_zones}).
+Our 3-zone Bayesian triage policy ($\tau_{\mathrm{real}} = 0.40, \tau_{\mathrm{fake}} = 0.60$) routes 78.4\% of test cases to high-confidence automated clearance (Zone 1) or automated interdiction (Zone 3), reserving 21.6\% of ambiguous or degraded samples for mandatory human expert forensic review (Zone 2). Reliability diagrams and triage distributions are illustrated in Supplementary Appendix~F (Figs.~S6 and S7).
 
 \subsection{Robustness Under Environmental Degradations}
 \label{sec:exp_robustness}
 
-In transmission, video streams encounter aggressive transcoding. We stress-test our frozen detector across four degradation families without fine-tuning (Appendix~\ref{app:robustness}, Table~\ref{tab:robustness_benchmarks} and Fig.~\ref{fig:robustness_curves}):
+In transmission, video streams encounter aggressive transcoding. We stress-test our frozen detector across four degradation families without fine-tuning (Supplementary Appendix~G, Table~S4 and Fig.~S4):
 \begin{itemize}
 \item \textbf{JPEG Compression}: Under standard web compression ($Q = 90$), the model retains 0.8408 ROC AUC (97.13\% retention); under $Q = 70$, it retains 0.7973 ROC AUC (92.10\% retention). Under severe compression ($Q = 30$), it retains 0.7410 ROC AUC (85.60\% retention).
-\item \textbf{Gaussian Blur}: Low-pass filtering destroys high-frequency PRNU and up-sampling spikes. Standalone spectral models suffer polarity inversion (ROC AUC $<0.50$, Eq.~\ref{eq:spike_attenuation_db}). In contrast, our SNR-adaptive gate dampens spectral weights ($\mathbf{g}_{\mathrm{eff}} \to \mathbf{0}$), transferring control to ConvNeXt and retaining 0.8021 ROC AUC at $\sigma = 2.0$, 0.7232 ROC AUC at $\sigma = 3.0$ (83.54\% retention), and 0.6722 ROC AUC at $\sigma = 4.0$ (77.65\% retention).
+\item \textbf{Gaussian Blur}: Low-pass filtering destroys high-frequency PRNU and up-sampling spikes. Standalone spectral models suffer polarity inversion (ROC AUC $<0.50$, Supplementary Eq.~S25). In contrast, our SNR-adaptive gate dampens spectral weights ($\mathbf{g}_{\mathrm{eff}} \to \mathbf{0}$), transferring control to ConvNeXt and retaining 0.8021 ROC AUC at $\sigma = 2.0$, 0.7232 ROC AUC at $\sigma = 3.0$ (83.54\% retention), and 0.6722 ROC AUC at $\sigma = 4.0$ (77.65\% retention).
 \item \textbf{Gaussian Noise \& Resizing}: Under heavy zero-mean noise ($\sigma = 20.0$), the model maintains 0.7274 ROC AUC (84.03\% retention). Under $4\times$ spatial downscaling ($0.25\times$ resolution), it maintains 0.8354 ROC AUC (96.50\% retention).
 \end{itemize}
 
 \subsection{Cross-Generator Generalization}
 \label{sec:exp_generalization}
 
-To evaluate zero-shot resilience against unseen synthesis architectures, we conduct a 4-fold Leave-One-Manipulation-Out (LOMO) cross-generator benchmark across FaceForensics++ Partitions A--D (Appendix~\ref{app:lomo}, Table~\ref{tab:loto_results} and Fig.~\ref{fig:loto_generalization_matrix}). In each fold, all synthetic media generated by the targeted architecture is strictly excluded from training and validation, serving as an unseen zero-shot evaluation target against authentic baselines:
+To evaluate zero-shot resilience against unseen synthesis architectures, we conduct a 4-fold Leave-One-Manipulation-Out (LOMO) cross-generator benchmark across FaceForensics++ Partitions A--D (Supplementary Appendix~E, Table~S3 and Fig.~S3). In each fold, all synthetic media generated by the targeted architecture is strictly excluded from training and validation, serving as an unseen zero-shot evaluation target against authentic baselines:
 \begin{itemize}
 \item \textbf{Partition A Held-Out (Deepfakes, Pairs 0--99)}: 0.9413 zero-shot ROC AUC, 0.8785 Fake F1, 0.9353 Precision ($T^* = 2.3923$).
 \item \textbf{Partition B Held-Out (Face2Face, Pairs 100--399)}: 0.9434 zero-shot ROC AUC, 0.8783 Fake F1, 0.9284 Precision ($T^* = 2.3647$).
@@ -398,7 +401,7 @@ The framework achieves an outstanding macro-average zero-shot ROC AUC of \textbf
 \subsection{Inference Latency \& Computational Efficiency}
 \label{sec:exp_latency}
 
-Real-time deployment requires high throughput. Profiling on an NVIDIA GeForce RTX 4060 Laptop GPU under FP16 mixed precision at $256 \times 256$ resolution (Appendix~\ref{app:latency}, Table~\ref{tab:latency}) reveals that the complete pipeline requires an amortized per-frame latency of only \textbf{14.08\,ms} at batch size $B = 32$, delivering \textbf{71.0 FPS} throughput. Bounding box detection and affine warping via YuNet require 3.42\,ms (24.3\%), FP32 FFT decomposition requires 0.97\,ms (6.9\%), ConvNeXt spatial inference takes 7.81\,ms (55.5\%), and the ResSE-Spectral tower takes 1.67\,ms (11.9\%). Isolated model forward execution requires 23.77\,ms ($B = 1$, 42.1 FPS) and 9.70\,ms ($B = 32$, 103.1 FPS amortized).
+Real-time deployment requires high throughput. Profiling on an NVIDIA GeForce RTX 4060 Laptop GPU under FP16 mixed precision at $256 \times 256$ resolution (Supplementary Appendix~H, Table~S5) reveals that the complete pipeline requires an amortized per-frame latency of only \textbf{14.08\,ms} at batch size $B = 32$, delivering \textbf{71.0 FPS} throughput. Bounding box detection and affine warping via YuNet require 3.42\,ms (24.3\%), FP32 FFT decomposition requires 0.97\,ms (6.9\%), ConvNeXt spatial inference takes 7.81\,ms (55.5\%), and the ResSE-Spectral tower takes 1.67\,ms (11.9\%). Isolated model forward execution requires 23.77\,ms ($B = 1$, 42.1 FPS) and 9.70\,ms ($B = 32$, 103.1 FPS amortized).
 
 % -------------------------------------------------------------------------
 % Section 5: Discussion, Forensic Degradation Dynamics, and Limitations
@@ -409,7 +412,7 @@ Real-time deployment requires high throughput. Profiling on an NVIDIA GeForce RT
 \subsection{Spatial-Frequency Failure Mode Asymmetry}
 \label{sec:disc_asymmetry}
 
-Our experimental stress-testing exposes a fundamental operational asymmetry governing spatial and frequency representations in media forensics. Spatial representations degrade smoothly under linear low-pass blur but suffer abrupt failure when high-frequency spatial noise mimics manipulation boundaries. Conversely, frequency representations exhibit catastrophic polarity inversion under low-pass filtering: as Gaussian blur eliminates high-frequency PRNU noise and up-sampling spikes, unregularized spectral networks interpret the absence of high-frequency energy as proof of synthetic smoothing, driving discrimination below chance (ROC AUC $<0.50$, Eq.~\ref{eq:spike_attenuation_db}). Our SNR-adaptive gating factor $\gamma$ dynamically monitors noise residual power $P_{\mathrm{noise}}$, shifting decision weight to ConvNeXt before polarity inversion can corrupt classification.
+Our experimental stress-testing exposes a fundamental operational asymmetry governing spatial and frequency representations in media forensics. Spatial representations degrade smoothly under linear low-pass blur but suffer abrupt failure when high-frequency spatial noise mimics manipulation boundaries. Conversely, frequency representations exhibit catastrophic polarity inversion under low-pass filtering: as Gaussian blur eliminates high-frequency PRNU noise and up-sampling spikes, unregularized spectral networks interpret the absence of high-frequency energy as proof of synthetic smoothing, driving discrimination below chance (ROC AUC $<0.50$, Supplementary Eq.~S25). Our SNR-adaptive gating factor $\gamma$ dynamically monitors noise residual power $P_{\mathrm{noise}}$, shifting decision weight to ConvNeXt before polarity inversion can corrupt classification.
 
 \subsection{Statistical Hypothesis Testing \& Significance}
 \label{sec:disc_significance}
@@ -429,7 +432,7 @@ Targeted adversarial perturbations (e.g., FGSM, PGD~\cite{goodfellow2014explaini
 \label{sec:disc_limitations}
 
 \paragraph{Unmatched Authentic Controls on Google DFD.}
-We explicitly disclose that matched authentic controls for the Google DFD corpus were unavailable for this benchmark. While evaluating DFD against pristine controls tests genuine zero-shot cross-dataset generalization (0.8651 ROC AUC against FF++ authentic controls and 0.8141 against in-the-wild YouTube controls, Tables~\ref{tab:main_benchmark} and \ref{tab:subdomain_breakdown}), domain shift in camera capture hardware induces a minor calibration penalty. Future work will curate native DFD authentic source captures.
+We explicitly disclose that matched authentic controls for the Google DFD corpus were unavailable for this benchmark. While evaluating DFD against pristine controls tests genuine zero-shot cross-dataset generalization (0.8651 ROC AUC against FF++ authentic controls and 0.8141 against in-the-wild YouTube controls, Table~\ref{tab:main_benchmark} and Supplementary Table~S2), domain shift in camera capture hardware induces a minor calibration penalty. Future work will curate native DFD authentic source captures.
 
 \paragraph{Extreme Facial Poses and Heavy Occlusion.}
 OpenCV YuNet provides millisecond-scale landmark localization but exhibits dropped detections on extreme profile angles ($>60^\circ$ yaw) or heavy occlusions (masks, sunglasses). Fallback crops introduce spatial alignment offsets that degrade SRM residual statistics.
