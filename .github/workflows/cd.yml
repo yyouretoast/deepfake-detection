@@ -20,8 +20,10 @@ jobs:
         run: pip install huggingface_hub
 
       - name: Deploy to Space
+        if: ${{ secrets.HF_TOKEN != '' }}
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
           hf upload yyouretoast/deepfake-detector . . --repo-type=space --token="$HF_TOKEN" \
             --exclude "manuscript/*" \
             --exclude "splits/*" \

@@ -128,14 +128,32 @@ class TestPredictCLI:
     def test_predict_cli_positional_and_json(self, tmp_path):
         import subprocess
 
+        import torch
+
+        from src.models.hybrid_detector import HybridDeepfakeDetector
+
         img_path = str(tmp_path / "dummy_face.png")
         cv2.imwrite(img_path, np.full((256, 256, 3), 128, dtype=np.uint8))
+
+        dummy_weights = str(tmp_path / "dummy_weights.pth")
+        model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "optimal_threshold": 0.2600,
+                "platt_scale_a": 0.2783,
+                "platt_bias_b": 0.4089,
+            },
+            dummy_weights,
+        )
 
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         cmd = [
             sys.executable,
             "predict.py",
             img_path,
+            "--weights",
+            dummy_weights,
             "--is_crop",
             "--device",
             "cpu",
