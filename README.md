@@ -28,18 +28,12 @@ license: mit
 
 [**Live Interactive Demo**](https://huggingface.co/spaces/yyouretoast/deepfake-detector) • [**Model Zoo**](#model-zoo--checkpoint-downloads) • [**Quickstart**](#quickstart) • [**SOTA Benchmarks**](#empirical-benchmarks--literature-comparison) • [**System Architecture**](#system-architecture--methodology) • [**Zero-GPU Reproduction**](#zero-gpu-figure-reproduction) • [**BibTeX**](#academic-citation)
 
-<br/>
-
-<p align="center">
-  <img src="figures/teaser_concept.png" width="95%" alt="Dual-Stream Forensic Concept & Spatial-Frequency Paradox" />
-</p>
-
 </div>
 
 ---
 
-
 ## 4-Panel Forensic Diagnostics (Authentic vs. Deepfake)
+
 
 Intermediate representations extracted across the spatial, residual steganographic, and Fourier spectral domains:
 
@@ -66,12 +60,16 @@ Intermediate representations extracted across the spatial, residual steganograph
 * **Bayesian 3-Zone Decision Boundaries**: Post-hoc affine Platt scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$, $\tau^* = 0.2600$) slashes Expected Calibration Error by 49.4% ($0.1965 \to 0.0994$) and establishes operational decision thresholds ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving 90.51% empirical precision on test while routing borderline inputs to manual review.
 * **Inference Throughput**: 71.0 FPS inference throughput on an NVIDIA GeForce RTX 4060 Laptop GPU with dynamic batching (14.08 ms amortized per frame at batch size 32; 23.77 ms single-frame forward at $B=1$).
 
+<details>
+<summary><b>📈 Click to view Fourier radial spectral profiles & SNR gating dynamics</b></summary>
 <p align="center">
   <img src="figures/radial_spectral_profiles.png" width="49%" alt="1D Azimuthal Radial Power Spectral Profiles" />
   <img src="figures/gating_attenuation_dynamics.png" width="49%" alt="SNR-Adaptive Gating Attenuation Dynamics" />
 </p>
+</details>
 
 ---
+
 
 
 ## Model Zoo & Checkpoint Downloads
@@ -200,12 +198,16 @@ Evaluated across the strictly disjoint held-out test cohort (7,609 authentic, 19
 | Temporal Max-Pooling | Video | $8 \times 256^2$ | 0.8544 | 0.9167 | 0.8785 | 77.48% | 87.00% | 88.72% | 21.48% |
 | **Spatiotemporal Bi-GRU (Ours)** | **Video** | **$8 \times 256^2$** | **0.8994** | **0.9571** | **0.8517** | **82.28%** | **93.62%** | **78.13%** | **18.54%** |
 
+<details>
+<summary><b>📊 Click to view ROC / Precision-Recall curves & calibration reliability diagram</b></summary>
 <p align="center">
   <img src="figures/roc_pr_curves.png" width="49%" alt="Diagnostic ROC & Precision-Recall Curves" />
   <img src="figures/calibration_reliability.png" width="49%" alt="Platt Scaling Calibration Reliability Diagram" />
 </p>
+</details>
 
 ---
+
 
 
 ### 2. Fine-Grained Subdomain Performance Breakdown
@@ -238,11 +240,15 @@ A primary challenge in media forensics is generalizing to unseen synthesis algor
 
 *For complete cross-dataset acquisition shifts, zero-shot transfer on Celeb-DF v2 without adaptation yields 0.5961 ROC AUC (matching published literature baselines: MesoNet 0.548, Capsule 0.575, Xception 0.653, F3-Net 0.652), while our primary model achieves 0.9128 ROC AUC on Celeb-DF v2 and 0.8651 zero-shot ROC AUC on Google DeepFakeDetection.*
 
+<details>
+<summary><b>🗺️ Click to view canonical 4-fold LOMO cross-generator generalization matrix</b></summary>
 <p align="center">
   <img src="figures/loto_generalization_matrix.png" width="80%" alt="Canonical 4-Fold Leave-One-Manipulation-Out (LOMO) Generalization Matrix" />
 </p>
+</details>
 
 ---
+
 
 
 ### 4. Robustness Stress-Testing Under Forensic Degradations
@@ -268,11 +274,15 @@ Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 di
 | | Blur Std. Dev. $\sigma = 3.0$ | 0.7232 | -16.46% |
 | | Blur Std. Dev. $\sigma = 4.0$ | 0.6722 | -22.35% |
 
+<details>
+<summary><b>📉 Click to view robustness degradation curves across 16 perturbation profiles</b></summary>
 <p align="center">
   <img src="figures/robustness_curves.png" width="90%" alt="Robustness Degradation Sweeps Across 16 Forensic Profiles" />
 </p>
+</details>
 
 ---
+
 
 
 ## Zero-GPU Figure Reproduction
