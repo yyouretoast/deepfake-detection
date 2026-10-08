@@ -192,7 +192,7 @@ def generate_figure1_clean_architecture():
 
     # Section Headers
     draw_section_pill(2.5, 78.5, 21.5, 3.5, "I. PREPROCESSING & ALIGNMENT", SLATE_DARK, "white", BORDER_GRAY, fontsize=7.8)
-    draw_section_pill(27.5, 78.5, 40.0, 3.5, "II-A. SPATIAL STREAM: ConvNeXt-Small (49.98M)", BLUE_MAIN, "white", BLUE_BORDER, fontsize=8.0)
+    draw_section_pill(27.5, 78.5, 40.0, 3.5, "II-A. SPATIAL STREAM: ConvNeXt-Small (50.2M)", BLUE_MAIN, "white", BLUE_BORDER, fontsize=8.0)
     draw_section_pill(27.5, 39.0, 38.0, 3.5, "II-B. SPECTRAL STREAM: ResSE Tower (2.99M)", PURPLE_MAIN, "white", PURPLE_BORDER, fontsize=8.0)
     draw_section_pill(86.5, 78.5, 36.5, 3.5, "III. SNR-ADAPTIVE GATED FUSION", GREEN_MAIN, "white", GREEN_BORDER, fontsize=8.0)
     draw_section_pill(127.0, 78.5, 45.5, 3.5, "IV. FORENSIC DECISION HEADS & TRIAGE", AMBER_MAIN, "white", AMBER_BORDER, fontsize=8.0)
@@ -271,8 +271,9 @@ def generate_figure1_clean_architecture():
     if os.path.exists(sample_crop_p):
         gray_p = cv2.cvtColor(face_img, cv2.COLOR_RGB2GRAY)
         lap_p = cv2.Laplacian(gray_p, cv2.CV_32F)[80:180, 80:180]
-        lap_norm = (lap_p - lap_p.min()) / (lap_p.max() - lap_p.min())
-        ax.imshow(lap_norm, extent=[28.5, 39.0, 12.0, 20.5], cmap="bone", zorder=3, aspect="auto")
+        p5_lap, p995_lap = np.percentile(lap_p, 5), np.percentile(lap_p, 99.5)
+        lap_norm = np.clip((lap_p - p5_lap) / max(float(p995_lap - p5_lap), 1e-6), 0.0, 1.0)
+        ax.imshow(lap_norm, extent=[28.5, 39.0, 12.0, 20.5], cmap="coolwarm", zorder=3, aspect="auto")
 
     draw_ortho_arrow([(40.0, 23.75), (42.0, 23.75)], col=PURPLE_MAIN, lw=1.2)
 
@@ -351,25 +352,24 @@ def generate_figure1_clean_architecture():
 
     # Complementary Feature Fusion Box (Top of Column 3: [63.5, 75.5])
     draw_layer_box(88.0, 63.5, 33.5, 12.0, "Complementary Feature Fusion",
-                   "$\\mathbf{e}_t = \\left[ (1 - \\mathbf{g}_{\\mathrm{eff}}) \\odot \\mathbf{f}_s \\;\\parallel\\; \\mathbf{g}_{\\mathrm{eff}} \\odot \\mathbf{f}_f \\right] \\in \\mathbb{R}^{1024}$",
-                   GREEN_MAIN, "white", GREEN_BORDER, title_size=7.8, sub_size=6.5)
+                   "$\\mathbf{f}_{\\mathrm{fused}} = \\left[ (1 - \\mathbf{g}_{\\mathrm{eff}}) \\odot \\mathbf{f}_s \\;\\parallel\\; \\mathbf{g}_{\\mathrm{eff}} \\odot \\mathbf{f}_f \\right] \\in \\mathbb{R}^{1024}$\n$\\mathbf{e}_t = (1 - \\mathbf{g}_{\\mathrm{eff}}) \\odot \\mathbf{f}_s + \\mathbf{g}_{\\mathrm{eff}} \\odot \\mathbf{f}_f \\in \\mathbb{R}^{512}$",
+                   GREEN_MAIN, "white", GREEN_BORDER, title_size=7.6, sub_size=6.1)
 
-    # Fused Output Vector e_t -> Forensic Heads Bus
-    draw_ortho_arrow([(121.5, 69.5), (124.5, 69.5)], col=DARK_NAVY, lw=1.6)
-    # Vertical trunk bus at x=124.5
-    ax.plot([124.5, 124.5], [39.0, 69.5], color=DARK_NAVY, lw=1.6, zorder=2)
-    ax.text(123.6, 54.0, "$\\mathbf{e}_t \\in \\mathbb{R}^{1024}$", fontsize=7.6, fontweight="bold", color=DARK_NAVY, rotation=90, ha="center")
+    # Fused Output Vector f_fused -> Branch A Bus (Route cleanly into Branch A)
+    draw_ortho_arrow([(121.5, 71.0), (124.0, 71.0), (124.0, 64.0), (129.5, 64.0)], col=DARK_NAVY, lw=1.4)
+    ax.text(122.8, 72.2, "$\\mathbf{f}_{\\mathrm{fused}}$", fontsize=6.8, fontweight="bold", color=DARK_NAVY, ha="center")
+
+    # Video Embedding e_t -> Branch B Bus (Route cleanly into Branch B)
+    draw_ortho_arrow([(121.5, 66.0), (124.0, 66.0), (124.0, 41.0), (129.5, 41.0)], col=AMBER_MAIN, lw=1.4)
+    ax.text(122.8, 67.2, "$\\mathbf{e}_t$", fontsize=6.8, fontweight="bold", color=AMBER_MAIN, ha="center")
 
     # 6. COLUMN 4: DUAL FORENSIC HEADS & BAYESIAN TRIAGE
     # [BRANCH A] Single-Frame Classifier Card: [51.5, 76.5]
     draw_layer_box(127.5, 51.5, 44.5, 25.0, "[BRANCH A] Single-Frame Classifier", "",
                    DARK_NAVY, "white", BORDER_GRAY, lw=1.2, title_size=8.0, title_pos="top")
 
-    # Connector into Branch A Input at y=64.0
-    draw_ortho_arrow([(124.5, 64.0), (129.5, 64.0)], col=DARK_NAVY, lw=1.4)
-
     # Internal sub-circuit for Branch A
-    draw_layer_box(129.5, 58.0, 7.8, 12.0, "Input $\\mathbf{e}_t$\n1024-d", "", DARK_NAVY, BLUE_BG, BLUE_BORDER, title_size=6.8)
+    draw_layer_box(129.5, 58.0, 7.8, 12.0, "Input $\\mathbf{f}_{\\mathrm{fused}}$\n1024-d", "", DARK_NAVY, BLUE_BG, BLUE_BORDER, title_size=6.5)
     draw_ortho_arrow([(137.3, 64.0), (139.8, 64.0)], col=DARK_NAVY, lw=1.2)
     draw_layer_box(139.8, 58.0, 7.8, 12.0, "Linear\n$256$-d\nGELU", "", DARK_NAVY, "white", BORDER_GRAY, title_size=6.8)
     draw_ortho_arrow([(147.6, 64.0), (150.1, 64.0)], col=DARK_NAVY, lw=1.2)
@@ -386,9 +386,6 @@ def generate_figure1_clean_architecture():
     # [BRANCH B] Spatiotemporal Video Bi-GRU Head Card: [17.5, 48.5]
     draw_layer_box(127.5, 17.5, 44.5, 31.0, "[BRANCH B] Spatiotemporal Video Bi-GRU Head", "",
                    AMBER_MAIN, "white", AMBER_BORDER, lw=1.2, title_size=8.0, title_pos="top")
-
-    # Connector into Branch B at y=41.0
-    draw_ortho_arrow([(124.5, 41.0), (129.5, 41.0)], col=AMBER_MAIN, lw=1.4)
 
     # Unrolled sequence cells: [t-1], [t], [t+1]
     cells = [
@@ -415,11 +412,20 @@ def generate_figure1_clean_architecture():
     # Branch B Metrics Footer (Strictly contained inside card, safely above bottom at y=17.5)
     ax.text(149.75, 24.8, "Sequence Performance: AUC = 0.8994  |  EER = 18.54%  |  2-Layer Bi-GRU ($d_h=256$)",
             ha="center", va="center", fontsize=6.2, fontweight="bold", color=AMBER_MAIN)
-    ax.text(149.75, 22.4, "Feature Velocity: $\\Delta\\mathbf{e}_t = \\mathbf{e}_t - \\mathbf{e}_{t-1}$  |  Temporal Stride $\\Delta k = 5$",
+    ax.text(149.75, 22.4, "Input: $[\\mathbf{e}_t \\parallel \\Delta\\mathbf{e}_t] \\in \\mathbb{R}^{1024}$  |  Stride $\\Delta k = 5$",
             ha="center", va="center", fontsize=6.2, color=SLATE_MED)
 
-    # Output connector down to 3-Zone Bayesian Triage Ribbon (leaves cleanly at bottom of Branch B)
-    draw_ortho_arrow([(149.75, 17.5), (149.75, 13.5)], col=DARK_NAVY, lw=1.3)
+    # Internal dual converging outputs inside Column 4 down to 3-Zone Bayesian Triage Ribbon
+    # Feed from Branch A (down inside right margin of Card IV at x=171.5)
+    draw_ortho_arrow([(165.35, 58.0), (165.35, 49.5), (170.8, 49.5), (170.8, 14.5), (155.0, 14.5)], col=DARK_NAVY, lw=1.2)
+    ax.text(168.0, 48.0, "$\\hat{p}_t$", fontsize=6.4, fontweight="bold", color=DARK_NAVY, ha="left")
+
+    # Feed from Branch B
+    draw_ortho_arrow([(165.35, 28.5), (165.35, 17.5), (150.0, 17.5), (150.0, 14.5)], col=AMBER_MAIN, lw=1.2)
+    ax.text(162.5, 19.0, "$\\hat{P}_{\\mathrm{vid}}$", fontsize=6.4, fontweight="bold", color=AMBER_MAIN, ha="right")
+
+    # Single vertical feed into triage ribbon
+    draw_ortho_arrow([(149.75, 14.5), (149.75, 13.5)], col=DARK_NAVY, lw=1.3)
 
     triage_badges = [
         (127.5, 5.5, 14.0, "Zone 1: Clearance\n$\\hat{p} < 0.40$ (46.3%)\nAuto-Dismissal", GREEN_MAIN, GREEN_BG, GREEN_BORDER),
