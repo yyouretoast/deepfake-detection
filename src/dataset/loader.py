@@ -221,7 +221,7 @@ def get_transforms(
         train_transform = A.Compose([
             A.Resize(img_size, img_size),
             A.HorizontalFlip(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.06, scale_limit=0.06, rotate_limit=10, p=0.25),
+            A.Affine(scale=(0.94, 1.06), translate_percent=(-0.06, 0.06), rotate=(-10, 10), p=0.25),
             A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.04, p=0.20),
             A.ImageCompression(quality_range=(65, 95), p=0.30),
             A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.3, 1.2), p=0.20),
@@ -232,7 +232,7 @@ def get_transforms(
         train_transform = A.Compose([
             A.Resize(img_size, img_size),
             A.HorizontalFlip(p=0.5),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=10, p=0.2),
+            A.Affine(scale=(0.95, 1.05), translate_percent=(-0.05, 0.05), rotate=(-10, 10), p=0.2),
             A.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05, p=0.2),
             A.ImageCompression(quality_range=(85, 100), p=0.15),
             A.GaussianBlur(blur_limit=(3, 5), sigma_limit=(0.2, 0.6), p=0.15),

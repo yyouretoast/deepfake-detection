@@ -31,4 +31,7 @@ ignore = ["E402", "BLE001", "LOG015", "S110", "UP035"]
 testpaths = ["tests"]
 norecursedirs = ["scratch", ".*", "build", "dist", "venv", ".venv", "env"]
 python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore:.*The epoch parameter in.*scheduler.*:UserWarning",
+]
 
