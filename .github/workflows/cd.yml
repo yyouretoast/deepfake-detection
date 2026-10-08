@@ -23,10 +23,6 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          if [ -z "$HF_TOKEN" ]; then
-            echo "HF_TOKEN secret not configured. Skipping Hugging Face Space deployment."
-            exit 0
-          fi
           hf upload yyouretoast/deepfake-detector . . --repo-type=space --token="$HF_TOKEN" \
             --exclude "manuscript/*" \
             --exclude "splits/*" \
