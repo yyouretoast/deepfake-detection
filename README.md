@@ -39,7 +39,7 @@ Intermediate representations extracted across the spatial, residual steganograph
 | Authentic Face (Real) | Manipulated Face (Deepfake) |
 | :---: | :---: |
 | ![Authentic Diagnostics](figures/attention_maps/attention_map_05_real.png) | ![Deepfake Diagnostics](figures/attention_maps/attention_map_05_fake.png) |
-| *Continuous camera PRNU sensor noise, natural $1/f$ Fourier power decay, and diffuse, non-localized spatial activation.* | *Sensor noise suppression along blending boundaries, periodic lattice peaks in 2D FFT, and localized manipulation contours in Grad-CAM.* |
+| *Continuous camera PRNU sensor noise, natural $1/f$ Fourier power decay, and diffuse spatial activation ($p = 0.0399$, $z = -11.43$, Zone 1 Clearance).* | *Sensor noise suppression along blending boundaries, periodic Fourier harmonics, and localized manipulation contours in Grad-CAM ($p = 0.9820$, $z = +14.38$, Zone 3 Confirmed Synthetic).* |
 
 > [!NOTE]
 > **Forensic Diagnostic Breakdown:**

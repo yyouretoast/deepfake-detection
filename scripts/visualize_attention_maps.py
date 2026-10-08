@@ -48,12 +48,43 @@ def generate_4panel_figure(
     img_tensor = img_tensor.to(device)
 
     with torch.no_grad():
+        mean = model.imagenet_mean.to(dtype=img_tensor.dtype, device=device)
+        std = model.imagenet_std.to(dtype=img_tensor.dtype, device=device)
+        x_spatial = (img_tensor - mean) / std
+
+        feat_maps = model.spatial_backbone(x_spatial)
+        feat_maps = model.spatial_norm(feat_maps)
+        f_s = model.spatial_pool(feat_maps).flatten(1)
+        f_s = model.spatial_fc(f_s)
+
+        srm_out = model.srm(img_tensor)
+        bayar_out = model.bayar(img_tensor)
+        noise_combined = torch.cat([srm_out, bayar_out], dim=1)
+        freq_maps = model.fft(noise_combined)
+        if hasattr(model, "freq_tower"):
+            f_f, _ = model.freq_tower(freq_maps)
+        else:
+            f_f = model.freq_conv(freq_maps).flatten(1)
+            f_f = model.freq_fc(f_f)
+
+        concat_feat = torch.cat([f_s, f_f], dim=1)
+        gate = model.gate_fc(concat_feat)
+        gate_raw = float(gate.mean().item())
+
         logits = model(img_tensor).squeeze(-1).float()
         raw_logit = float(logits.item())
         calibrated_prob = float(torch.sigmoid(logits / temperature).item())
         pred_label = "FAKE" if calibrated_prob > threshold else "REAL"
 
     diag = generate_face_diagnostics(model, rgb_uint8, device=device)
+
+    srm_map = srm_out[0].abs().mean(dim=0).cpu().numpy()
+    p_low = np.percentile(srm_map, 1.0)
+    p_high = np.percentile(srm_map, 99.5)
+    srm_norm = np.clip((srm_map - p_low) / max(float(p_high - p_low), 1e-6), 0.0, 1.0)
+
+    mag_maps = freq_maps[0, :10].cpu().numpy()
+    fft_centered = np.mean(mag_maps, axis=0)
 
     plt.rcParams.update({"font.family": "DejaVu Sans", "figure.facecolor": "white"})
     fig, axes = plt.subplots(2, 2, figsize=(10, 8.5), dpi=300)
@@ -62,13 +93,14 @@ def generate_4panel_figure(
     axes[0, 0].set_title("(a) Input RGB Face Crop (256x256)", fontsize=10, fontweight="bold")
     axes[0, 0].axis("off")
 
-    axes[0, 1].imshow(diag["srm_residual"])
+    axes[0, 1].imshow(srm_norm, cmap="magma")
     axes[0, 1].set_title("(b) SRM Noise Residual Map (9 Filters)", fontsize=10, fontweight="bold")
     axes[0, 1].axis("off")
 
-    axes[1, 0].imshow(diag["fft_spectrum"])
-    axes[1, 0].set_title("(c) 2D FFT Magnitude Spectrum", fontsize=10, fontweight="bold")
+    im_c = axes[1, 0].imshow(fft_centered, cmap="viridis")
+    axes[1, 0].set_title(f"(c) 2D FFT Magnitude Spectrum (Gate={gate_raw:.3f})", fontsize=10, fontweight="bold")
     axes[1, 0].axis("off")
+    fig.colorbar(im_c, ax=axes[1, 0], fraction=0.046, pad=0.04)
 
     axes[1, 1].imshow(diag["gradcam_overlay"])
     axes[1, 1].set_title("(d) ConvNeXt Grad-CAM Attention Overlay", fontsize=10, fontweight="bold")
@@ -103,6 +135,8 @@ def main() -> None:
     parser.add_argument("--output_dir", default="figures/attention_maps", help="Output directory for rendered figures")
     parser.add_argument("--n_samples", type=int, default=6, help="Number of sample diagnostic figures to generate")
     parser.add_argument("--image_path", type=str, default=None, help="Optional single image path for one-off visualization")
+    parser.add_argument("--label", type=str, default="UNKNOWN", help="Ground truth label for single image mode (REAL or FAKE)")
+    parser.add_argument("--output_filename", type=str, default=None, help="Custom filename for single image output")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -130,9 +164,10 @@ def main() -> None:
         if rgb.shape[0] != IMG_SIZE or rgb.shape[1] != IMG_SIZE:
             rgb = cv2.resize(rgb, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
 
-        out_name = os.path.join(args.output_dir, "single_image_attention.png")
+        out_fname = args.output_filename or "single_image_attention.png"
+        out_name = os.path.join(args.output_dir, out_fname)
         generate_4panel_figure(
-            model, rgb, "UNKNOWN", out_name, device, threshold, temperature
+            model, rgb, args.label, out_name, device, threshold, temperature
         )
         return
 
