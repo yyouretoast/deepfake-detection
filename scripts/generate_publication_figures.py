@@ -112,10 +112,9 @@ def _save_fig(fig, base_name):
     fig.savefig(png_path, bbox_inches="tight", dpi=300)
 
     # Copy to root figures
-    fig.savefig(os.path.join(ROOT_FIGURES_DIR, f"{base_name}.pdf"), bbox_inches="tight")
     fig.savefig(os.path.join(ROOT_FIGURES_DIR, f"{base_name}.png"), bbox_inches="tight", dpi=300)
     plt.close(fig)
-    print(f"  -> Saved {base_name}.pdf and .png")
+    print(f"  -> Saved {base_name}.pdf (manuscript) and .png (manuscript + figures)")
 
 
 # =========================================================================
