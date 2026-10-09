@@ -60,8 +60,12 @@ REPO_AUDIT_PROMPT_TITAN.md
 .mpl_cache/
 manuscript_arxiv.zip
 manuscript_arxiv.tar.gz
+manuscript_package.zip
 manuscript/paper_preview.html
 smoke_test_run/
 manuscript/tools/
 manuscript/pages_pdf/
-
+manuscript/pdf_audit_screenshots/
+manuscript/*.pdf
+tectonic.exe
+uv.lock

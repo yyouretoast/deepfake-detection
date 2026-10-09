@@ -259,12 +259,10 @@ def generate_teaser_figure():
 
     # Save outputs
     pdf_path = os.path.join(OUTPUT_DIR, "teaser_concept.pdf")
-    png_path = os.path.join(OUTPUT_DIR, "teaser_concept.png")
     fig.savefig(pdf_path, bbox_inches="tight")
-    fig.savefig(png_path, bbox_inches="tight", dpi=300)
     fig.savefig(os.path.join(ROOT_FIGURES_DIR, "teaser_concept.png"), bbox_inches="tight", dpi=300)
     plt.close(fig)
-    print("  [+] Teaser Figure 1 generated successfully in manuscript/figures/ (.pdf, .png) and figures/ (.png)!")
+    print("  [+] Teaser Figure 1 generated successfully in manuscript/figures/ (.pdf) and figures/ (.png)!")
 
 
 if __name__ == "__main__":

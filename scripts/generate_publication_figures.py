@@ -107,14 +107,12 @@ def load_models():
 def _save_fig(fig, base_name):
     """Save figure to both manuscript/figures and root figures directories."""
     pdf_path = os.path.join(OUTPUT_DIR, f"{base_name}.pdf")
-    png_path = os.path.join(OUTPUT_DIR, f"{base_name}.png")
     fig.savefig(pdf_path, bbox_inches="tight")
-    fig.savefig(png_path, bbox_inches="tight", dpi=300)
 
-    # Copy to root figures
+    # Copy to root figures (PNG raster preview)
     fig.savefig(os.path.join(ROOT_FIGURES_DIR, f"{base_name}.png"), bbox_inches="tight", dpi=300)
     plt.close(fig)
-    print(f"  -> Saved {base_name}.pdf (manuscript) and .png (manuscript + figures)")
+    print(f"  -> Saved {base_name}.pdf (manuscript/figures) and {base_name}.png (figures)")
 
 
 # =========================================================================
