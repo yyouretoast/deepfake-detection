@@ -529,16 +529,19 @@ deepfake-detection/
 
 ## Academic References
 
-1. **ConvNeXt**: Liu, Z., et al. (2022). *A ConvNet for the 2020s*. IEEE/CVF CVPR.
-2. **Steganographic Rich Model (SRM)**: Fridrich, J., & Kodovsky, J. (2012). *Rich models for steganalysis of digital images*. IEEE TIFS.
-3. **Bayar-Stamm Constrained Convolution**: Bayar, B., & Stamm, M. C. (2016). *A deep learning approach to universal image manipulation detection*. IEEE IH&MMSec.
-4. **Spectral Forensics (FFT Artifacts)**: Frank, J., et al. (2020). *Leveraging Frequency Analysis for Deep Fake Image Recognition*. ICML.
-5. **AutoGAN Spectral Analysis**: Durall, R., et al. (2020). *Watch Your Up-Convolution: CNN Based Generative Deepfake Detection*. IEEE/CVF CVPR.
+1. **ConvNeXt**: Liu, Z., Mao, H., Wu, C.-Y., Feichtenhofer, C., Darrell, T., & Xie, S. (2022). *A ConvNet for the 2020s*. IEEE/CVF CVPR.
+2. **Steganographic Rich Model (SRM)**: Fridrich, J., & Kodovský, J. (2012). *Rich models for steganalysis of digital images*. IEEE TIFS.
+3. **Bayar-Stamm Constrained Convolution**: Bayar, B., & Stamm, M. C. (2018). *Constrained convolutional neural networks: A new approach to data-driven image forensics*. IEEE TIFS.
+4. **Spectral Forensics (FFT Artifacts)**: Frank, J., Eisenhofer, T., Schönherr, L., Fischer, A., Kolossa, D., & Holz, T. (2020). *Leveraging frequency analysis for deep fake image recognition*. ICML.
+5. **Up-Convolution Spectral Distribution**: Durall, R., Keuper, M., & Keuper, J. (2020). *Watch your up-convolution: CNN based generative deep neural networks are failing to reproduce spectral distributions*. IEEE/CVF CVPR.
 6. **Squeeze-and-Excitation Networks**: Hu, J., Shen, L., & Sun, G. (2018). *Squeeze-and-Excitation Networks*. IEEE/CVF CVPR.
-7. **Grad-CAM**: Selvaraju, R. R., et al. (2017). *Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization*. IEEE/CVF ICCV.
-8. **Temperature Scaling Calibration**: Guo, C., et al. (2017). *On Calibration of Modern Neural Networks*. ICML.
-9. **FaceForensics++**: Rössler, A., et al. (2019). *FaceForensics++: Learning to Detect Manipulated Facial Images*. IEEE/CVF ICCV.
-10. **Celeb-DF**: Li, Y., et al. (2020). *Celeb-DF: A Large-Scale Challenging Dataset for DeepFake Forensics*. IEEE/CVF CVPR.
+7. **YuNet Face Detector**: Wu, W., Peng, Y., Yu, C., Xing, J., Tu, K., & Yu, S. (2023). *YuNet: A tiny millisecond-level face detector*. Machine Intelligence Research.
+8. **Platt Scaling & Calibration**: Platt, J. (1999). *Probabilistic outputs for support vector machines and comparisons to regularized likelihood methods*. Advances in Large Margin Classifiers.
+9. **Temperature Scaling**: Guo, C., Pleiss, G., Sun, Y., & Weinberger, K. Q. (2017). *On calibration of modern neural networks*. ICML.
+10. **Grad-CAM**: Selvaraju, R. R., Cogswell, M., Das, A., Vedaldi, A., Parikh, D., & Batra, D. (2017). *Grad-CAM: Visual explanations from deep networks via gradient-based localization*. IEEE/CVF ICCV.
+11. **FaceForensics++**: Rössler, A., Cozzolino, D., Verdoliva, L., Riess, C., Thies, J., & Nießner, M. (2019). *FaceForensics++: Learning to detect manipulated facial images*. IEEE/CVF ICCV.
+12. **Celeb-DF**: Li, Y., Yang, X., Sun, P., Qi, H., & Lyu, S. (2020). *Celeb-DF: A large-scale challenging dataset for deepfake forensics*. IEEE/CVF CVPR.
+13. **Google DFD**: Dufour, N., & Gully, A. (2019). *Contributing data to deepfake detection research*. Google AI Blog / FaceForensics.
 
 ---
 
