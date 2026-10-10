@@ -303,9 +303,11 @@ Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 di
 > Generates `teaser_concept`, `system_architecture`, `roc_pr_curves`, `temporal_attention_dynamics`, `lifecycle_flaws`, `radial_spectral_profiles`, `loto_generalization_matrix`, `robustness_curves`, `gating_attenuation_dynamics`, `calibration_reliability`, `bayesian_decision_zones`, and `qualitative_attention` in both `manuscript/figures/` and `figures/`.
 >
 > **Replicate Diagnostic Benchmark Suite**:
-> Pre-computed validation and test set inference fixtures are bundled in [`test_predictions.json`](test_predictions.json) and [`temporal_test_predictions.json`](temporal_test_predictions.json):
+> Pre-computed validation and test set inference fixtures are bundled in [`results/release1_run/test_predictions.json`](results/release1_run/test_predictions.json) and [`results/release1_run/temporal_test_predictions.json`](results/release1_run/temporal_test_predictions.json):
 > ```bash
-> python scripts/generate_benchmark_plots.py
+> python scripts/generate_benchmark_plots.py \
+>     --predictions results/release1_run/test_predictions.json \
+>     --temporal_predictions results/release1_run/temporal_test_predictions.json
 > ```
 
 ---
@@ -465,24 +467,24 @@ deepfake-detection/
 ├── app.py                             # Streamlit web application & serving dashboard
 ├── config/default.yaml                # Hyperparameters and preprocessing resolution
 ├── Dockerfile                         # Production-grade headless container definition
-├── figures/                           # Publication figures and diagnostic visualizations
-│   ├── teaser_concept.png/pdf         # Teaser Figure 1: Spatial-Frequency Asymmetry Paradox
-│   ├── system_architecture.png/pdf    # Full end-to-end vector architecture schematic
-│   ├── roc_pr_curves.png/pdf          # Diagnostic ROC and Precision-Recall operating curves
-│   ├── temporal_attention_dynamics.png/pdf # Frame-by-frame anomaly tracking & Bi-GRU attention
-│   ├── lifecycle_flaws.png/pdf        # PRNU noise annihilation, Dirac spikes & boundary seams
-│   ├── radial_spectral_profiles.png/pdf # 1D Azimuthal radial power spectrum profiles
-│   ├── loto_generalization_matrix.png/pdf # 4-fold Leave-One-Manipulation-Out transfer matrix
-│   ├── robustness_curves.png/pdf      # 4-panel degradation stress-testing curves
-│   ├── gating_attenuation_dynamics.png/pdf # SNR-adaptive gating attenuation under degradation
-│   ├── calibration_reliability.png/pdf# Platt scaling Expected Calibration Error reliability
-│   ├── bayesian_decision_zones.png/pdf# Posterior KDE distributions & 3-zone triage boundaries
-│   ├── qualitative_attention.png/pdf  # 16-panel qualitative SRM, 2D FFT, and Grad-CAM matrix
+├── figures/                           # High-resolution raster PNG previews & web assets
+│   ├── teaser_concept.png             # Teaser Figure 1: Spatial-Frequency Asymmetry Paradox
+│   ├── system_architecture.png        # Full end-to-end vector architecture schematic
+│   ├── roc_pr_curves.png              # Diagnostic ROC and Precision-Recall operating curves
+│   ├── temporal_attention_dynamics.png# Frame-by-frame anomaly tracking & Bi-GRU attention
+│   ├── lifecycle_flaws.png            # PRNU noise annihilation, Dirac spikes & boundary seams
+│   ├── radial_spectral_profiles.png   # 1D Azimuthal radial power spectrum profiles
+│   ├── loto_generalization_matrix.png # 4-fold Leave-One-Manipulation-Out transfer matrix
+│   ├── robustness_curves.png          # 4-panel degradation stress-testing curves
+│   ├── gating_attenuation_dynamics.png# SNR-adaptive gating attenuation under degradation
+│   ├── calibration_reliability.png    # Platt scaling Expected Calibration Error reliability
+│   ├── bayesian_decision_zones.png    # Posterior KDE distributions & 3-zone triage boundaries
+│   ├── qualitative_attention.png      # 16-panel qualitative SRM, 2D FFT, and Grad-CAM matrix
 │   └── attention_maps/                # 4-panel Grad-CAM forensic diagnostic maps
 ├── manuscript/                        # IEEE manuscript source and vector assets
 │   ├── main.tex                       # Primary LaTeX publication document (8 pages)
 │   ├── supplementary.tex              # Standalone Supplementary Material (Appendices A-I)
-│   └── figures/                       # Publication vector PDFs and figures
+│   └── figures/                       # Publication vector PDFs (*.pdf) for LaTeX compilation
 ├── notebooks/                         # Turnkey Jupyter reproduction notebooks
 │   └── master_pipeline.ipynb          # End-to-end multi-GPU training, evaluation & export
 ├── predict.py                         # Turnkey unified inference CLI tool
