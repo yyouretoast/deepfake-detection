@@ -16,7 +16,7 @@ license: mit
 **A dual-stream deepfake detection pipeline fusing spatial representations with Fourier phase/magnitude spectral noise and spatiotemporal sequence modeling.**
 
 [![CI Test Suite](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-146%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/tests-147%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
 [![Python 3.10 | 3.11](https://img.shields.io/badge/Python-3.10%20%7C%203.11-3776AB?style=flat&logo=python&logoColor=white)](pyproject.toml)
 
 [![PyTorch 2.1+](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -520,7 +520,7 @@ deepfake-detection/
 │   ├── services/                      # Inference engine & Streamlit components
 │   ├── training/                      # Distributed trainer, focal loss, EMA, schedulers
 │   └── utils/                         # Bayesian thresholds, Grad-CAM, checkpoint tools
-└── tests/                             # PyTest regression suite (146 tests)
+└── tests/                             # PyTest regression suite (147 tests)
 ```
 
 </details>
