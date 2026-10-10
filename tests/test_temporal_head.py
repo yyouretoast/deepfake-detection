@@ -68,7 +68,7 @@ class TestTemporalHead:
         assert seq.grad is not None and not torch.isnan(seq.grad).any()
 
     def test_state_dict_backward_compatibility(self) -> None:
-        """Verifies seamless loading across legacy single-path and upgraded dual-path checkpoints."""
+        """Verifies checkpoint loading across legacy single-path and upgraded dual-path checkpoints."""
         # 1. Single-path checkpoint (classifier in_features = 256)
         legacy_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=128, use_deltas=True, use_max_pool=False)
         legacy_sd = legacy_model.state_dict()

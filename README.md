@@ -26,7 +26,7 @@ license: mit
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[**Live Interactive Demo**](https://huggingface.co/spaces/yyouretoast/deepfake-detector) • [**Model Zoo**](#model-zoo--checkpoint-downloads) • [**Quickstart**](#quickstart) • [**SOTA Benchmarks**](#empirical-benchmarks--literature-comparison) • [**System Architecture**](#system-architecture--methodology) • [**Zero-GPU Reproduction**](#zero-gpu-figure-reproduction) • [**BibTeX**](#academic-citation)
+[**Live Interactive Demo**](https://huggingface.co/spaces/yyouretoast/deepfake-detector) • [**Model Zoo**](#model-zoo--checkpoint-downloads) • [**Quickstart**](#quickstart) • [**Benchmarks**](#empirical-benchmarks--literature-comparison) • [**System Architecture**](#system-architecture--methodology) • [**Zero-GPU Reproduction**](#zero-gpu-figure-reproduction) • [**BibTeX**](#academic-citation)
 
 </div>
 
@@ -520,7 +520,7 @@ deepfake-detection/
 │   ├── services/                      # Inference engine & Streamlit components
 │   ├── training/                      # Distributed trainer, focal loss, EMA, schedulers
 │   └── utils/                         # Bayesian thresholds, Grad-CAM, checkpoint tools
-└── tests/                             # Comprehensive 146-test PyTest test suite
+└── tests/                             # PyTest regression suite (146 tests)
 ```
 
 </details>
