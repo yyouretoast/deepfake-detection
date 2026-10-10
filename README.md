@@ -317,40 +317,41 @@ Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 di
 </div>
 
 ```text
-[ Input Video / Image Stream ]
-               │
-               ▼
-   [ OpenCV YuNet 5-Point Alignment & Dynamic Crop (1.50x Box Expansion) ]
-               │
-               ▼  Unnormalized RGB Tensor [B, 3, 256, 256] ∈ [0.0, 1.0]
-       ┌───────┴────────────────────────────────────────┐
-       ▼                                                ▼
-[ Spatial Stream ]                              [ Frequency Stream ]
-• ImageNet Normalization (internal)             • 3 Fixed SRM High-Pass Kernels (9 ch)
-• ConvNeXt-Small Backbone                       • 1 Learnable Bayar-Stamm Conv (1 ch)
-• LayerNorm2d Feature Normalization             • 2D Real FFT (torch.fft.fft2, FP32)
-• 512-d Spatial Embedding (f_s)                 • 10 Log-Mag + 10 Phase Angle Maps
-                                                • ResSE-Spectral Tower (4 stages + SE, 2.4M)
-                                                • 512-d Spectral Embedding (f_f)
-                                                • Auxiliary Supervision Head (λ = 0.3)
-       │                                                │
-       └───────────────────────┬────────────────────────┘
-                               ▼
-            [ Symmetric Gated Residual Fusion ]
-            • Base Gating: g = Sigmoid(Linear(1024, 512)([f_s || f_f]))
-            • High-Freq SNR Attenuation: γ = clamp((Var_noise - 0.005)/(0.025 - 0.005), 0, 1)
-            • Effective Gating: g_eff = g * γ
-            • Fused Feature: f_fused = [f_s * (1 - g_eff) || f_f * g_eff] ∈ R^1024
-            • Video Embedding: e_t = f_s * (1 - g_eff) + f_f * g_eff ∈ R^512
+[ Input Video Sequence [B, T, 3, H, W]  /  Single Image [B, 3, H, W] ]
                                │
-       ┌───────────────────────┴────────────────────────┐
-       ▼                                                ▼
-[ Frame-Level Classifier Head ]              [ Spatiotemporal Dual-Path Bi-GRU ]
-• Linear(1024, 256) -> ReLU -> Linear(256, 1) • Input: [e_t || Δe_t] ∈ R^1024 (Motion Velocity)
-• Affine Platt Scaling: a=0.2783, b=0.4089    • 2-Layer Bidirectional GRU (1.8M params)
-• Bayesian Dual Thresholds (τ_real, τ_fake)  • Dual Pooling: Attention (c_attn) + Max (c_max)
-• 3 Forensic Certainty Zones                 • Classifier: Linear(1024, 128) -> Linear(128, 1)
-• Single-Frame AUC: 0.8656 (τ* = 0.2600)     • Video Sequence AUC: 0.8994 (60.9 FPS Engine)
+                               ▼
+   [ OpenCV YuNet 5-Point Alignment & Dynamic Crop (1.50× Box Expansion) ]
+                               │
+                               ▼  RGB Tensor [B, 3, 256, 256] ∈ [0.0, 1.0]
+        ┌──────────────────────┴───────────────────────────────────────┐
+        ▼                                                              ▼
+[ Spatial Stream (49.8M) ]                                    [ Frequency Stream (2.98M) ]
+• ImageNet Normalization (internal)                           • 3 Fixed SRM High-Pass Kernels (9 ch)
+• ConvNeXt-Small Backbone (768-d map)                         • 1 Learnable Bayar-Stamm Conv (1 ch)
+• LayerNorm2d + AdaptiveAvgPool2d(1)                          • 2D Real FFT (torch.fft.rfft2, FP32)
+• Linear(768, 512) -> Spatial Embedding f_s ∈ ℝ^512          • 10 Log-Mag + 10 Phase Maps [20, 256, 129]
+                                                              • ResSE-Spectral Tower (4 stages + SE, 2.98M)
+                                                              • Linear(512, 512) -> Spectral Embedding f_f ∈ ℝ^512
+                                                              • Auxiliary Supervision Head (λ = 0.3)
+        │                                                              │
+        └──────────────────────────────┬───────────────────────────────┘
+                                       ▼
+                     [ Symmetric Gated Residual Fusion ]
+                     • Base Gating: g = Sigmoid(Linear(1024, 512)([f_s ∥ f_f])) ∈ ℝ^512
+                     • Noise Power: P_noise = mean(noise_combined²) across spatial dims
+                     • SNR Attenuation: γ = clamp((P_noise - 0.005) / (0.025 - 0.005), 0, 1)
+                     • Effective Gating: g_eff = g ⊙ γ
+                     • Fused Feature: f_fused = [(1 - g_eff) ⊙ f_s ∥ g_eff ⊙ f_f] ∈ ℝ^1024
+                     • Sequence Embedding: e_t = (1 - g_eff) ⊙ f_s + g_eff ⊙ f_f ∈ ℝ^512
+                                       │
+        ┌──────────────────────────────┴───────────────────────────────┐
+        ▼ (Frame Mode)                                                 ▼ (Sequence Mode, T frames)
+[ Frame-Level Classifier Head ]                               [ Spatiotemporal Dual-Path Bi-GRU (3.32M) ]
+• Linear(1024, 256) -> ReLU -> Dropout(0.3) -> Linear(256, 1) • Sequence Input: [e_t ∥ Δe_t] ∈ ℝ^(T × 1024)
+• Affine Platt Scaling: a = 0.2783, b = 0.4089 (T* = 3.5931)  • 2-Layer Bidirectional GRU (Hidden: 256 × 2)
+• Bayesian Dual Thresholds: τ_real = 0.40, τ_fake = 0.60      • Dual Pooling: Self-Attention (c_attn) + Max (c_max)
+• 3 Forensic Decision Zones: Clear / Ambiguous / Synthetic    • Classifier: Linear(1024, 128) -> ReLU -> Linear(128, 1)
+• Single-Frame ROC AUC: 0.8656 (Optimal τ* = 0.2600)          • Video Sequence ROC AUC: 0.8994 (60.9 FPS Engine)
 ```
 
 <div align="center">
