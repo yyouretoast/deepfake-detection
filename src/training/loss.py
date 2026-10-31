@@ -70,4 +70,6 @@ class MaskedBCEWithLogits(nn.Module):
         red = reduction if reduction is not None else self.reduction
         if red == "mean":
             return unreduced.mean()
+        elif red == "sum":
+            return unreduced.sum()
         return unreduced

@@ -51,9 +51,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("ablation_runner")
 
 
-def compute_metrics(targets: np.ndarray, probs: np.ndarray) -> dict[str, float]:
-    tau, _ = find_optimal_threshold(targets, probs, criterion="youden_roc")
-    preds = (probs >= tau).astype(int)
+def compute_metrics(targets: np.ndarray, probs: np.ndarray, tau: float | None = None) -> dict[str, float]:
+    tau_opt, _ = find_optimal_threshold(targets, probs, criterion="youden_roc")
+    eval_tau = tau if tau is not None else tau_opt
+    preds = (probs >= eval_tau).astype(int)
     eer, _ = compute_eer(targets, probs)
     return {
         "auc": float(roc_auc_score(targets, probs)),
@@ -63,7 +64,8 @@ def compute_metrics(targets: np.ndarray, probs: np.ndarray) -> dict[str, float]:
         "precision": float(precision_score(targets, preds, zero_division=0)),
         "recall": float(recall_score(targets, preds, zero_division=0)),
         "eer": float(eer * 100.0),
-        "optimal_threshold": float(tau),
+        "optimal_threshold": float(eval_tau),
+        "youden_optimal_threshold": float(tau_opt),
     }
 
 
@@ -173,7 +175,8 @@ def main() -> None:
 
                     # 3. Spectral Tower Alone (Spatial features masked to 0)
                     f_s_zero = torch.zeros_like(f_s)
-                    fused_spectral = torch.cat([f_s_zero, f_f * eff_gate], dim=1)
+                    eff_gate_sp = model.gate_fc(torch.cat([f_s_zero, f_f], dim=1)) * gamma
+                    fused_spectral = torch.cat([f_s_zero, f_f * eff_gate_sp], dim=1)
                     out_spectral = model.classifier(fused_spectral).squeeze(1)
 
                     # 4. Elementwise Sum Fusion (equal weighting)
@@ -184,14 +187,16 @@ def main() -> None:
                     noise_srm_only = torch.cat([srm_out, torch.zeros_like(bayar_out)], dim=1)
                     freq_srm = model.fft(noise_srm_only)
                     f_srm, _ = model.freq_tower(freq_srm)
-                    fused_srm = torch.cat([f_s_zero, f_srm * eff_gate], dim=1)
+                    eff_gate_srm = model.gate_fc(torch.cat([f_s_zero, f_srm], dim=1)) * gamma
+                    fused_srm = torch.cat([f_s_zero, f_srm * eff_gate_srm], dim=1)
                     out_srm = model.classifier(fused_srm).squeeze(1)
 
                     # 6. Learnable Bayar Alone (SRM zeroed, Spatial masked)
                     noise_bayar_only = torch.cat([torch.zeros_like(srm_out), bayar_out], dim=1)
                     freq_bayar = model.fft(noise_bayar_only)
                     f_bayar, _ = model.freq_tower(freq_bayar)
-                    fused_bayar = torch.cat([f_s_zero, f_bayar * eff_gate], dim=1)
+                    eff_gate_bayar = model.gate_fc(torch.cat([f_s_zero, f_bayar], dim=1)) * gamma
+                    fused_bayar = torch.cat([f_s_zero, f_bayar * eff_gate_bayar], dim=1)
                     out_bayar = model.classifier(fused_bayar).squeeze(1)
 
                 l_full.extend(out_full.cpu().numpy().tolist())
@@ -234,12 +239,12 @@ def main() -> None:
     p_bayar = 1.0 / (1.0 + np.exp(-(scale_a * logits_bayar_alone + bias_b)))
 
     results_ablations = {
-        "full_dual_stream_snr_gate": compute_metrics(y_true, p_full),
-        "fusion_static_gate": compute_metrics(y_true, p_static),
-        "spectral_tower_alone": compute_metrics(y_true, p_spectral),
-        "fusion_elementwise_sum": compute_metrics(y_true, p_sum),
-        "fixed_srm_alone": compute_metrics(y_true, p_srm),
-        "learnable_bayar_alone": compute_metrics(y_true, p_bayar),
+        "full_dual_stream_snr_gate": compute_metrics(y_true, p_full, tau=0.2600),
+        "fusion_static_gate": compute_metrics(y_true, p_static, tau=0.2600),
+        "spectral_tower_alone": compute_metrics(y_true, p_spectral, tau=0.2600),
+        "fusion_elementwise_sum": compute_metrics(y_true, p_sum, tau=0.2600),
+        "fixed_srm_alone": compute_metrics(y_true, p_srm, tau=0.2600),
+        "learnable_bayar_alone": compute_metrics(y_true, p_bayar, tau=0.2600),
     }
 
     # Add Spatial Baseline Alone from release1_results.json

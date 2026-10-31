@@ -366,12 +366,19 @@ def main():
         domain_val.append(get_domain_label(s[0]))
     domain_val = np.array(domain_val)
 
-    logger.info("Training Domain Classifier Probe (Logistic Regression) on Val embeddings...")
-    probe = LogisticRegression(class_weight="balanced", max_iter=500, C=1.0, random_state=42)
-    probe.fit(feat_val, domain_val)
-
-    # Evaluate probe on held-out test embeddings
-    domain_preds = probe.predict(feat_dual_test)
+    unique_val_classes = np.unique(domain_val)
+    unique_test_classes = np.unique(domain_labels)
+    if len(unique_val_classes) < len(unique_test_classes):
+        logger.info("Google DFD is held-out zero-shot test domain absent from validation. Evaluating 3-domain linear probe via Stratified 5-Fold CV on test embeddings...")
+        from sklearn.model_selection import StratifiedKFold, cross_val_predict
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        probe = LogisticRegression(class_weight="balanced", max_iter=500, C=1.0, random_state=42)
+        domain_preds = cross_val_predict(probe, feat_dual_test, domain_labels, cv=cv)
+    else:
+        logger.info("Training Domain Classifier Probe (Logistic Regression) on Val embeddings...")
+        probe = LogisticRegression(class_weight="balanced", max_iter=500, C=1.0, random_state=42)
+        probe.fit(feat_val, domain_val)
+        domain_preds = probe.predict(feat_dual_test)
     domain_acc = accuracy_score(domain_labels, domain_preds)
     domain_bacc = balanced_accuracy_score(domain_labels, domain_preds)
     domain_cm = confusion_matrix(domain_labels, domain_preds).tolist()

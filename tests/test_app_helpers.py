@@ -170,3 +170,9 @@ class TestSyntheticVideoInference:
             assert "raw_video_prob" in res
             assert 0.0 <= res["raw_video_prob"] <= 1.0
 
+    def test_process_video_frames_corrupted(self, tmp_path) -> None:
+        corrupted_path = tmp_path / "corrupted.mp4"
+        corrupted_path.write_bytes(b"\x00\x01\x02\x03\x04INVALID_VIDEO_BYTES")
+        res = process_video_frames(video_path=str(corrupted_path))
+        assert res is None
+

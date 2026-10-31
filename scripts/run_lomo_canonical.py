@@ -22,6 +22,7 @@ from scripts.run_release1_kaggle import (
     get_transforms,
     resolve_splits_path,
 )
+from src.dataset.domains import ManipulationDomain
 from src.evaluation.metrics import compute_eer
 
 
@@ -38,8 +39,11 @@ def run_single_fold(fold_name, holdout_key, display_name, data_root, splits, dev
         # Exclude Celeb-DF completely from training
         if "celeb" in norm or (len(parts) > 1 and "id" in parts[1]):
             continue
-        # Exclude held-out manipulation method fakes
-        if lbl == 1.0 and DomainClassifier.matches_holdout(p, holdout_key):
+        # Exclude held-out manipulation method fakes and unmapped extended pairs (800-999)
+        if lbl == 1.0 and (
+            DomainClassifier.matches_holdout(p, holdout_key)
+            or DomainClassifier.classify(p).domain == ManipulationDomain.UNKNOWN
+        ):
             continue
         retained_train.append(s)
 

@@ -100,3 +100,13 @@ def test_dynamic_face_cropper_invalid_box_fallback() -> None:
     crop2, _ = cropper._crop_single_box(image, negative_box, target_size=256)
     assert crop2 is not None
     assert crop2.shape == (256, 256, 3)
+
+
+def test_apply_cosine_edge_taper() -> None:
+    cropper = DynamicFaceCropper(target_size=256)
+    crop = np.ones((256, 256, 3), dtype=np.uint8) * 255
+    tapered = cropper._apply_cosine_edge_taper(crop, border_ratio=0.05)
+    assert tapered.shape == (256, 256, 3)
+    assert tapered[0, 0, :].mean() < 50
+    assert tapered[-1, -1, :].mean() < 50
+    assert np.allclose(tapered[100:156, 100:156, :], 255)

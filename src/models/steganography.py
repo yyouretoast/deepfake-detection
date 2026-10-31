@@ -88,7 +88,16 @@ class BayarConv2d(nn.Module):
 
         center_mask = torch.zeros_like(w)
         center_mask[:, :, 2, 2] = -1.0
-        return w_norm + center_mask
+        w_final = w_norm + center_mask
+        # The constrained kernel must sum to exactly +1 (outer) - 1 (center) = 0 per
+        # (out_c, in_c) plane so that constant regions produce a zero residual.
+        # In exact arithmetic w_norm already sums to 1, but float32 cancellation fails
+        # when a degenerate init makes |sum_w| ~ 1e-5: the ~1e5-scale normalized weights
+        # amplify rounding to ~1e-2, breaking the zero-residual property (and the SNR
+        # gate's flat-input assumption). Re-centering each plane in float makes the
+        # kernel sum identically zero, independent of the learned weights' magnitude.
+        w_final = w_final - w_final.mean(dim=(2, 3), keepdim=True)
+        return w_final
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

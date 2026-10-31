@@ -12,18 +12,23 @@ def package_arxiv():
     output_zip = "manuscript_arxiv.zip"
 
     figure_names = [
+        "teaser_concept.pdf",
         "lifecycle_flaws.pdf",
         "system_architecture.pdf",
         "radial_spectral_profiles.pdf",
         "calibration_reliability.pdf",
         "bayesian_decision_zones.pdf",
         "roc_pr_curves.pdf",
+        "temporal_attention_dynamics.pdf",
         "qualitative_attention.pdf",
+        "loto_generalization_matrix.pdf",
+        "gating_attenuation_dynamics.pdf",
         "robustness_curves.pdf",
     ]
 
     files_to_pack = [
         ("main.tex", os.path.join(manuscript_dir, "main.tex")),
+        ("supplementary.tex", os.path.join(manuscript_dir, "supplementary.tex")),
     ] + [
         (os.path.join("figures", f), os.path.join(figures_dir, f))
         for f in figure_names

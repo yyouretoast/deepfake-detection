@@ -148,12 +148,11 @@ def verify_latex_full(file_path, results_data=None):
     else:
         # Static ledger fallback check
         ledger = [
-            "37,104", "35,016", "26,981", "7,609", "19,372", "2,250",
-            "3,092", "2,918", "99,101",
-            "0.8719", "0.8818", "18.98", "5.75",
-            "0.8966", "4.2880", "0.2597", "0.0785", "69.8",
-            "60.9", "16.41", "0.4678",
-            "0.8248", "0.8627", "0.7834", "0.7172", "0.7449", "0.5946"
+            "37,104", "35,016", "26,981", "7,609", "19,372", "2,250", "2,248",
+            "99,101",
+            "0.8656", "0.8994", "0.9374", "0.9571", "0.8292", "0.8517",
+            "21.82", "18.54", "0.9514", "3.5931", "0.2600", "0.0994",
+            "71.0", "14.08",
         ]
         missing_numbers = [num for num in ledger if num not in content]
         if missing_numbers:
@@ -198,11 +197,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     results_data = None
-    if args.results and os.path.exists(args.results):
-        with open(args.results, "r", encoding="utf-8") as f:
-            results_data = json.load(f)
-    elif os.path.exists("results/release1_results.json"):
-        with open("results/release1_results.json", "r", encoding="utf-8") as f:
+    results_path = args.results
+    if not results_path:
+        for p in ["results/release1_run/release1_results.json", "results/release1_results.json"]:
+            if os.path.exists(p):
+                results_path = p
+                break
+
+    if results_path and os.path.exists(results_path):
+        with open(results_path, "r", encoding="utf-8") as f:
             results_data = json.load(f)
 
     success = verify_latex_full(args.target, results_data=results_data)

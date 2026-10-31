@@ -72,13 +72,39 @@ def load_detector(
         "temperature": 3.5931,
     }
 
+    # Traceability: record whether the calibration constants actually came from the
+    # checkpoint or fell back to the hardcoded Release-1 defaults, and surface this
+    # in every report so verdicts can be tied to the run that produced them.
+    calibration_source = "hardcoded_release1_defaults"
+    ckpt_source_keys = ["temperature", "optimal_threshold"]
+
     if isinstance(ckpt, dict):
         state_dict = ckpt.get("model_state_dict", ckpt.get("state_dict", ckpt))
+        calib_dict = ckpt.get("calibration", ckpt) if isinstance(ckpt.get("calibration"), dict) else ckpt
+        if isinstance(calib_dict, dict):
+            calibration_source = "checkpoint" if all(
+                str(k) in calib_dict or str(k) in ckpt for k in ckpt_source_keys
+            ) else "partial_checkpoint"
         for k in calib_params:
-            if k in ckpt:
+            if k in calib_dict:
+                calib_params[k] = float(calib_dict[k])
+            elif k in ckpt:
                 calib_params[k] = float(ckpt[k])
+        if "effective_temperature" in calib_dict:
+            calib_params["temperature"] = float(calib_dict["effective_temperature"])
     else:
         state_dict = ckpt
+
+    if calibration_source != "checkpoint":
+        logger.warning(
+            "Calibration constants (%s) were loaded from %s, not from %s. "
+            "Verdict thresholds may not match the weights' training run.",
+            ", ".join(calib_params),
+            calibration_source,
+            weights_path,
+        )
+    calib_params["calibration_source"] = calibration_source
+    calib_params["weights_source"] = weights_path
 
     model.load_state_dict(clean_state_dict(state_dict), strict=False)
     model.to(device)
@@ -88,7 +114,7 @@ def load_detector(
 
 def classify_zone(prob: float, tau_star: float = 0.26) -> dict[str, Any]:
     """Classifies posterior probability into Bayesian 3-zone operational triage."""
-    if prob < 0.40:
+    if prob <= 0.40:
         zone = "Zone 1: Authentic Clearance"
         action = "Cleared (Low synthetic probability)"
         risk = "Low"
@@ -139,9 +165,6 @@ def predict_image(
             face_detected = True
 
     crop_tensor = torch.from_numpy(crop_rgb).permute(2, 0, 1).float() / 255.0
-    mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-    crop_tensor = (crop_tensor - mean) / std
     batch = crop_tensor.unsqueeze(0).to(device)
 
     with torch.inference_mode():
@@ -163,6 +186,14 @@ def predict_image(
         "aux_spectral_logit": round(aux_logit, 4),
         "calibrated_posterior_probability": round(calibrated_prob, 4),
         "triage": triage,
+        "calibration": {
+            "source": calib.get("calibration_source", "unknown"),
+            "weights": calib.get("weights_source", "unknown"),
+            "platt_scale_a": calib["platt_scale_a"],
+            "platt_bias_b": calib["platt_bias_b"],
+            "temperature": calib["temperature"],
+            "optimal_threshold": calib["optimal_threshold"],
+        },
     }
 
 
@@ -173,7 +204,7 @@ def predict_video(
     cropper: DynamicFaceCropper,
     calib: dict[str, float],
     device: torch.device,
-    max_frames: int = 32,
+    max_frames: int = 8,
     frame_stride: int = 2,
 ) -> dict[str, Any]:
     cap = cv2.VideoCapture(video_path)
@@ -206,11 +237,8 @@ def predict_video(
             c = cv2.resize(f, (256, 256), interpolation=cv2.INTER_AREA)
         crops_rgb.append(c)
 
-    mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-    std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
     tensors = [torch.from_numpy(c).permute(2, 0, 1).float() / 255.0 for c in crops_rgb]
     batch = torch.stack(tensors, dim=0)  # (T, 3, 256, 256)
-    batch = (batch - mean) / std
     batch = batch.to(device)
 
     with torch.inference_mode():
@@ -232,10 +260,15 @@ def predict_video(
             seq_feats = feats.unsqueeze(0)  # (1, T, 512)
             seq_logits, _ = temporal_model(seq_feats)
             temporal_logit = float(seq_logits[0].item())
-            temporal_prob = float(1.0 / (1.0 + np.exp(-(a * temporal_logit + b))))
+            temporal_prob = float(torch.sigmoid(torch.tensor(temporal_logit)).item())
 
     effective_prob = temporal_prob if temporal_prob is not None else mean_prob
-    triage = classify_zone(effective_prob, calib["optimal_threshold"])
+    effective_threshold = (
+        float(calib.get("temporal_optimal_threshold", 0.1100))
+        if temporal_prob is not None
+        else calib["optimal_threshold"]
+    )
+    triage = classify_zone(effective_prob, effective_threshold)
 
     return {
         "input_path": video_path,
@@ -249,6 +282,14 @@ def predict_video(
         "temporal_bigru_probability": round(temporal_prob, 4) if temporal_prob else None,
         "calibrated_posterior_probability": round(effective_prob, 4),
         "triage": triage,
+        "calibration": {
+            "source": calib.get("calibration_source", "unknown"),
+            "weights": calib.get("weights_source", "unknown"),
+            "platt_scale_a": calib["platt_scale_a"],
+            "platt_bias_b": calib["platt_bias_b"],
+            "temperature": calib["temperature"],
+            "optimal_threshold": calib["optimal_threshold"],
+        },
     }
 
 
@@ -312,9 +353,20 @@ def main() -> None:
         print(f" Media Type:      {result['media_type'].upper()}")
         print(f" Posterior Prob:  {result['calibrated_posterior_probability']:.4f}")
         print(f" Decision:        {triage['binary_decision']}")
-        print(f" Bayesian Zone:   {triage['zone']}")
+        print(f" 3-Zone Triage:   {triage['zone']}")
         print(f" Triage Action:   {triage['action']}")
         print(f" Forensic Risk:   {triage['risk_level']}")
+        print("-" * 60)
+        print(
+            f" Calibration:     {calib.get('calibration_source', 'unknown')}"
+            f" | weights: {calib.get('weights_source', 'unknown')}"
+        )
+        print(
+            f"                  a={calib.get('platt_scale_a', float('nan')):.4f}"
+            f" b={calib.get('platt_bias_b', float('nan')):.4f}"
+            f" T={calib.get('temperature', float('nan')):.4f}"
+            f" tau*={calib.get('optimal_threshold', float('nan')):.4f}"
+        )
         print("=" * 60 + "\n")
 
     if args.json_output:

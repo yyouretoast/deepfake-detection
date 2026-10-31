@@ -1,5 +1,6 @@
 """Unit tests for distributed training components, EMA shadow weights, and losses."""
 
+import pytest
 import torch
 from torch import nn
 
@@ -59,6 +60,7 @@ class TestTrainingComponents:
 
     def test_trainer_evaluate_singleton_batch(self) -> None:
         """Verifies evaluate handles single-sample batches without TypeError: 'float' object is not iterable."""
+        pytest.importorskip("accelerate")
         from accelerate import Accelerator
         from torch.utils.data import DataLoader, TensorDataset
 
@@ -74,3 +76,26 @@ class TestTrainingComponents:
         metrics = trainer.evaluate()
         assert "val_loss" in metrics
         assert "val_auc" in metrics
+
+    def test_trainer_train_one_epoch(self) -> None:
+        """Verifies train_one_epoch executes forward, backward, step, and returns train_loss."""
+        pytest.importorskip("accelerate")
+        from accelerate import Accelerator
+        from torch.utils.data import DataLoader, TensorDataset
+
+        from src.training.trainer import DualStreamTrainer
+
+        model = nn.Linear(4, 1)
+        opt = torch.optim.SGD(model.parameters(), lr=0.01)
+        crit = MaskedBCEWithLogits()
+        acc = Accelerator()
+        train_ds = TensorDataset(
+            torch.randn(4, 4),
+            torch.tensor([[1.0], [0.0], [1.0], [0.0]]),
+            torch.tensor([[1.0], [1.0], [1.0], [1.0]]),
+        )
+        train_loader = DataLoader(train_ds, batch_size=2)
+        trainer = DualStreamTrainer(model, opt, crit, None, train_loader, train_loader, acc)
+        train_res = trainer.train_one_epoch(epoch=0, total_epochs=1)
+        assert "train_loss" in train_res
+        assert train_res["train_loss"] >= 0.0

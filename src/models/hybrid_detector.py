@@ -43,8 +43,9 @@ class HybridDeepfakeDetector(nn.Module):
         use_fft_branch: bool = True,
         dropout: float = 0.3,
         config: dict[str, Any] | None = None,
-        frequency_backbone: str = "legacy",
+        frequency_backbone: str = "resse",
         enable_snr_gating: bool = True,
+        noise_border_margin: int = 0,
     ) -> None:
         super().__init__()
         if config is not None:
@@ -55,11 +56,22 @@ class HybridDeepfakeDetector(nn.Module):
             dropout = model_cfg.get("dropout", dropout)
             frequency_backbone = model_cfg.get("frequency_backbone", frequency_backbone)
             enable_snr_gating = model_cfg.get("enable_snr_gating", enable_snr_gating)
+            noise_border_margin = model_cfg.get("noise_border_margin", noise_border_margin)
 
         self.use_fft_branch = use_fft_branch
         self.backbone_name = backbone_name
         self.frequency_backbone = frequency_backbone
         self.enable_snr_gating = enable_snr_gating
+        # Padding invariant for the SNR gate.  With F.conv2d(padding=2) the SRM/Bayar
+        # residual of a *constant* image is non-zero near the borders because the
+        # zero-padded pixels break the zero-sum kernel cancellation.  Measured
+        # border-only residual power is ~2.5e-3, i.e. it sits inside the low end of the
+        # gamma ramp (0.005-0.025), so a genuinely flat/blurred image can keep the
+        # spectral gate partially open.  noise_border_margin > 0 computes the noise
+        # power over the interior only, restoring the intended invariant at the cost
+        # of changing gating behaviour relative to the Release-1 checkpoints (which
+        # were trained/evaluated with the default of 0 kept for parity).
+        self.noise_border_margin = max(0, int(noise_border_margin))
 
         try:
             weights = models.ConvNeXt_Small_Weights.DEFAULT if pretrained else None
@@ -154,6 +166,32 @@ class HybridDeepfakeDetector(nn.Module):
             self._switch_to_resse_frequency_branch()
         return super().load_state_dict(state_dict, strict=strict, assign=assign)
 
+    _GAMMA_LO = 0.005
+    _GAMMA_HI = 0.025
+
+    def _snr_gamma(self, noise_combined: torch.Tensor) -> torch.Tensor:
+        """Computes the SNR attenuation factor gamma from the noise residual power.
+
+        gamma = clamp((P_noise - 0.005) / (0.025 - 0.005), 0, 1), where P_noise is the
+        mean squared SRM/Bayar residual.  If ``noise_border_margin > 0`` the power is
+        computed over the border-cropped interior so that zero-padding edges do not
+        leak spurious "noise power" into an otherwise flat image.
+        """
+        margin = self.noise_border_margin
+        if margin > 0:
+            h, w = noise_combined.shape[-2], noise_combined.shape[-1]
+            safe_margin = min(margin, (h - 1) // 2, (w - 1) // 2)
+            if safe_margin > 0:
+                interior = noise_combined[..., safe_margin:-safe_margin, safe_margin:-safe_margin]
+                noise_power = interior.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+            else:
+                noise_power = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+        else:
+            noise_power = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+        return torch.clamp(
+            (noise_power - self._GAMMA_LO) / (self._GAMMA_HI - self._GAMMA_LO), min=0.0, max=1.0
+        )
+
     def extract_features(self, x: torch.Tensor) -> torch.Tensor:
         """Extracts 512-dim fused feature embedding for downstream spatiotemporal sequence modeling."""
         mean = self.imagenet_mean.to(dtype=x.dtype, device=x.device)
@@ -179,8 +217,7 @@ class HybridDeepfakeDetector(nn.Module):
             concat_feat = torch.cat([f_s, f_f], dim=1)
             gate = self.gate_fc(concat_feat)
             if self.enable_snr_gating:
-                noise_power = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
-                gamma = torch.clamp((noise_power - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+                gamma = self._snr_gamma(noise_combined)
                 effective_gate = gate * gamma
             else:
                 effective_gate = gate
@@ -232,8 +269,7 @@ class HybridDeepfakeDetector(nn.Module):
             concat_feat = torch.cat([f_s, f_f], dim=1)
             gate = self.gate_fc(concat_feat)
             if self.enable_snr_gating:
-                noise_power = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
-                gamma = torch.clamp((noise_power - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+                gamma = self._snr_gamma(noise_combined)
                 effective_gate = gate * gamma
             else:
                 effective_gate = gate

@@ -17,10 +17,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy application modules and config
-COPY app.py ./
+# Copy application modules, config, and calibration sidecar
+COPY app.py predict.py ./
 COPY config ./config
 COPY src ./src
+COPY models/dual_stream_detector.json ./models/dual_stream_detector.json
 
 # Run as non-root user for security
 RUN useradd -m -u 1000 appuser

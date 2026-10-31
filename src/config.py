@@ -16,12 +16,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "output_dir": "models",
     },
     "preprocessing": {
-        "img_size": 512,
+        "img_size": 256,
         "scale_factor": 1.50,
         "frames_per_video": 30,
     },
     "model": {
         "backbone": "convnext_small",
+        "frequency_backbone": "resse",
         "pretrained": True,
         "use_fft_branch": True,
         "freq_embed_dim": 512,

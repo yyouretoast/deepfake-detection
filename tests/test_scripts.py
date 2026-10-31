@@ -159,3 +159,46 @@ class TestPredictCLI:
         assert "triage" in data
         assert data["triage"]["binary_decision"] in ["AUTHENTIC", "SYNTHETIC"]
 
+    def test_predict_numerical_parity_with_model(self, tmp_path):
+        import torch
+
+        import predict
+        from src.models.hybrid_detector import HybridDeepfakeDetector
+
+        model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
+        model.eval()
+
+        weights_path = str(tmp_path / "parity_weights.pth")
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "calibration": {
+                    "platt_scale_a": 0.278311,
+                    "platt_bias_b": 0.408914,
+                    "effective_temperature": 3.5931,
+                    "optimal_threshold": 0.2600,
+                },
+            },
+            weights_path,
+        )
+
+        img_path = str(tmp_path / "face.png")
+        crop_np = np.full((256, 256, 3), 128, dtype=np.uint8)
+        cv2.imwrite(img_path, crop_np)
+
+        device = torch.device("cpu")
+        detector, cal = predict.load_detector(weights_path, device=device)
+        cropper = predict.DynamicFaceCropper(target_size=256)
+        res = predict.predict_image(img_path, detector, cropper, cal, device=device, is_crop=True)
+
+        crop_tensor = torch.from_numpy(crop_np).permute(2, 0, 1).float().unsqueeze(0) / 255.0
+        with torch.no_grad():
+            gt_logit = float(detector(crop_tensor).item())
+
+        a = cal.get("platt_scale_a", 1.0)
+        b = cal.get("platt_bias_b", 0.0)
+        expected_prob = float(1.0 / (1.0 + np.exp(-(a * gt_logit + b))))
+
+        assert abs(res["raw_logit"] - gt_logit) < 1e-4
+        assert abs(res["calibrated_posterior_probability"] - expected_prob) < 1e-4
+

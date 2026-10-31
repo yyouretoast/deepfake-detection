@@ -22,6 +22,65 @@ def extract_braced(text, start_idx):
                 return text[brace_start+1:i], i + 1
     return "", len(text)
 
+
+def replace_braced_macro(text, macro, open_tag, close_tag):
+    r"""Replaces \macro{...} with open_tag + formatted_content + close_tag handling nested braces."""
+    pattern = macro + r'\{'
+    while True:
+        m = re.search(pattern, text)
+        if not m:
+            break
+        start_idx = m.start()
+        inner, end_idx = extract_braced(text, start_idx)
+        inner_formatted = format_latex_inline_nomath(inner)
+        text = text[:start_idx] + f"{open_tag}{inner_formatted}{close_tag}" + text[end_idx:]
+    return text
+
+
+def format_latex_inline_nomath(text):
+    """Formats LaTeX markup when we know there are no protected math blocks."""
+    text = replace_braced_macro(text, r'\\textbf', '<strong>', '</strong>')
+    text = replace_braced_macro(text, r'\\textit', '<em>', '</em>')
+    text = replace_braced_macro(text, r'\\emph', '<em>', '</em>')
+    text = replace_braced_macro(text, r'\\texttt', '<code>', '</code>')
+    text = replace_braced_macro(text, r'\\textsuperscript', '<sup>', '</sup>')
+
+    text = re.sub(r'\\url\{([^}]+)\}', r'<a href="\1" target="_blank">\1</a>', text)
+    text = re.sub(r'\\ref\{([^}]+)\}', r'<a href="#\1" class="in-ref">\1</a>', text)
+    text = re.sub(r'\\label\{([^}]+)\}', r'<a id="\1"></a>', text)
+    text = re.sub(r'\\etal\b', r'<em>et al.</em>', text)
+    text = re.sub(r'\\eg\b', r'<em>e.g.</em>', text)
+    text = re.sub(r'\\ie\b', r'<em>i.e.</em>', text)
+    text = re.sub(r'\\newblock\b', ' ', text)
+    text = text.replace(r'\%', '%')
+    text = text.replace(r'\&', '&amp;')
+    text = text.replace(r'\,', ' ')
+    text = text.replace('~', ' ')
+    text = text.replace('---', '&mdash;')
+    text = text.replace('--', '&ndash;')
+    text = text.replace("``", "&ldquo;").replace("''", "&rdquo;")
+    return text
+
+
+def format_latex_inline(text):
+    r"""Protects math blocks ($...$, $$...$$, \(...\)) and formats LaTeX inline tags."""
+    math_tokens = []
+
+    def save_math(match):
+        math_tokens.append(match.group(0))
+        return f"__MATH_TOKEN_{len(math_tokens)-1}__"
+
+    text = re.sub(r'\$\$.*?\$\$', save_math, text, flags=re.DOTALL)
+    text = re.sub(r'(?<!\\)\$.*?(?<!\\)\$', save_math, text, flags=re.DOTALL)
+    text = re.sub(r'\\\(.*?\\\)', save_math, text, flags=re.DOTALL)
+
+    text = format_latex_inline_nomath(text)
+
+    for idx, token in enumerate(math_tokens):
+        text = text.replace(f"__MATH_TOKEN_{idx}__", token)
+    return text
+
+
 def build_html():
     tex_path = Path("manuscript/main.tex")
     html_path = Path("manuscript/paper_preview.html")
@@ -38,24 +97,25 @@ def build_html():
     title_idx = tex.find(r'\title')
     title_raw, _ = extract_braced(tex, title_idx) if title_idx != -1 else ("", 0)
     title = re.sub(r'\\textbf\{\\Large\s*(.*?)\}', r'\1', title_raw, flags=re.DOTALL)
+    title = format_latex_inline(title)
     title = title.replace('\\\\', '<br/>').strip()
 
     # Extract Authors
     author_idx = tex.find(r'\author')
     author_raw, _ = extract_braced(tex, author_idx) if author_idx != -1 else ("", 0)
-    author_clean = re.sub(r'\\textbf\{(.*?)\}', r'<strong>\1</strong>', author_raw)
-    author_clean = re.sub(r'\\textsuperscript\{(.*?)\}', r'<sup>\1</sup>', author_clean)
-    author_clean = re.sub(r'\\texttt\{(.*?)\}', r'<code>\1</code>', author_clean)
+    author_clean = format_latex_inline(author_raw)
     author_clean = re.sub(r'\\\[.*?\]', '<br/>', author_clean)
     author_clean = author_clean.replace('\\\\', '<br/>').strip()
 
     # Extract Abstract
     abstract_match = re.search(r'\\begin\{abstract\}(.*?)\\end\{abstract\}', tex, re.DOTALL)
     abstract_text = abstract_match.group(1).strip() if abstract_match else ""
+    abstract_text = format_latex_inline(abstract_text)
 
     # Extract Keywords
-    keywords_match = re.search(r'\\textbf\{\\textit\{Keywords\}\}---(.*?)(?=\n\n|\n\\section)', tex, re.DOTALL)
+    keywords_match = re.search(r'\\textbf\{\\textit\{Keywords\}\}---(.*?)(?=\n\s*\n|\\begin\{figure\*?\}|\n\\section)', tex, re.DOTALL)
     keywords_text = keywords_match.group(1).strip() if keywords_match else ""
+    keywords_text = format_latex_inline(keywords_text)
 
     # Bibliography items
     bib_items = {}
@@ -64,10 +124,7 @@ def build_html():
     for match in re.finditer(r'\\bibitem\{([^}]+)\}\s*(.*?)(?=\\bibitem|\\end\{thebibliography\})', tex, re.DOTALL):
         key = match.group(1).strip()
         raw_entry = match.group(2).strip()
-        clean_entry = re.sub(r'\\textit\{(.*?)\}', r'<em>\1</em>', raw_entry)
-        clean_entry = re.sub(r'\\textbf\{(.*?)\}', r'<strong>\1</strong>', clean_entry)
-        clean_entry = re.sub(r'\\url\{([^}]+)\}', r'<a href="\1" target="_blank">\1</a>', clean_entry)
-        clean_entry = clean_entry.replace('~', ' ')
+        clean_entry = format_latex_inline(raw_entry)
         bib_items[key] = bib_counter
         bib_list.append((bib_counter, key, clean_entry))
         bib_counter += 1
@@ -79,25 +136,25 @@ def build_html():
     # Remove abstract, footnotes, keywords from body
     body = re.sub(r'\\def\\thefootnote.*?\\def\\thefootnote\{\\arabic\{footnote\}\}', '', body, flags=re.DOTALL)
     body = re.sub(r'\\begin\{abstract\}.*?\\end\{abstract\}', '', body, flags=re.DOTALL)
-    body = re.sub(r'\\textbf\{\\textit\{Keywords\}\}.*?(?=\\section)', '', body, flags=re.DOTALL)
+    body = re.sub(r'\\textbf\{\\textit\{Keywords\}\}---.*?(?=\n\s*\n|\\begin\{figure\*?\}|\n\\section)', '', body, flags=re.DOTALL)
 
     # Convert Figures
     def convert_figure(fig_match):
         code = fig_match.group(0)
         img_match = re.search(r'\\includegraphics(?:\[.*?\])?\{figures/(.*?)\.(?:pdf|png)\}', code)
         fig_name = img_match.group(1) if img_match else ""
-        
+
+        label_match = re.search(r'\\label\{([^}]+)\}', code)
+        fig_label = label_match.group(1) if label_match else fig_name
+
         caption_idx = code.find(r'\caption')
         caption_raw, _ = extract_braced(code, caption_idx) if caption_idx != -1 else ("", 0)
         caption = caption_raw.replace('\n', ' ')
-        caption = re.sub(r'\\textbf\{(.*?)\}', r'<strong>\1</strong>', caption)
-        caption = re.sub(r'\\textit\{(.*?)\}', r'<em>\1</em>', caption)
-        caption = re.sub(r'\\texttt\{(.*?)\}', r'<code>\1</code>', caption)
-        caption = re.sub(r'\\ref\{(.*?)\}', r'<a href="#\1">\1</a>', caption)
-        caption = re.sub(r'\\etal\b', r'<em>et al.</em>', caption)
-        
+        caption = format_latex_inline(caption)
+
         return f"""
-        <figure class="paper-figure" id="{fig_name}">
+        <figure class="paper-figure" id="{fig_label}">
+            <a id="{fig_name}"></a>
             <img src="figures/{fig_name}.png" alt="{fig_name}" class="figure-img" />
             <figcaption><strong>Figure:</strong> {caption}</figcaption>
         </figure>
@@ -108,42 +165,50 @@ def build_html():
     # Convert Tables
     def convert_table(tab_match):
         code = tab_match.group(0)
+        label_match = re.search(r'\\label\{([^}]+)\}', code)
+        tab_label = label_match.group(1) if label_match else ""
+
         caption_idx = code.find(r'\caption')
         caption_raw, _ = extract_braced(code, caption_idx) if caption_idx != -1 else ("", 0)
         caption = caption_raw.replace('\n', ' ')
-        caption = re.sub(r'\\textbf\{(.*?)\}', r'<strong>\1</strong>', caption)
-        caption = re.sub(r'\\texttt\{(.*?)\}', r'<code>\1</code>', caption)
-        
-        tabular_match = re.search(r'\\begin\{tabular\}\{([^}]+)\}(.*?)\\end\{tabular\}', code, re.DOTALL)
+        caption = format_latex_inline(caption)
+
+        tabular_match = re.search(r'\\begin\{tabular\*?\}\{([^}]+)\}(.*?)\\end\{tabular\*?\}', code, re.DOTALL)
         if not tabular_match:
             return ""
-        
+
         tab_code = tabular_match.group(2).strip()
         rows = [r.strip() for r in tab_code.split('\\\\') if r.strip()]
-        
+
         html_rows = []
         is_first = True
         for row in rows:
-            if not row or row.startswith(('\\toprule', '\\bottomrule')):
+            row = re.sub(r'%.*$', '', row).strip()
+            if not row:
                 continue
-            row = row.replace('\\midrule', '').strip()
+            row = re.sub(r'\\(toprule|midrule|bottomrule|cline\{[^}]+\})', '', row).strip()
             if not row:
                 continue
             cells = [c.strip() for c in row.split('&')]
             tag = "th" if is_first else "td"
             cell_htmls = []
             for c in cells:
-                c_clean = re.sub(r'\\textbf\{(.*?)\}', r'<strong>\1</strong>', c)
-                c_clean = re.sub(r'\\textit\{(.*?)\}', r'<em>\1</em>', c_clean)
-                c_clean = re.sub(r'\\texttt\{(.*?)\}', r'<code>\1</code>', c_clean)
-                c_clean = re.sub(r'\\multicolumn\{(\d+)\}\{([^}]+)\}\{(.*?)\}', r'\3', c_clean)
-                cell_htmls.append(f"<{tag}>{c_clean}</{tag}>")
+                multi = re.match(r'\\multicolumn\{(\d+)\}\{([^}]+)\}\{(.*?)\}$', c, re.DOTALL)
+                if multi:
+                    colspan = multi.group(1)
+                    inner_c = multi.group(3)
+                    c_clean = format_latex_inline(inner_c)
+                    cell_htmls.append(f'<{tag} colspan="{colspan}">{c_clean}</{tag}>')
+                else:
+                    c_clean = format_latex_inline(c)
+                    cell_htmls.append(f"<{tag}>{c_clean}</{tag}>")
             html_rows.append(f"<tr>{''.join(cell_htmls)}</tr>")
             if is_first:
                 is_first = False
-        
+
+        container_id_attr = f' id="{tab_label}"' if tab_label else ''
         return f"""
-        <div class="table-container">
+        <div class="table-container"{container_id_attr}>
             <div class="table-caption">{caption}</div>
             <table class="academic-table">
                 <tbody>
@@ -160,7 +225,7 @@ def build_html():
         keys = [k.strip() for k in m.group(1).split(',')]
         nums = [f'<a href="#ref-{k}" class="cite-ref">[{bib_items.get(k, "?")}]</a>' for k in keys]
         return "<sup>" + ",".join(nums) + "</sup>"
-    
+
     body = re.sub(r'\\cite\{([^}]+)\}', replace_cite, body)
 
     # Sequential Section, Subsection, and Subsubsection Replacement
@@ -191,15 +256,7 @@ def build_html():
 
     # Paragraphs, formatting, links
     body = re.sub(r'\\paragraph\{([^}]+)\}', r'<p class="paragraph-header"><strong>\1</strong> ', body)
-    body = re.sub(r'\\textbf\{([^}]+)\}', r'<strong>\1</strong>', body)
-    body = re.sub(r'\\textit\{([^}]+)\}', r'<em>\1</em>', body)
-    body = re.sub(r'\\texttt\{([^}]+)\}', r'<code>\1</code>', body)
-    body = re.sub(r'\\etal\b', r'<em>et al.</em>', body)
-    body = re.sub(r'\\eg\b', r'<em>e.g.</em>', body)
-    body = re.sub(r'\\ie\b', r'<em>i.e.</em>', body)
-    body = re.sub(r'\\url\{([^}]+)\}', r'<a href="\1" target="_blank">\1</a>', body)
-    body = re.sub(r'\\ref\{([^}]+)\}', r'<a href="#\1" class="in-ref">\1</a>', body)
-    body = re.sub(r'\\label\{([^}]+)\}', r'<a id="\1"></a>', body)
+    body = format_latex_inline(body)
 
     # Clean environments
     body = re.sub(r'\\begin\{itemize\}', '<ul class="paper-list">', body)

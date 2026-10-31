@@ -53,6 +53,34 @@ class TestTemporalHead:
         ds_train = SequenceVideoDataset(samples, seq_len=8, stride=2, is_train=True)
         assert ds_train.is_train is True
 
+    def test_sequence_video_dataset_getitem(self, tmp_path) -> None:
+        from PIL import Image
+
+        from src.dataset.loader import SequenceVideoDataset
+
+        # Create 20 dummy frames
+        frame_paths = []
+        for i in range(20):
+            p = tmp_path / f"frame_{i:02d}.png"
+            Image.new("RGB", (64, 64), color=(i * 10, i * 10, i * 10)).save(p)
+            frame_paths.append(str(p))
+
+        samples = [(frame_paths, 1)]
+        ds = SequenceVideoDataset(samples, seq_len=8, stride=2, is_train=False)
+        assert len(ds) == 1
+        frames, label, mask = ds[0]
+
+        assert frames.shape == (8, 3, 256, 256)
+        assert label.item() == 1
+        assert not mask.any()  # No frames padded when sample has 20 frames
+
+        # Verify padding mask with short sequence (< seq_len)
+        short_samples = [(frame_paths[:4], 0)]
+        ds_short = SequenceVideoDataset(short_samples, seq_len=8, is_train=False)
+        _, _, short_mask = ds_short[0]
+        assert short_mask[-4:].all()  # Last 4 frames padded
+        assert not short_mask[:4].any()  # First 4 frames valid
+
     def test_temporal_detector_dual_path_max_pooling(self) -> None:
         """Verifies dual-path (Attention + Max) pooling forward pass, shapes, and gradients."""
         model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=128, use_deltas=True, use_max_pool=True)

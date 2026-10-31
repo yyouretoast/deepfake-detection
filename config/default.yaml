@@ -4,10 +4,10 @@ paths:
   output_dir: "/kaggle/working/frames"
   processed_dir: "/kaggle/working/processed"
   model_save_path: "/kaggle/working/dual_stream_best.pth"
-  weights_url: "https://huggingface.co/spaces/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth"
+  weights_url: "https://huggingface.co/yyouretoast/deepfake-detector/resolve/main/dual_stream_calibrated.pth"
 
 preprocessing:
-  img_size: 512
+  img_size: 256
   scale_factor: 1.50  # Relative bounding box expansion factor (1.50 = 50% expansion)
   max_videos_per_type: 1000
   max_real_videos: 1000
@@ -17,6 +17,7 @@ preprocessing:
 
 model:
   backbone: "convnext_small"
+  frequency_backbone: "resse"
   pretrained: true
   use_fft_branch: true  # Toggle for Frequency Stream Ablation Study
   freq_embed_dim: 512

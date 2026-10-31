@@ -1,7 +1,5 @@
 """Unit tests for canonical evaluation metrics, optimal threshold finding, and checkpoint loading."""
 
-import tempfile
-
 import numpy as np
 import pytest
 import torch
@@ -51,18 +49,17 @@ class TestOptimalThresholdFinder:
 class TestLoadDetectorCheckpoint:
     """Tests load_detector_checkpoint auto-resolution, frequency backbone detection, and mode switching."""
 
-    def test_loads_saved_checkpoint_state(self) -> None:
+    def test_loads_saved_checkpoint_state(self, tmp_path) -> None:
         model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
-        with tempfile.NamedTemporaryFile(suffix=".pth", delete=False) as f:
-            ckpt_path = f.name
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "optimal_threshold": 0.42,
-                    "temperature": 1.25,
-                },
-                ckpt_path,
-            )
+        ckpt_path = str(tmp_path / "model.pth")
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "optimal_threshold": 0.42,
+                "temperature": 1.25,
+            },
+            ckpt_path,
+        )
 
         loaded_model, temp, thresh = load_detector_checkpoint(
             weights_path=ckpt_path, device=torch.device("cpu")
@@ -71,6 +68,80 @@ class TestLoadDetectorCheckpoint:
         assert abs(temp - 1.25) < 1e-4
         assert not loaded_model.training
         assert loaded_model.frequency_backbone == "resse"
+
+    def test_loads_saved_checkpoint_state_nested_calibration(self, tmp_path) -> None:
+        model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
+        ckpt_path = str(tmp_path / "model_nested.pth")
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "calibration": {
+                    "effective_temperature": 3.5931,
+                    "optimal_threshold": 0.2600,
+                    "platt_scale_a": 0.2783,
+                    "platt_bias_b": 0.4089,
+                },
+            },
+            ckpt_path,
+        )
+
+        loaded_model, temp, thresh = load_detector_checkpoint(
+            weights_path=ckpt_path, device=torch.device("cpu")
+        )
+        assert abs(thresh - 0.2600) < 1e-4
+        assert abs(temp - 3.5931) < 1e-4
+        assert not loaded_model.training
+
+
+class TestCalibrationAndCertification:
+    """Tests calibration fitting, ECE, EER, and dual threshold certification."""
+
+    def test_fit_temperature_log(self) -> None:
+        from src.evaluation.metrics import fit_temperature_log
+
+        logits = np.array([-10.0, -8.0, -5.0, 5.0, 8.0, 10.0])
+        labels = np.array([0, 0, 0, 1, 1, 1])
+        t = fit_temperature_log(logits, labels)
+        assert t > 0.1
+
+    def test_fit_platt_scaling(self) -> None:
+        from src.evaluation.metrics import fit_platt_scaling
+
+        logits = np.array([-4.0, -2.0, 0.0, 2.0, 4.0])
+        labels = np.array([0, 0, 0, 1, 1])
+        a, b, t_eff = fit_platt_scaling(logits, labels)
+        assert a > 0.0
+        assert np.isfinite(b)
+        assert t_eff > 0.0
+
+    def test_compute_ece(self) -> None:
+        from src.evaluation.metrics import compute_ece
+
+        probs = np.array([0.9, 0.9, 0.1, 0.1])
+        targets = np.array([1, 1, 0, 0])
+        ece = compute_ece(probs, targets, n_bins=5)
+        assert 0.0 <= ece < 0.2
+
+    def test_compute_eer(self) -> None:
+        from src.evaluation.metrics import compute_eer
+
+        y_true = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+        y_score = np.array([0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9])
+        eer, thresh = compute_eer(y_true, y_score)
+        assert eer == 0.0
+        assert 0.4 <= thresh <= 0.6
+
+    def test_compute_dual_thresholds_certified(self) -> None:
+        from src.utils.checkpoint import compute_dual_thresholds_certified
+
+        probs = np.concatenate([np.linspace(0.01, 0.30, 20), np.linspace(0.70, 0.99, 20)])
+        targets = np.concatenate([np.zeros(20), np.ones(20)])
+        t_real, t_fake, p_real, p_fake = compute_dual_thresholds_certified(
+            probs, targets, min_precision=0.95
+        )
+        assert t_real < t_fake
+        assert p_real >= 0.95
+        assert p_fake >= 0.95
 
 
 class TestCalibrateProbabilitiesBalanced:

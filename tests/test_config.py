@@ -7,7 +7,7 @@ from src.models.hybrid_detector import HybridDeepfakeDetector
 def test_load_config_values_and_model_override() -> None:
     cfg = load_config("config/default.yaml")
     assert isinstance(cfg, dict)
-    assert cfg["preprocessing"]["img_size"] == 512
+    assert cfg["preprocessing"]["img_size"] == 256
     assert cfg["preprocessing"]["scale_factor"] == 1.50
     assert cfg["model"]["backbone"] == "convnext_small"
 

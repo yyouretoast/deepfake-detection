@@ -68,5 +68,29 @@ def test_epoch_checkpoint_save_and_restore():
         print("PASS: Checkpoint save and restore verified with exact parameter fidelity!")
 
 
+def test_load_detector_checkpoint_resumption():
+    from src.utils.checkpoint import load_detector_checkpoint
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        device = torch.device("cpu")
+        model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
+        ckpt_path = os.path.join(tmp_dir, "test_load.pth")
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "calibration": {
+                    "effective_temperature": 3.5931,
+                    "optimal_threshold": 0.2600,
+                },
+            },
+            ckpt_path,
+        )
+        loaded_model, temp, thresh = load_detector_checkpoint(ckpt_path, device=device)
+        assert abs(thresh - 0.2600) < 1e-4
+        assert abs(temp - 3.5931) < 1e-4
+        assert not loaded_model.training
+
+
 if __name__ == "__main__":
     test_epoch_checkpoint_save_and_restore()
+    test_load_detector_checkpoint_resumption()

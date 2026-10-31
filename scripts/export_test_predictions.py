@@ -59,7 +59,12 @@ def main() -> None:
     targets_clean = all_targets[valid_mask].astype(int)
 
     probs_uncal = 1.0 / (1.0 + np.exp(-logits_clean))
-    probs_cal = 1.0 / (1.0 + np.exp(-(logits_clean / temperature)))
+    platt_a = getattr(model, "platt_scale_a", None)
+    platt_b = getattr(model, "platt_bias_b", None)
+    if platt_a is not None and platt_b is not None:
+        probs_cal = 1.0 / (1.0 + np.exp(-(platt_a * logits_clean + platt_b)))
+    else:
+        probs_cal = 1.0 / (1.0 + np.exp(-(logits_clean / temperature)))
 
     output_data = {
         "probs_raw": probs_uncal.tolist(),
@@ -67,6 +72,8 @@ def main() -> None:
         "labels": targets_clean.tolist(),
         "temperature": float(temperature),
         "threshold": float(threshold),
+        "platt_scale": float(platt_a) if platt_a is not None else None,
+        "platt_intercept": float(platt_b) if platt_b is not None else None,
         "n_samples": len(targets_clean),
     }
 

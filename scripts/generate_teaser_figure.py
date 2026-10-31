@@ -98,17 +98,26 @@ def generate_teaser_figure():
 
     raw_real = cv2.imread(p_real)
     raw_fake = cv2.imread(p_fake)
+    use_cached_patches = raw_real is None or raw_fake is None
 
-    img_real_bgr = cv2.rotate(raw_real, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    img_fake_bgr = cv2.rotate(raw_fake, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    if not use_cached_patches:
+        img_real_bgr = cv2.rotate(raw_real, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        img_fake_bgr = cv2.rotate(raw_fake, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
-    img_real_rgb = cv2.cvtColor(img_real_bgr, cv2.COLOR_BGR2RGB)
-    img_fake_rgb = cv2.cvtColor(img_fake_bgr, cv2.COLOR_BGR2RGB)
+        img_real_rgb = cv2.cvtColor(img_real_bgr, cv2.COLOR_BGR2RGB)
+        img_fake_rgb = cv2.cvtColor(img_fake_bgr, cv2.COLOR_BGR2RGB)
 
-    # Synthesize JPEG transcoded frame for panel (a)
-    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 30]
-    _, enc = cv2.imencode(".jpg", img_real_bgr, encode_param)
-    img_transcoded_rgb = cv2.cvtColor(cv2.imdecode(enc, 1), cv2.COLOR_BGR2RGB)
+        # Synthesize JPEG transcoded frame for panel (a)
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 30]
+        _, enc = cv2.imencode(".jpg", img_real_bgr, encode_param)
+        img_transcoded_rgb = cv2.cvtColor(cv2.imdecode(enc, 1), cv2.COLOR_BGR2RGB)
+    else:
+        cache = np.load("figures/attention_maps/teaser_cache.npz")
+        img_real_rgb = cache["real"]
+        img_fake_rgb = cache["fake"]
+        img_transcoded_rgb = cache["lossy"]
+        cached_prnu_rgb = cache["prnu"]
+        cached_fft_rgb = cache["fft"]
 
     # Coordinates for normalized conversion
     X_MAX = 150.0
@@ -177,17 +186,20 @@ def generate_teaser_figure():
     draw_card(53.5, 24.5, 43.0, 20.8, "white", BORDER_GRAY, lw=0.8)
     ax_bg.text(55.0, 43.0, "Real PRNU Noise vs. Generative Annihilation:", fontsize=7.5, fontweight="bold", color=SLATE_DARK, zorder=3)
 
-    gray_real = cv2.cvtColor(img_real_bgr, cv2.COLOR_BGR2GRAY)
-    gray_fake = cv2.cvtColor(img_fake_bgr, cv2.COLOR_BGR2GRAY)
-    res_real = cv2.Laplacian(gray_real, cv2.CV_32F)[130:230, 130:230]
-    res_fake = cv2.Laplacian(gray_fake, cv2.CV_32F)[130:230, 130:230]
-    patch_combined = np.hstack([res_real, res_fake])
-
     ax_b_prnu = fig.add_axes(to_norm(55.0, 26.2, 20.0, 14.5))
-    ax_b_prnu.imshow(patch_combined, cmap="coolwarm", vmin=-15, vmax=15)
-    ax_b_prnu.axvline(100, color=DARK_NAVY, lw=1.5)
-    ax_b_prnu.set_xticks([50, 150])
-    ax_b_prnu.set_xticklabels(["Authentic PRNU\n($\\sigma = 0.28$)", "Synthetic Void\n($\\sigma = 0.04$)"], fontsize=6.8)
+    if not use_cached_patches:
+        gray_real = cv2.cvtColor(img_real_bgr, cv2.COLOR_BGR2GRAY)
+        gray_fake = cv2.cvtColor(img_fake_bgr, cv2.COLOR_BGR2GRAY)
+        res_real = cv2.Laplacian(gray_real, cv2.CV_32F)[130:230, 130:230]
+        res_fake = cv2.Laplacian(gray_fake, cv2.CV_32F)[130:230, 130:230]
+        patch_combined = np.hstack([res_real, res_fake])
+        ax_b_prnu.imshow(patch_combined, cmap="coolwarm", vmin=-15, vmax=15)
+        ax_b_prnu.axvline(100, color=DARK_NAVY, lw=1.5)
+        ax_b_prnu.set_xticks([50, 150])
+    else:
+        ax_b_prnu.imshow(cached_prnu_rgb)
+        ax_b_prnu.set_xticks([cached_prnu_rgb.shape[1] * 0.25, cached_prnu_rgb.shape[1] * 0.75])
+    ax_b_prnu.set_xticklabels(["Authentic PRNU\n($\\sigma = 3.77$)", "Synthetic Residual\n($\\sigma = 3.25$)"], fontsize=6.8)
     ax_b_prnu.set_yticks([])
     for spine in ax_b_prnu.spines.values():
         spine.set_color(BORDER_GRAY)
@@ -195,23 +207,25 @@ def generate_teaser_figure():
     ax_bg.text(77.0, 38.0, "Silicon Fingerprint (PRNU):", fontsize=7.2, fontweight="bold", color=SLATE_DARK, zorder=3)
     ax_bg.text(77.0, 35.0, "$\\bullet$ Multiplicative wafer noise", fontsize=6.8, color=GREEN_MAIN, zorder=3)
     ax_bg.text(77.0, 32.5, "  persists across pristine frames", fontsize=6.8, color=SLATE_MED, zorder=3)
-    ax_bg.text(77.0, 29.5, "$\\bullet$ Deepfake decoders annihilate", fontsize=6.8, color=BLUE_MAIN, zorder=3)
-    ax_bg.text(77.0, 27.0, "  sensor micro-noise ($\\sigma \\to 0$)", fontsize=6.8, color=BLUE_MAIN, zorder=3)
+    ax_bg.text(77.0, 29.5, "$\\bullet$ Deepfake decoders smooth", fontsize=6.8, color=BLUE_MAIN, zorder=3)
+    ax_bg.text(77.0, 27.0, "  sensor micro-noise ($\\sigma: 3.77 \\to 3.25$)", fontsize=6.8, color=BLUE_MAIN, zorder=3)
 
     # 2D FFT Dirac Spikes & Poisson Boundary
     draw_card(53.5, 2.5, 43.0, 21.0, "white", BORDER_GRAY, lw=0.8)
     ax_bg.text(55.0, 21.2, "Transposed Convolution Aliasing (2D FFT):", fontsize=7.5, fontweight="bold", color=SLATE_DARK, zorder=3)
 
-    fft_fake = np.fft.fftshift(np.fft.fft2(gray_fake.astype(float)))
-    mag_fake = np.log1p(np.abs(fft_fake))
-    p5, p995 = np.percentile(mag_fake, 5), np.percentile(mag_fake, 99.5)
-    mag_fake_norm = np.clip((mag_fake - p5) / max(float(p995 - p5), 1e-6), 0.0, 1.0)
-
     ax_b_fft = fig.add_axes(to_norm(55.0, 4.5, 16.5, 15.0))
-    ax_b_fft.imshow(mag_fake_norm, cmap="inferno")
-    for cx_peak, cy_peak in [(160, 160), (160, 352), (352, 160), (352, 352)]:
-        c_ring = patches.Circle((cx_peak, cy_peak), 24, fill=False, edgecolor="#38BDF8", lw=1.2, ls="--")
-        ax_b_fft.add_patch(c_ring)
+    if not use_cached_patches:
+        fft_fake = np.fft.fftshift(np.fft.fft2(gray_fake.astype(float)))
+        mag_fake = np.log1p(np.abs(fft_fake))
+        p5, p995 = np.percentile(mag_fake, 5), np.percentile(mag_fake, 99.5)
+        mag_fake_norm = np.clip((mag_fake - p5) / max(float(p995 - p5), 1e-6), 0.0, 1.0)
+        ax_b_fft.imshow(mag_fake_norm, cmap="inferno")
+        for cx_peak, cy_peak in [(160, 160), (160, 352), (352, 160), (352, 352)]:
+            c_ring = patches.Circle((cx_peak, cy_peak), 24, fill=False, edgecolor="#38BDF8", lw=1.2, ls="--")
+            ax_b_fft.add_patch(c_ring)
+    else:
+        ax_b_fft.imshow(cached_fft_rgb)
     ax_b_fft.set_xticks([])
     ax_b_fft.set_yticks([])
     for spine in ax_b_fft.spines.values():

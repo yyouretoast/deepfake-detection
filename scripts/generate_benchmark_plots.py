@@ -82,7 +82,7 @@ def compute_ece(
 
     for i in range(n_bins):
         lo, hi = bin_edges[i], bin_edges[i + 1]
-        mask = (probs > lo) & (probs <= hi)
+        mask = (probs >= lo) & (probs <= hi) if i == 0 else (probs > lo) & (probs <= hi)
         if mask.sum() == 0:
             continue
         bin_centers.append((lo + hi) / 2)
@@ -153,7 +153,7 @@ def plot_ece(
 
     for ax, probs, title, color in [
         (axes[0], probs_raw, "Raw Logits (Uncalibrated)", RED),
-        (axes[1], probs_cal, "Platt Temperature Scaled (T* = 4.288)", GREEN),
+        (axes[1], probs_cal, "Platt Scaled (T_eff = 3.5931)", GREEN),
     ]:
         bx, ba, bc, ece = compute_ece(probs, labels)
         bar_w = 0.08
@@ -321,8 +321,8 @@ def plot_bayesian_decision_zones(
     fake_mask = labels_sp == 1
 
     bins = np.linspace(0.15, 0.85, 45)
-    ax1.hist(probs_unadj[real_mask], bins=bins, density=True, alpha=0.65, color=BLUE, label="Authentic (Real, n=756)", zorder=3)
-    ax1.hist(probs_unadj[fake_mask], bins=bins, density=True, alpha=0.55, color=RED, label="Manipulated (Fake, n=12,688)", zorder=3)
+    ax1.hist(probs_unadj[real_mask], bins=bins, density=True, alpha=0.65, color=BLUE, label=f"Authentic (Real, n={int(real_mask.sum()):,})", zorder=3)
+    ax1.hist(probs_unadj[fake_mask], bins=bins, density=True, alpha=0.55, color=RED, label=f"Manipulated (Fake, n={int(fake_mask.sum()):,})", zorder=3)
 
     # Shaded Bayesian 3-Zone bands
     # Zone 1: Authentic (p < 0.40)
@@ -334,7 +334,7 @@ def plot_bayesian_decision_zones(
 
     # Vertical threshold markers
     ax1.axvline(0.40, color=GREEN, lw=1.2, linestyle="--")
-    ax1.axvline(0.42, color=RED, lw=1.4, linestyle="-", label="Optimal Threshold (τ* = 0.42)")
+    ax1.axvline(0.26, color=RED, lw=1.4, linestyle="-", label="Optimal Threshold (τ* = 0.26)")
     ax1.axvline(0.60, color=PURPLE, lw=1.2, linestyle="--")
 
     ax1.set_ylim(0, 9.6)
@@ -362,8 +362,8 @@ def plot_bayesian_decision_zones(
         t_opt = float(temporal_data.get("optimal_threshold", 0.3895))
 
         bins_t = np.linspace(0.0, 1.0, 45)
-        ax2.hist(t_probs[t_real], bins=bins_t, density=True, alpha=0.70, color=BLUE, label="Authentic Videos (n=63)", zorder=3)
-        ax2.hist(t_probs[t_fake], bins=bins_t, density=True, alpha=0.60, color=GREEN, label="Deepfake Videos (n=1,057)", zorder=3)
+        ax2.hist(t_probs[t_real], bins=bins_t, density=True, alpha=0.70, color=BLUE, label=f"Authentic Videos (n={int(t_real.sum()):,})", zorder=3)
+        ax2.hist(t_probs[t_fake], bins=bins_t, density=True, alpha=0.60, color=GREEN, label=f"Deepfake Videos (n={int(t_fake.sum()):,})", zorder=3)
 
         ax2.axvline(t_opt, color=RED, lw=1.5, linestyle="-", label=f"Sequence Threshold (τ* = {t_opt:.4f})")
         ax2.axvspan(0.0, t_opt, color="#DCFCE7", alpha=0.35, zorder=1)
@@ -612,7 +612,7 @@ def plot_robustness(robustness: dict, output_path: str) -> None:
         ax.set_xticks(xs)
         ax.set_xticklabels(levels, rotation=20, ha="right", fontsize=8)
         min_y = max(0.42, min(aucs) - 0.05)
-        ax.set_ylim(min_y, 0.86)
+        ax.set_ylim(min_y, max(0.90, max(aucs) + 0.02))
         ax.set_ylabel("ROC AUC")
         ax.set_title(sweep_name, pad=8)
         ax.legend(loc="lower left", fontsize=8)
@@ -781,8 +781,8 @@ def main() -> None:
         if os.path.exists(path_str):
             return path_str
         candidates = [
-            os.path.join("results", os.path.basename(path_str)),
             os.path.join("results", "release1_run", os.path.basename(path_str)),
+            os.path.join("results", os.path.basename(path_str)),
             os.path.join("/kaggle/working", os.path.basename(path_str)),
         ]
         for c in candidates:

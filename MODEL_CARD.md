@@ -24,25 +24,29 @@ model-index:
       type: image-classification
       name: Deepfake Detection
     metrics:
-    - name: Video ROC AUC
-      type: roc_auc
-      value: 0.8994
-    - name: Single-Frame ROC AUC
-      type: roc_auc
-      value: 0.8656
     - name: Expected Calibration Error (ECE)
       type: ece
       value: 0.0994
-    - name: Equal Error Rate (EER)
+    - name: Equal Error Rate (EER) [percent]
       type: eer
-      value: 0.2182
+      value: 21.82
+  - task:
+      type: video-classification
+      name: Video Deepfake Detection
+    metrics:
+    - name: Video ROC AUC
+      type: roc_auc
+      value: 0.8994
+    - name: Equal Error Rate (EER) [percent]
+      type: eer
+      value: 18.54
 ---
 
 # Dual-Stream Deepfake Detector & Spatiotemporal Forensics
 
 A PyTorch deepfake detection architecture coupling an ImageNet-modernized **ConvNeXt-Small** spatial backbone with a **20-channel ResSE-Spectral Tower** (Steganographic Rich Model + Bayar-Stamm 2D Real FFT decomposition), **High-Frequency SNR-Adaptive Gating**, affine Platt probability calibration, and a **Dual-Path (Attention + Global Max-Pooling) Bi-GRU** temporal video sequence head.
 
-- **Preprint**: *"Dual-Stream Spatial-Frequency Feature Fusion with SNR-Adaptive Gating for Deepfake Detection: An Empirical Evaluation on Disjoint Partitions"* (arXiv:cs.CV / cs.CR)
+- **Preprint**: *"Dual-Stream Spatial-Frequency Feature Fusion with SNR-Adaptive Gating for Deepfake Detection: An Empirical Evaluation on Disjoint Partitions"* — **in preparation, no arXiv/journal record yet**
 - **GitHub Repository**: [yyouretoast/deepfake-detection](https://github.com/yyouretoast/deepfake-detection)
 - **Live Hugging Face Space**: [yyouretoast/deepfake-detector](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
 
@@ -153,6 +157,16 @@ In strict accordance with the FaceForensics++ benchmark protocol, models are eva
 
 ---
 
+## Known Limitations
+
+1. **Not deployable as a definitive detector.** JPEG Q30 → 0.7410 AUC; blur σ=3 → 0.7232; noise σ=10 → 0.7576; zero-shot acquisition-shift transfer on Celeb-DF = 0.5961 (≈ chance). Outputs are triage signals, not forensic evidence.
+2. **The temporal head's improvement over naive frame averaging is +0.003 AUC and has not been tested for statistical significance** (paired testing pending a full per-sample re-export).
+3. **Calibration constants are frozen Release-1 post-hoc values**; they were fit on the validation split (26.55% of total crops, fake-skewed 7.74:1) and confirmed on test. Recalibration is required when retraining on new data.
+4. **Test-set class skew (2.55:1 fake-heavy)** inflates F1/precision framing — the "always fake" baseline actually scores higher F1 (0.8358 vs 0.8292). Prefer ROC AUC / EER / balanced accuracy when comparing architectures.
+5. **Robustness attribution is correlative** — the spectral-vs-spatial degradation sensitivity claim is inferred from gating telemetry, not isolated stream ablations; single-generational perturbations only.
+
+---
+
 ## Data Use Agreements & Ethical Compliance
 
 This repository and model card distribute **only** algorithmic code, neural network weight tensors, and deterministic graph partition metadata manifests (`splits/`). In strict compliance with upstream Data Use Agreements:
@@ -164,12 +178,14 @@ This repository and model card distribute **only** algorithmic code, neural netw
 
 ## Citation
 
+**Status: preprint in preparation — no arXiv/journal record as of 2026-10; do not cite as a published paper.**
+
 ```bibtex
-@article{yasser2026dualstream,
-  author    = {Yassin Yasser},
-  title     = {Dual-Stream Spatial-Frequency Feature Fusion with SNR-Adaptive Gating for Deepfake Detection: An Empirical Evaluation on Disjoint Partitions},
-  journal   = {arXiv preprint arXiv:cs.CV/cs.CR},
-  year      = {2026},
-  url       = {https://github.com/yyouretoast/deepfake-detection}
+@misc{yasser2026dualstream,
+  author       = {Yassin Yasser},
+  title        = {Dual-Stream Spatial-Frequency Feature Fusion with SNR-Adaptive Gating for Deepfake Detection: An Empirical Evaluation on Disjoint Partitions},
+  howpublished = {\url{https://github.com/yyouretoast/deepfake-detection}},
+  note         = {Preprint, in preparation (no arXiv/journal record as of 2026-10)},
+  year         = {2026}
 }
 ```

@@ -87,14 +87,18 @@ def compute_dual_thresholds_certified(
         return t_real, t_fake
 
     tr, tf = eval_at_precision(min_precision)
-    if tr is not None and tf is not None and tr < tf:
-        return float(tr), float(tf), float(min_precision), float(min_precision)
+    if tr is not None and tf is not None:
+        if tr <= tf:
+            return float(tr), float(tf), float(min_precision), float(min_precision)
+        return float(tf), float(tr), float(min_precision), float(min_precision)
 
     # Search for maximal achievable certified precision P*
     for p_cand in np.linspace(min_precision, 0.50, 49):
         cand_r, cand_f = eval_at_precision(float(p_cand))
-        if cand_r is not None and cand_f is not None and cand_r < cand_f:
-            return float(cand_r), float(cand_f), float(p_cand), float(p_cand)
+        if cand_r is not None and cand_f is not None:
+            if cand_r <= cand_f:
+                return float(cand_r), float(cand_f), float(p_cand), float(p_cand)
+            return float(cand_f), float(cand_r), float(p_cand), float(p_cand)
 
     # When sample floor fails or data is degenerate, return neutral 0.40, 0.60 with 0.50 baseline precision
     return 0.40, 0.60, 0.50, 0.50
@@ -166,8 +170,13 @@ def load_detector_checkpoint(
     resolved_path = find_weights_path(weights_path, data_root)
     ckpt = torch.load(resolved_path, map_location=target_device, weights_only=False)
 
-    temperature = float(ckpt.get("temperature", DEFAULT_TEMPERATURE))
-    threshold = float(ckpt.get("optimal_threshold", DEFAULT_THRESHOLD))
+    calib = ckpt.get("calibration", ckpt) if isinstance(ckpt.get("calibration"), dict) else ckpt
+    temperature = float(calib.get("effective_temperature", calib.get("temperature", ckpt.get("temperature", DEFAULT_TEMPERATURE))))
+    threshold = float(calib.get("optimal_threshold", ckpt.get("optimal_threshold", DEFAULT_THRESHOLD)))
+    platt_a = calib.get("platt_scale_a", ckpt.get("platt_scale_a"))
+    platt_b = calib.get("platt_bias_b", ckpt.get("platt_bias_b"))
+    tau_real = float(calib.get("tau_real", ckpt.get("tau_real", 0.40)))
+    tau_fake = float(calib.get("tau_fake", ckpt.get("tau_fake", 0.60)))
 
     state_dict = ckpt.get("model_state_dict", ckpt)
     cleaned = clean_state_dict(state_dict)
@@ -178,5 +187,12 @@ def load_detector_checkpoint(
     model = HybridDeepfakeDetector(pretrained=False, frequency_backbone=freq_backbone).to(target_device)
     model.load_state_dict(cleaned, strict=strict)
     model.eval()
+
+    model.platt_scale_a = float(platt_a) if platt_a is not None else None
+    model.platt_bias_b = float(platt_b) if platt_b is not None else None
+    model.tau_real = tau_real
+    model.tau_fake = tau_fake
+    model.effective_temperature = temperature
+    model.optimal_threshold = threshold
 
     return model, temperature, threshold

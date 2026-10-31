@@ -88,6 +88,7 @@ def test_snr_adaptive_frequency_gating(
     eval_model_factory: Callable[[bool], HybridDeepfakeDetector]
 ) -> None:
     """Verifies that high-frequency SNR gating attenuates the frequency stream when input is heavily degraded."""
+    torch.manual_seed(42)  # Bayar init can otherwise land near a degenerate zero-sum kernel
     model = eval_model_factory(use_fft=True)
     assert model.enable_snr_gating is True
 
@@ -102,6 +103,13 @@ def test_snr_adaptive_frequency_gating(
     # 2. Blurred/flat input (near-zero high frequency power)
     flat_batch = torch.full((2, 3, 256, 256), 0.5)
     with torch.no_grad():
+        srm_res = model.srm(flat_batch)
+        bayar_res = model.bayar(flat_batch)
+        noise_comb = torch.cat([srm_res, bayar_res], dim=1)
+        noise_p = noise_comb.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
+        gamma = torch.clamp((noise_p - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+        assert (gamma == 0.0).all(), f"Flat input must completely suppress spectral branch (gamma=0), got {gamma}"
+
         out_flat = model(flat_batch)
         feat_flat = model.extract_features(flat_batch)
     assert torch.isfinite(out_flat).all()
@@ -112,3 +120,26 @@ def test_snr_adaptive_frequency_gating(
     with torch.no_grad():
         out_no_snr = model(clean_batch)
     assert torch.isfinite(out_no_snr).all()
+
+
+def test_snr_gating_border_margin_restores_flat_input_invariant(
+    eval_model_factory: Callable[[bool], HybridDeepfakeDetector]
+) -> None:
+    """Zero-padding borders keep residual power inside the lower gamma ramp on flat input.
+
+    With noise_border_margin=0 (Release-1 checkpoint behaviour) a constant image still
+    accumulates residual power (~2.5e-3) from the padded border band. The interior-
+    cropped noise power must carry ~0, proving the source of the leak is the border.
+    """
+    torch.manual_seed(42)
+    model = eval_model_factory(use_fft=True)
+    model.noise_border_margin = 8
+
+    flat_batch = torch.full((2, 3, 256, 256), 0.5)
+    with torch.no_grad():
+        gamma = model._snr_gamma(torch.cat([model.srm(flat_batch), model.bayar(flat_batch)], dim=1))
+
+    assert model.noise_border_margin == 8
+    assert (gamma == 0.0).all(), (
+        f"Interior noise power must suppress the spectral branch on flat input (gamma=0), got {gamma}"
+    )

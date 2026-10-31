@@ -308,6 +308,8 @@ class DynamicFaceCropper:
                             flags=cv2.INTER_AREA,
                             borderMode=cv2.BORDER_REPLICATE,
                         )
+                        if pad_left > 0 or pad_top > 0 or pad_right > 0 or pad_bottom > 0:
+                            aligned_warped_crop = self._apply_cosine_edge_taper(aligned_warped_crop)
             except (cv2.error, ValueError, np.linalg.LinAlgError, RuntimeError) as e:
                 logger.debug("Affine warp alignment exception: %s", e)
 

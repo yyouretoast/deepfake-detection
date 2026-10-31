@@ -164,8 +164,8 @@ def subsample_stratified_val(
     samples: list[Any], n_per_source: int = 50, seed: int = 42
 ) -> list[Any]:
     rng = random.Random(seed)
-    ffpp = [s for s in samples if DomainClassifier.classify(s[0]).domain != ManipulationDomain.CELEB_DF]
-    celeb = [s for s in samples if DomainClassifier.classify(s[0]).domain == ManipulationDomain.CELEB_DF]
+    ffpp = [s for s in samples if not get_sample_stratum(s[0], int(s[1])).startswith("celeb")]
+    celeb = [s for s in samples if get_sample_stratum(s[0], int(s[1])).startswith("celeb")]
     selected = subsample_balanced(ffpp, n_per_source, seed=seed) + subsample_balanced(celeb, n_per_source, seed=seed)
     rng.shuffle(selected)
     return selected
@@ -292,6 +292,7 @@ def evaluate_macro_val(
 
     all_preds: list[float] = []
     all_targets: list[int] = []
+    all_valid: list[bool] = []
     all_sources: list[str] = []
 
     try:
@@ -312,6 +313,7 @@ def evaluate_macro_val(
 
                 all_preds.extend(p_flat.tolist())
                 all_targets.extend(y_flat.astype(int).tolist())
+                all_valid.extend((valid_flags.view(-1) > 0.0).cpu().numpy().tolist())
     finally:
         if ema is not None and backup is not None:
             ema.restore(model, backup)
@@ -323,7 +325,10 @@ def evaluate_macro_val(
 
     preds_arr = np.array(all_preds)
     targets_arr = np.array(all_targets)
-    sources_arr = np.array(all_sources[: len(preds_arr)])
+    if len(all_valid) == len(all_sources):
+        sources_arr = np.array(all_sources)[np.array(all_valid)]
+    else:
+        sources_arr = np.array(all_sources[: len(preds_arr)])
 
     # Compute source-specific AUCs
     ffpp_mask = sources_arr == "ffpp"
@@ -780,8 +785,19 @@ def calibrate_validation_split(
         "is_precision_certified": bool(p_fake_cert >= 0.980 and p_real_cert >= 0.980),
     }
 
-    # Save calibrated checkpoint with metadata
-    torch.save({"model_state_dict": model.state_dict(), "calibration": calib_meta}, calibrated_path)
+    # Save calibrated checkpoint with metadata (both nested and top-level for backward-compatibility)
+    ckpt_payload = {
+        "model_state_dict": model.state_dict(),
+        "calibration": calib_meta,
+        "temperature": calib_meta["effective_temperature"],
+        "effective_temperature": calib_meta["effective_temperature"],
+        "optimal_threshold": calib_meta["optimal_threshold"],
+        "tau_real": calib_meta["tau_real"],
+        "tau_fake": calib_meta["tau_fake"],
+        "platt_scale_a": calib_meta["platt_scale_a"],
+        "platt_bias_b": calib_meta["platt_bias_b"],
+    }
+    torch.save(ckpt_payload, calibrated_path)
     logger.info("Saved Calibrated Checkpoint -> %s", calibrated_path)
     return calibrated_path, calib_meta
 
@@ -1764,86 +1780,118 @@ def main() -> None:
     data_root = DatasetResolver.find_dataset_root(args.data_dir)
     splits_path = resolve_splits_path(data_root=data_root)
 
+    existing_results: dict[str, Any] = {}
+    final_json_path = os.path.join(out_dir, "release1_results.json")
+    repo_results_path = os.path.join(REPO_ROOT, "results", "release1_run", "release1_results.json")
+    for path_cand in [final_json_path, repo_results_path, os.path.join(REPO_ROOT, "results", "release1_results.json")]:
+        if os.path.exists(path_cand):
+            try:
+                with open(path_cand, "r", encoding="utf-8") as f:
+                    existing_results = json.load(f)
+                    break
+            except Exception:
+                pass
+
+    do_all = args.stage == "all"
+    do_backbone = do_all or (args.stage == "backbone")
+    do_calibrate = do_all or (args.stage == "calibrate")
+    do_test = do_all or (args.stage == "test")
+    do_temporal = do_all or (args.stage == "temporal")
+    do_loto = (do_all or (args.stage == "loto")) and not args.skip_loto
+    do_robustness = (do_all or (args.stage == "robustness")) and not args.skip_robustness
+    do_latency = do_all or (args.stage == "latency")
+
     # 1. Integrity check
     ledger = verify_dataset_integrity(splits_path)
 
     # 2. Train backbone
-    backbone_weights = train_dual_stream_backbone(
-        data_root=data_root,
-        splits_path=splits_path,
-        output_dir=out_dir,
-        epochs=backbone_epochs,
-        batch_size=batch_size,
-        device=device,
-        smoke_test=args.smoke_test,
-        force_rerun=args.force_rerun,
-    )
-
-    # 2b. Train spatial-only ConvNeXt baseline
-    spatial_weights = train_spatial_convnext_baseline(
-        data_root=data_root,
-        splits_path=splits_path,
-        output_dir=out_dir,
-        epochs=backbone_epochs,
-        batch_size=batch_size,
-        device=device,
-        smoke_test=args.smoke_test,
-        force_rerun=args.force_rerun,
-    )
-
-    # 3. Calibrate on val
-    calibrated_weights, calib_meta = calibrate_validation_split(
-        backbone_path=backbone_weights,
-        data_root=data_root,
-        splits_path=splits_path,
-        output_dir=out_dir,
-        device=device,
-        smoke_test=args.smoke_test,
-        force_rerun=args.force_rerun,
-    )
-
-    # 4. Evaluate Test Split with Clustered Bootstrap
-    test_eval_summary = evaluate_held_out_test(
-        calibrated_path=calibrated_weights,
-        data_root=data_root,
-        splits_path=splits_path,
-        calib_meta=calib_meta,
-        output_dir=out_dir,
-        spatial_checkpoint_path=spatial_weights,
-        device=device,
-        smoke_test=args.smoke_test,
-        force_rerun=args.force_rerun,
-    )
-
-    # 5. Temporal Video Head
-    temporal_summary = train_and_eval_temporal(
-        backbone_path=calibrated_weights,
-        data_root=data_root,
-        splits_path=splits_path,
-        output_dir=out_dir,
-        epochs=1 if args.smoke_test else 5,
-        device=device,
-        smoke_test=args.smoke_test,
-        force_rerun=args.force_rerun,
-    )
-
-    # 6. LOTO Folds (Optional)
-    if not args.skip_loto:
-        loto_summary = run_loto_experiment(
+    backbone_weights = os.path.join(out_dir, "dual_stream_best.pth")
+    spatial_weights = os.path.join(out_dir, "spatial_convnext_best.pth")
+    if do_backbone:
+        backbone_weights = train_dual_stream_backbone(
             data_root=data_root,
             splits_path=splits_path,
             output_dir=out_dir,
-            epochs=1 if args.smoke_test else 5,
+            epochs=backbone_epochs,
             batch_size=batch_size,
             device=device,
             smoke_test=args.smoke_test,
             force_rerun=args.force_rerun,
         )
-    else:
-        loto_summary = {}
+        spatial_weights = train_spatial_convnext_baseline(
+            data_root=data_root,
+            splits_path=splits_path,
+            output_dir=out_dir,
+            epochs=backbone_epochs,
+            batch_size=batch_size,
+            device=device,
+            smoke_test=args.smoke_test,
+            force_rerun=args.force_rerun,
+        )
+
+    # 3. Calibrate on val
+    calibrated_weights = os.path.join(out_dir, "dual_stream_calibrated.pth")
+    calib_meta = existing_results.get("calibration", {})
+    if do_calibrate:
+        calibrated_weights, calib_meta = calibrate_validation_split(
+            backbone_path=backbone_weights,
+            data_root=data_root,
+            splits_path=splits_path,
+            output_dir=out_dir,
+            device=device,
+            smoke_test=args.smoke_test,
+            force_rerun=args.force_rerun,
+        )
+    elif os.path.exists(calibrated_weights):
+        ckpt_temp = torch.load(calibrated_weights, map_location=device, weights_only=False)
+        calib_meta = ckpt_temp.get("calibration", calib_meta)
+
+    # 4. Evaluate Test Split with Clustered Bootstrap
+    test_eval_summary = existing_results.get("test_frame_evaluation", {})
+    if do_test:
+        test_eval_summary = evaluate_held_out_test(
+            calibrated_path=calibrated_weights,
+            data_root=data_root,
+            splits_path=splits_path,
+            calib_meta=calib_meta,
+            output_dir=out_dir,
+            spatial_checkpoint_path=spatial_weights,
+            device=device,
+            smoke_test=args.smoke_test,
+            force_rerun=args.force_rerun,
+        )
+
+    # 5. Temporal Video Head
+    temporal_summary = existing_results.get("temporal_video_evaluation", {})
+    if do_temporal:
+        temporal_summary = train_and_eval_temporal(
+            backbone_path=calibrated_weights,
+            data_root=data_root,
+            splits_path=splits_path,
+            output_dir=out_dir,
+            epochs=1 if args.smoke_test else 5,
+            device=device,
+            smoke_test=args.smoke_test,
+            force_rerun=args.force_rerun,
+        )
+
+    # 6. LOTO Folds (Optional)
+    loto_summary = existing_results.get("loto_cross_generator_benchmark", {})
+    if do_loto:
+        loto_summary = run_loto_experiment(
+            data_root=data_root,
+            splits_path=splits_path,
+            output_dir=out_dir,
+            epochs=1 if args.smoke_test else 3,
+            batch_size=batch_size,
+            device=device,
+            smoke_test=args.smoke_test,
+            force_rerun=args.force_rerun,
+        )
 
     # 7. Robustness Stress Tests (Optional)
-    if not args.skip_robustness:
+    robustness_summary = existing_results.get("robustness_stress_tests", {})
+    if do_robustness:
         robustness_summary = run_robustness_stress_test(
             calibrated_path=calibrated_weights,
             data_root=data_root,
@@ -1853,17 +1901,17 @@ def main() -> None:
             smoke_test=args.smoke_test,
             force_rerun=args.force_rerun,
         )
-    else:
-        robustness_summary = {}
 
     # 8. Latency Benchmark
-    latency_summary = run_latency_profiling(
-        calibrated_weights,
-        output_dir=out_dir,
-        device=device,
-        smoke_test=args.smoke_test,
-        force_rerun=args.force_rerun,
-    )
+    latency_summary = existing_results.get("latency_profiling", {})
+    if do_latency:
+        latency_summary = run_latency_profiling(
+            calibrated_weights,
+            output_dir=out_dir,
+            device=device,
+            smoke_test=args.smoke_test,
+            force_rerun=args.force_rerun,
+        )
 
     # 9. Structured Provenance JSON Assembly
     final_results = {
@@ -1872,10 +1920,10 @@ def main() -> None:
             "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
             "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
             "pytorch_version": torch.__version__,
-            "splits_sha256": ledger["splits_sha256"],
-            "spatial_weights_sha256": compute_sha256(spatial_weights),
-            "backbone_weights_sha256": compute_sha256(backbone_weights),
-            "calibrated_weights_sha256": compute_sha256(calibrated_weights),
+            "splits_sha256": ledger.get("splits_sha256"),
+            "spatial_weights_sha256": compute_sha256(spatial_weights) if os.path.exists(spatial_weights) else None,
+            "backbone_weights_sha256": compute_sha256(backbone_weights) if os.path.exists(backbone_weights) else None,
+            "calibrated_weights_sha256": compute_sha256(calibrated_weights) if os.path.exists(calibrated_weights) else None,
         },
         "dataset_ledger": ledger,
         "calibration": calib_meta,
@@ -1886,13 +1934,25 @@ def main() -> None:
         "latency_profiling": latency_summary,
     }
 
-    final_json_path = os.path.join(out_dir, "release1_results.json")
+    if "ablation_study" in existing_results:
+        final_results["ablation_study"] = existing_results["ablation_study"]
+    elif os.path.exists(os.path.join(out_dir, "ablation_study_results.json")):
+        try:
+            with open(os.path.join(out_dir, "ablation_study_results.json"), "r", encoding="utf-8") as f:
+                final_results["ablation_study"] = json.load(f)
+        except Exception:
+            pass
+
     with open(final_json_path, "w", encoding="utf-8") as f:
         json.dump(final_results, f, indent=2)
     logger.info("Saved Master Release 1 Results -> %s", final_json_path)
 
     # Also write to repo results/ directory if available
-    repo_results_path = os.path.join(REPO_ROOT, "results", "release1_results.json")
+    repo_results_dir = os.path.join(REPO_ROOT, "results", "release1_run")
+    if os.path.exists(repo_results_dir):
+        repo_results_file = os.path.join(repo_results_dir, "release1_results.json")
+        with open(repo_results_file, "w", encoding="utf-8") as f:
+            json.dump(final_results, f, indent=2)
     os.makedirs(os.path.dirname(repo_results_path), exist_ok=True)
     with open(repo_results_path, "w", encoding="utf-8") as f:
         json.dump(final_results, f, indent=2)

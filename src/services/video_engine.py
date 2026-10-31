@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG: dict[str, Any] = load_config()
 APP_CFG: dict[str, Any] = CONFIG.get("app", {})
-IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 512)
+IMG_SIZE: int = CONFIG.get("preprocessing", {}).get("img_size", 256)
 FRAMES_TO_SAMPLE: int = APP_CFG.get("frames_to_sample", 10)
 DEVICE: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Expected SHA-256 hash of published checkpoint weights (can be overridden via ENV)
@@ -33,7 +33,7 @@ EXPECTED_WEIGHTS_SHA256: str | None = os.getenv(
 
 
 class PredictionEngine(tuple):
-    """5-tuple holding prediction components with attribute access for Bayesian thresholds."""
+    """5-tuple holding prediction components with attribute access for Bayesian thresholds and Platt calibration."""
 
     def __new__(
         cls,
@@ -44,6 +44,8 @@ class PredictionEngine(tuple):
         temperature: float,
         tau_real: float = 0.40,
         tau_fake: float = 0.60,
+        platt_scale_a: float = 0.2783,
+        platt_bias_b: float = 0.4089,
     ) -> Self:
         instance = super().__new__(cls, (model, cropper, has_weights, threshold, temperature))
         instance.model = model
@@ -53,6 +55,8 @@ class PredictionEngine(tuple):
         instance.temperature = temperature
         instance.tau_real = tau_real
         instance.tau_fake = tau_fake
+        instance.platt_scale_a = platt_scale_a
+        instance.platt_bias_b = platt_bias_b
         return instance
 
 
@@ -108,6 +112,8 @@ def load_prediction_engine(
     temperature = 1.0
     tau_real = 0.40
     tau_fake = 0.60
+    platt_scale_a = 0.2783
+    platt_bias_b = 0.4089
 
     sidecar_paths = ["models/dual_stream_detector.json", "dual_stream_detector.json"]
     for sp in sidecar_paths:
@@ -116,9 +122,11 @@ def load_prediction_engine(
                 with open(sp, "r", encoding="utf-8") as f:
                     meta = json.load(f)
                     opt_threshold = float(meta.get("optimal_threshold", DEFAULT_THRESHOLD))
-                    temperature = float(meta.get("temperature", 1.0))
+                    temperature = float(meta.get("effective_temperature", meta.get("temperature", 1.0)))
                     tau_real = float(meta.get("tau_real", 0.40))
                     tau_fake = float(meta.get("tau_fake", 0.60))
+                    platt_scale_a = float(meta.get("platt_scale_a", meta.get("platt_a", 0.2783)))
+                    platt_bias_b = float(meta.get("platt_bias_b", meta.get("platt_b", 0.4089)))
                     break
             except (json.JSONDecodeError, OSError, ValueError) as e:
                 logger.warning("Could not load sidecar metadata: %s", e)
@@ -127,16 +135,24 @@ def load_prediction_engine(
     state_dict: dict[str, Any] | None = None
     if has_weights:
         checkpoint = torch.load(weights_path, map_location=DEVICE, weights_only=True)
+        calib_dict = (
+            checkpoint.get("calibration", checkpoint)
+            if isinstance(checkpoint, dict) and isinstance(checkpoint.get("calibration"), dict)
+            else (checkpoint if isinstance(checkpoint, dict) else {})
+        )
         if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
-            opt_threshold = float(checkpoint.get("optimal_threshold", opt_threshold))
-            temperature = float(checkpoint.get("temperature", temperature))
-            tau_real = float(checkpoint.get("tau_real", tau_real))
-            tau_fake = float(checkpoint.get("tau_fake", tau_fake))
         elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             state_dict = checkpoint["state_dict"]
         else:
             state_dict = checkpoint
+
+        opt_threshold = float(calib_dict.get("optimal_threshold", checkpoint.get("optimal_threshold", opt_threshold)))
+        temperature = float(calib_dict.get("effective_temperature", calib_dict.get("temperature", checkpoint.get("temperature", temperature))))
+        tau_real = float(calib_dict.get("tau_real", checkpoint.get("tau_real", tau_real)))
+        tau_fake = float(calib_dict.get("tau_fake", checkpoint.get("tau_fake", tau_fake)))
+        platt_scale_a = float(calib_dict.get("platt_scale_a", calib_dict.get("platt_a", checkpoint.get("platt_scale_a", platt_scale_a))))
+        platt_bias_b = float(calib_dict.get("platt_bias_b", calib_dict.get("platt_b", checkpoint.get("platt_bias_b", platt_bias_b))))
         state_dict = clean_state_dict(state_dict)
 
     backbone_name = CONFIG.get("model", {}).get("backbone", "convnext_small")
@@ -162,7 +178,7 @@ def load_prediction_engine(
     cropper = DynamicFaceCropper(scale_factor=scale_factor, target_size=IMG_SIZE, device=DEVICE)
 
     return PredictionEngine(
-        pytorch_model, cropper, has_weights, opt_threshold, temperature, tau_real, tau_fake
+        pytorch_model, cropper, has_weights, opt_threshold, temperature, tau_real, tau_fake, platt_scale_a, platt_bias_b
     )
 
 
@@ -224,6 +240,8 @@ def process_video_frames(
     temporal_model: torch.nn.Module | None = None,
     tau_real: float | None = None,
     tau_fake: float | None = None,
+    platt_a: float | None = None,
+    platt_b: float | None = None,
 ) -> dict[str, Any] | None:
     """
     Video inference engine with OpenCV keyframe seeking, AMP autocast, and temporal aggregation.
@@ -237,6 +255,8 @@ def process_video_frames(
 
     engine_tau_real = 0.40
     engine_tau_fake = 0.60
+    engine_platt_a = None
+    engine_platt_b = None
     if pytorch_model is None or cropper is None or classification_threshold is None or temperature is None:
         engine = load_prediction_engine()
         p_model, c_crop, h_weights, threshold, temp = engine
@@ -250,9 +270,13 @@ def process_video_frames(
             has_pytorch_weights = h_weights
         engine_tau_real = getattr(engine, "tau_real", 0.40)
         engine_tau_fake = getattr(engine, "tau_fake", 0.60)
+        engine_platt_a = getattr(engine, "platt_scale_a", None)
+        engine_platt_b = getattr(engine, "platt_bias_b", None)
 
     effective_tau_real = tau_real if tau_real is not None else engine_tau_real
     effective_tau_fake = tau_fake if tau_fake is not None else engine_tau_fake
+    effective_platt_a = platt_a if platt_a is not None else engine_platt_a
+    effective_platt_b = platt_b if platt_b is not None else engine_platt_b
 
     if temporal_model is None:
         temporal_model = load_temporal_engine()
@@ -345,8 +369,14 @@ def process_video_frames(
             torch.inference_mode(),
             torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")),
         ):
-            p1 = torch.sigmoid(pytorch_model(sub_torch).float() / temperature).view(-1)
-            p2 = torch.sigmoid(pytorch_model(torch.flip(sub_torch, dims=[-1])).float() / temperature).view(-1)
+            raw_p1 = pytorch_model(sub_torch).float()
+            raw_p2 = pytorch_model(torch.flip(sub_torch, dims=[-1])).float()
+            if effective_platt_a is not None and effective_platt_b is not None:
+                p1 = torch.sigmoid(effective_platt_a * raw_p1 + effective_platt_b).view(-1)
+                p2 = torch.sigmoid(effective_platt_a * raw_p2 + effective_platt_b).view(-1)
+            else:
+                p1 = torch.sigmoid(raw_p1 / temperature).view(-1)
+                p2 = torch.sigmoid(raw_p2 / temperature).view(-1)
             p_avg = (p1 + p2) / 2.0
             unflipped_probs.extend([float(val) for val in p1.cpu().numpy().tolist()])
             if temporal_model is not None and hasattr(pytorch_model, "extract_features"):
@@ -403,6 +433,8 @@ def process_single_image(
     temperature: float | None = None,
     tau_real: float | None = None,
     tau_fake: float | None = None,
+    platt_a: float | None = None,
+    platt_b: float | None = None,
 ) -> dict[str, Any] | None:
     """
     Forensic inference engine for a single static image input.
@@ -436,6 +468,8 @@ def process_single_image(
     # 2. Resolve default engine components if not provided
     effective_tau_real = 0.40
     effective_tau_fake = 0.60
+    engine_platt_a = None
+    engine_platt_b = None
     if pytorch_model is None or cropper is None or classification_threshold is None or temperature is None:
         engine = load_prediction_engine()
         p_model, c_crop, _, threshold, temp = engine
@@ -447,11 +481,15 @@ def process_single_image(
         temperature = temperature if temperature is not None else temp
         effective_tau_real = getattr(engine, "tau_real", 0.40)
         effective_tau_fake = getattr(engine, "tau_fake", 0.60)
+        engine_platt_a = getattr(engine, "platt_scale_a", None)
+        engine_platt_b = getattr(engine, "platt_bias_b", None)
 
     if tau_real is not None:
         effective_tau_real = tau_real
     if tau_fake is not None:
         effective_tau_fake = tau_fake
+    effective_platt_a = platt_a if platt_a is not None else engine_platt_a
+    effective_platt_b = platt_b if platt_b is not None else engine_platt_b
 
     # 3. Crop face using YuNet with 5-point landmark similarity warp
     face_crop = cropper.crop_face(img_rgb, target_size=IMG_SIZE, fallback_on_empty=True)
@@ -483,8 +521,13 @@ def process_single_image(
         torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")),
     ):
         raw_logit_t = unwrapped_model(img_tensor).float()
-        p1 = torch.sigmoid(raw_logit_t / temperature).item()
-        p2 = torch.sigmoid(unwrapped_model(torch.flip(img_tensor, dims=[-1])).float() / temperature).item()
+        raw_logit_flip = unwrapped_model(torch.flip(img_tensor, dims=[-1])).float()
+        if effective_platt_a is not None and effective_platt_b is not None:
+            p1 = torch.sigmoid(effective_platt_a * raw_logit_t + effective_platt_b).item()
+            p2 = torch.sigmoid(effective_platt_a * raw_logit_flip + effective_platt_b).item()
+        else:
+            p1 = torch.sigmoid(raw_logit_t / temperature).item()
+            p2 = torch.sigmoid(raw_logit_flip / temperature).item()
         prob = float((p1 + p2) / 2.0)
         raw_logit = float(raw_logit_t.squeeze().item())
 
@@ -510,11 +553,24 @@ def process_single_image(
             raw_gate = unwrapped_model.gate_fc(concat_feat)
 
             if getattr(unwrapped_model, "enable_snr_gating", False):
-                noise_power_t = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
-                gamma = torch.clamp((noise_power_t - 0.005) / (0.025 - 0.005), min=0.0, max=1.0)
+                # Route through the model's shared helper so the reported gamma matches
+                # the forward pass (incl. any configured noise_border_margin).
+                gamma = unwrapped_model._snr_gamma(noise_combined)
                 effective_gate = raw_gate * gamma
                 snr_attenuator = float(gamma.item())
-                noise_power = float(noise_power_t.item())
+                if unwrapped_model.noise_border_margin > 0:
+                    interior = noise_combined[
+                        ...,
+                        unwrapped_model.noise_border_margin:-unwrapped_model.noise_border_margin,
+                        unwrapped_model.noise_border_margin:-unwrapped_model.noise_border_margin,
+                    ]
+                    noise_power = float(
+                        interior.pow(2).mean(dim=[-2, -1]).mean(dim=1).squeeze().item()
+                    )
+                else:
+                    noise_power = float(
+                        noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1).squeeze().item()
+                    )
             else:
                 effective_gate = raw_gate
                 snr_attenuator = 1.0

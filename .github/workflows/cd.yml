@@ -30,14 +30,14 @@ jobs:
             --exclude "tests/*" \
             --exclude "notebooks/*" \
             --exclude "figures/*" \
-            --exclude "models/*" \
             --exclude "results/*" \
             --exclude "deepfake_crops_512/*" \
             --exclude ".git/*" \
             --exclude ".github/*" \
             --exclude "*.pth" \
-            --exclude "*.onnx" \
+            --exclude "models/*.pth" \
+            --exclude "models/*.pt" \
+            --exclude "dual_stream*.onnx" \
             --exclude "pyproject.toml" \
-            --exclude "predict.py" \
             --exclude "MODEL_CARD.md"
 

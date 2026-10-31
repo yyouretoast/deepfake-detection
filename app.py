@@ -196,14 +196,22 @@ def render_ui() -> None:
         max_value=0.99,
         value=float(default_threshold),
         step=0.01,
-        help="Operating decision threshold calibrated via validation PR-curve (Youden's J).",
+        help="Operating decision threshold calibrated via validation ROC-curve (Youden's J).",
     )
+
+    default_frames = 16
+    try:
+        from src.config import load_config
+        cfg = load_config()
+        default_frames = int(cfg.get("app", {}).get("frames_to_sample", 16))
+    except Exception:
+        default_frames = 16
 
     n_frames_slider = st.sidebar.slider(
         "Sampled Keyframes (N)",
         min_value=4,
         max_value=20,
-        value=10,
+        value=default_frames,
         step=2,
         help="Number of uniformly sampled keyframes across video temporal span.",
     )
@@ -309,7 +317,7 @@ def render_ui() -> None:
                     with c_orig:
                         st.image(uploaded_img, caption="Source Image", use_container_width=True)
                     with c_crop:
-                        st.image(res["face_crop"], caption="YuNet Aligned Crop (512x512)", use_container_width=True)
+                        st.image(res["face_crop"], caption="YuNet Aligned Crop (256x256)", use_container_width=True)
 
                 with col_verdict:
                     st.markdown("#### Forensic Verdict")
@@ -317,7 +325,11 @@ def render_ui() -> None:
                         card_class = "result-card-ambiguous"
                         color = "#f59e0b"
                         card_title = "INCONCLUSIVE / AMBIGUITY ZONE"
-                    elif final_label == "Fake":
+                    elif prob <= tau_real:
+                        card_class = "result-card-real"
+                        color = "#22c55e"
+                        card_title = "DETECTED: AUTHENTIC / REAL"
+                    elif final_label == "Fake" or prob >= tau_fake:
                         card_class = "result-card-fake"
                         color = "#ef4444"
                         card_title = "DETECTED: DEEPFAKE / SYNTHETIC"
@@ -516,7 +528,11 @@ def render_ui() -> None:
                         card_class = "result-card-ambiguous"
                         color = "#f59e0b"
                         card_title = "INCONCLUSIVE / AMBIGUITY ZONE"
-                    elif final_label == "Fake":
+                    elif raw_video_prob <= tau_real:
+                        card_class = "result-card-real"
+                        color = "#22c55e"
+                        card_title = "DETECTED: AUTHENTIC SEQUENCE"
+                    elif final_label == "Fake" or raw_video_prob >= tau_fake:
                         card_class = "result-card-fake"
                         color = "#ef4444"
                         card_title = "DETECTED: DEEPFAKE SEQUENCE"

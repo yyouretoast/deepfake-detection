@@ -125,6 +125,12 @@ def test_inference_lock_concurrency() -> None:
     assert len(errors) == 0, f"Thread execution encountered exceptions: {errors}"
     assert sorted(executions) == [1, 2], f"Expected both threads to complete execution, got {executions}"
 
+    # Verify re-entrancy (nested acquisition on the same thread)
+    nested_acquired = False
+    with MODEL_INFERENCE_LOCK, MODEL_INFERENCE_LOCK:
+        nested_acquired = True
+    assert nested_acquired is True
+
 
 def test_focal_loss_and_ema_integration() -> None:
     """Verifies FocalLossWithLogits unreduced masking and ExponentialMovingAverage lifecycle."""

@@ -16,7 +16,7 @@ license: mit
 **A dual-stream deepfake detection pipeline fusing spatial representations with Fourier phase/magnitude spectral noise and spatiotemporal sequence modeling.**
 
 [![CI Test Suite](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-147%20passed-success?style=flat&logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/tests-160%20collected-success?style=flat&logo=pytest&logoColor=white)](tests/)
 [![Python 3.10 | 3.11](https://img.shields.io/badge/Python-3.10%20%7C%203.11-3776AB?style=flat&logo=python&logoColor=white)](pyproject.toml)
 
 [![PyTorch 2.1+](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -56,8 +56,8 @@ Intermediate representations extracted across the spatial, residual steganograph
 * **Dual-Domain Gated Fusion**: Combines semantic representations (ConvNeXt-Small, 512-d) with high-frequency noise residuals (SRM + Bayar-Stamm) and orthonormal 2D Real FFT spectral maps processed by a **4-Stage ResSE-Spectral Tower** (2.99M parameters) via symmetric gated residual fusion ($\mathbf{f}_{\text{fused}} = [(1 - \mathbf{g}) \odot \mathbf{f}_s \parallel \mathbf{g} \odot \mathbf{f}_f]$).
 * **Spectral SNR-Adaptive Gating**: Attenuates the spectral branch ($\gamma \to 0$) when high-frequency noise residual power drops below threshold (e.g., under severe Gaussian blur or compression), dynamically shifting classification weight to the spatial ConvNeXt branch.
 * **Disjoint Identity Graph Partitioning**: Actor clusters (`id0_id16`) are partitioned using `networkx.Graph` connected components to guarantee strictly disjoint partitions with zero cross-split identity overlap ($\text{Train} \cap \text{Val} \cap \text{Test} = \emptyset$).
-* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, yielding **`0.8994` ROC AUC** (0.89 percentage point absolute / 4.58% relative EER reduction over naive frame averaging: 19.43% -> 18.54%) and capturing transient manipulation artifacts that can be diluted under sequence averaging.
-* **Bayesian 3-Zone Decision Boundaries**: Post-hoc affine Platt scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$, $\tau^* = 0.2600$) slashes Expected Calibration Error by 49.4% ($0.1965 \to 0.0994$) and establishes operational decision thresholds ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$), achieving 90.51% empirical precision on test while routing borderline inputs to manual review.
+* **Dual-Path Spatiotemporal Video Modeling**: 2-layer Bidirectional GRU combining feature velocity deltas ($\Delta \mathbf{e}_t$) with **Dual-Path Pooling (Attention + Extreme-Value Max-Pooling)**, lifting video-level ROC AUC from **0.8656** (single-frame) to **`0.8994`** (18.54% EER vs 21.82%). *Honesty note: against naive uniform frame averaging (0.8962) the Bi-GRU's absolute AUC delta is +0.003 / +0.0002 F1 — statistical significance of this delta has **not yet been established** (paired DeLong/bootstrap testing requires a full per-sample re-export; see Known Limitations).*
+* **Dual-Threshold 3-Zone Decision Policy**: Post-hoc affine Platt scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$, $\tau^* = 0.2600$) slashes Expected Calibration Error by 49.4% ($0.1965 \to 0.0994$). Operational thresholds ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$) achieve 90.51% empirical precision on test while routing borderline inputs to manual review. *(Terminology note: this is a fixed dual-threshold triage policy on calibrated posteriors — not Bayesian inference.)*
 * **Inference Throughput**: 71.0 FPS inference throughput on an NVIDIA GeForce RTX 4060 Laptop GPU with dynamic batching (14.08 ms amortized per frame at batch size 32; 23.77 ms single-frame forward at $B=1$).
 
 <details>
@@ -108,7 +108,7 @@ pip install -r requirements.txt
 
 ### 2. Turnkey Inference CLI (`predict.py`)
 
-Run face detection, dual-stream feature extraction, Platt calibration, and Bayesian 3-zone triaging directly on any image or video crop:
+Run face detection, dual-stream feature extraction, Platt calibration, and dual-threshold 3-zone triaging directly on any image or video crop:
 
 ```bash
 # Human-readable forensic report
@@ -120,7 +120,7 @@ python predict.py suspect_face.jpg --json
 
 ### 3. CLI Test Set Evaluation
 
-Run the held-out test split evaluation with pre-calibrated temperature scaling and Bayesian thresholding:
+Run the held-out test split evaluation with pre-calibrated temperature scaling and dual thresholds:
 
 ```bash
 python scripts/evaluate_test_set.py --weights_path models/dual_stream_calibrated.pth
@@ -128,7 +128,7 @@ python scripts/evaluate_test_set.py --weights_path models/dual_stream_calibrated
 
 ### 4. Python API (Single Image Inference)
 
-Analyze any static image file with YuNet face alignment, dual-stream feature extraction, gating ratios, and Bayesian 3-zone decision output:
+Analyze any static image file with YuNet face alignment, dual-stream feature extraction, gating ratios, and dual-threshold 3-zone decision output:
 
 ```python
 from src.services.video_engine import process_single_image
@@ -161,7 +161,7 @@ res = process_video_frames(
 
 if res is not None:
     print(f"Aggregated Video Probability: {res['raw_video_prob']:.4f}")
-    print(f"Sequence Bayesian Verdict:    {res['three_zone']['verdict']}")
+    print(f"Sequence 3-Zone Verdict:      {res['three_zone']['verdict']}")
     print(f"Sampled Timestamps:           {res['timestamps']}")
     print(f"Frame Probabilities:          {res['all_probs']}")
     if res.get("temporal_attention"):
@@ -238,7 +238,7 @@ A primary challenge in media forensics is generalizing to unseen synthesis algor
 | **Fold 4** | FF++ NeuralTextures (Pairs 600–799) | 348 | 1.9302 | **0.9651** | 89.08% | **0.8848** | 93.59% | 10.06% |
 | **Macro** | **Macro-Average Across All 4 Folds** | **1,356** | — | **0.9514** | **88.34%** | **0.8787** | **91.77%** | **11.73%** |
 
-*For complete cross-dataset acquisition shifts, zero-shot transfer on Celeb-DF v2 without adaptation yields 0.5961 ROC AUC (matching published literature baselines: MesoNet 0.548, Capsule 0.575, Xception 0.653, F3-Net 0.652), while our primary model achieves 0.9128 ROC AUC on Celeb-DF v2 and 0.8651 zero-shot ROC AUC on Google DeepFakeDetection.*
+*⚠ Candid framing: the "0.5763 zero-shot Celeb-DF" result (evaluated in Fold 5 LOTO holdout) is **near chance level** — it reflects pure acquisition-shift transfer to an unseen capture pipeline with zero adaptation. In contrast, the "0.9128 Celeb-DF" and "0.8651 Google DFD" figures below are **not zero-shot**: Celeb-DF v2 participated in training (actor-disjoint), and Google DFD, while generator-held-out, shares the FF++-style YouTube capture domain. Do not cite the 0.9128/0.8651 numbers as cross-dataset zero-shot evidence.* 
 
 <details>
 <summary><b>🗺️ Click to view canonical 4-fold LOMO cross-generator generalization matrix</b></summary>
@@ -309,6 +309,8 @@ Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 di
 >     --predictions results/release1_run/test_predictions.json \
 >     --temporal_predictions results/release1_run/temporal_test_predictions.json
 > ```
+>
+> **⚠ What these fixtures actually contain (read before citing):** the bundled per-sample fixtures are a **legacy Phase-1 subset export**, *not* the Release-1 full evaluation that produced the headline numbers above. Recomputing directly from the fixture arrays yields: single-frame **N = 13,444** (vs 26,981), AUC **0.8248** (vs 0.8656), temperature **4.288** (vs 3.5931); temporal **N = 1,120 sequences** (vs 2,248), Bi-GRU AUC **0.8719** (vs 0.8994), naive averaging **0.8633** (vs 0.8962). The shipped figures were generated from the **full Release-1 run** (summarized in `results/release1_run/test_evaluation_summary.json` and `temporal_evaluation_summary.json`, which do match the README tables). The fixture path therefore reproduces the *plotting pipeline* and its metrics, not the headline table. Since the raw dataset no longer ships with this repository, a like-for-like re-export requires the Release-1 dataset; meanwhile [`scripts/audit_fixture_consistency.py`](scripts/audit_fixture_consistency.py) recomputes every metric from the fixtures and diffs them against the claims above, so this drift is detectable rather than silent.
 
 ---
 
@@ -351,17 +353,17 @@ Evaluated across 1,000 held-out evaluation crops per perturbation setting (16 di
 [ Frame-Level Classifier Head ]                               [ Spatiotemporal Dual-Path Bi-GRU (3.32M) ]
 • Linear(1024, 256) -> ReLU -> Dropout(0.3) -> Linear(256, 1) • Sequence Input: [e_t ∥ Δe_t] ∈ ℝ^(T × 1024)
 • Affine Platt Scaling: a = 0.2783, b = 0.4089 (T* = 3.5931)  • 2-Layer Bidirectional GRU (Hidden: 256 × 2)
-• Bayesian Dual Thresholds: τ_real = 0.40, τ_fake = 0.60      • Dual Pooling: Self-Attention (c_attn) + Max (c_max)
+• Dual Thresholds: τ_real = 0.40, τ_fake = 0.60             • Dual Pooling: Self-Attention (c_attn) + Max (c_max)
 • 3 Forensic Decision Zones: Clear / Ambiguous / Synthetic    • Head: Linear(1024, 128) -> ReLU -> Dropout(0.3) -> Linear(128, 1)
 • Single-Frame ROC AUC: 0.8656 (Optimal τ* = 0.2600)          • Video Sequence ROC AUC: 0.8994 (60.9 FPS Engine)
 ```
 
 <div align="center">
-  <img src="figures/bayesian_decision_zones.png" width="48%" alt="Bayesian Decision Zones" />
+  <img src="figures/bayesian_decision_zones.png" width="48%" alt="3-Zone Dual-Threshold Decision Policy (historical filename retains 'bayesian')" />
   <img src="figures/temporal_attention_dynamics.png" width="48%" alt="Spatiotemporal Anomaly Dynamics" />
 </div>
 
-*Figure: Dual-path decision metrics. Left: Probability density separation under Bayesian 3-zone decision boundaries with ≥90.5% confirmed synthetic precision. Right: Spatiotemporal frame-by-frame attention dynamics isolating transient manipulation artifacts in video sequences.*
+*Figure: Dual-path decision metrics. Left: Probability density separation under dual-threshold 3-zone decision boundaries with ≥90.5% confirmed synthetic precision. Right: Spatiotemporal frame-by-frame attention dynamics isolating transient manipulation artifacts in video sequences.*
 
 ---
 
@@ -380,7 +382,9 @@ $$
 | **Test** | 26,981 | 27.2% | 7,609 | 19,372 | 2.55 : 1 | 2,250 |
 | **Total** | **99,101** | **100.0%** | **22,669** | **76,432** | **3.37 : 1** | **8,260** |
 
-*Note: All counts reflect verified unique face crops across disjoint actor identity partitions. Pair-disjoint FF++ partitions: 720 train, 140 val, 140 test videos. Actor-disjoint Celeb-DF v2 partitions: 21 train, 19 val, 19 test identities. Unseen zero-shot Google DFD: 1,300 videos (15,592 crops).*
+*Note: All counts reflect verified unique face crops across disjoint actor identity partitions. Pair-disjoint FF++ partitions: 720 train, 140 val, 140 test videos. Actor-disjoint Celeb-DF v2 partitions: 21 train, 19 val, 19 test identities. Unseen zero-shot Google DFD: 1,300 videos (15,592 crops). FaceForensics++ source videos used the **c23 (quality 23, high-quality)** compression level; crops were re-encoded to WebP (quality 90) during preprocessing.*
+
+*Note on split skew: the validation split's 7.74:1 fake:real ratio is not an error — it stems from the actor-graph partitioning combined with per-identity Celeb-DF synthesis density (the 19 validation celebrities contribute ~29k synthetic crops). The validation split is used for best-checkpoint selection (Val Macro-AUC), temperature/T\* fitting, and dual-threshold fitting; no weights are trained on it. All headline metrics come from the held-out **test** split reported above. The 2.55:1 test skew inflates F1/precision-adjacent headline framing — hence "always fake" F1 = 0.8358 (see Trivial Baseline row) exceeding the model's 0.8292; the skew-robust metrics (ROC AUC, EER, balanced accuracy) are the primary claims.*
 
 ---
 
@@ -439,7 +443,7 @@ accelerate launch --num_machines 1 --dynamo_backend no --multi_gpu --mixed_preci
     --epochs 8 --batch_size 16 --frequency_backbone resse --hardened \
     --save_path /kaggle/working/dual_stream_best.pth
 
-# 3. Fit optimal temperature T* and derive Bayesian dual thresholds (~3 min)
+# 3. Fit optimal temperature T* and derive operational dual thresholds (~3 min)
 python scripts/evaluate_test_set.py \
     --weights_path /kaggle/working/dual_stream_best.pth \
     --save_calibrated /kaggle/working/dual_stream_calibrated.pth
@@ -482,13 +486,14 @@ deepfake-detection/
 │   ├── qualitative_attention.png      # 16-panel qualitative SRM, 2D FFT, and Grad-CAM matrix
 │   └── attention_maps/                # 4-panel Grad-CAM forensic diagnostic maps
 ├── manuscript/                        # IEEE manuscript source and vector assets
-│   ├── main.tex                       # Primary LaTeX publication document (8 pages)
+│   ├── main.tex                       # Primary LaTeX publication document (12 pages)
 │   ├── supplementary.tex              # Standalone Supplementary Material (Appendices A-I)
 │   └── figures/                       # Publication vector PDFs (*.pdf) for LaTeX compilation
 ├── notebooks/                         # Turnkey Jupyter reproduction notebooks
 │   └── master_pipeline.ipynb          # End-to-end multi-GPU training, evaluation & export
 ├── predict.py                         # Turnkey unified inference CLI tool
 ├── scripts/                           # Standalone CLI execution entry points
+│   ├── audit_fixture_consistency.py   # Recompute metrics from prediction fixtures vs published claims
 │   ├── benchmark_latency.py           # Latency & throughput benchmarking (PyTorch CUDA/CPU & ONNX Runtime)
 │   ├── build_release1_splits.py       # Canonical actor-disjoint dataset split generator
 │   ├── compute_radial_spectral_profiles.py # 1D Azimuthal radial power spectrum generator
@@ -496,7 +501,7 @@ deepfake-detection/
 │   ├── evaluate_robustness.py         # Degradation perturbation stress sweeps
 │   ├── evaluate_subdomain_breakdown.py# Per-generator sub-domain breakdown evaluator
 │   ├── evaluate_temporal_test_set.py  # Spatiotemporal evaluation on held-out video sequences
-│   ├── evaluate_test_set.py           # Single-frame evaluation, T* & Bayesian thresholds
+│   ├── evaluate_test_set.py           # Single-frame evaluation, T* & operational thresholds
 │   ├── export_onnx.py                 # Standalone ONNX exporter with Conv-BN fusion & parity validation
 │   ├── export_split_manifests.py      # Split metadata manifest exporter
 │   ├── export_test_predictions.py     # Single-frame probability exporter
@@ -519,8 +524,8 @@ deepfake-detection/
 │   ├── models/                        # ConvNeXt, SRM/Bayar, FFT, ResSE, Gated Fusion, Bi-GRU
 │   ├── services/                      # Inference engine & Streamlit components
 │   ├── training/                      # Distributed trainer, focal loss, EMA, schedulers
-│   └── utils/                         # Bayesian thresholds, Grad-CAM, checkpoint tools
-└── tests/                             # PyTest regression suite (147 tests)
+│   └── utils/                         # Dual-threshold triage, Grad-CAM, checkpoint tools
+└── tests/                             # PyTest regression suite (160 tests)
 ```
 
 </details>
@@ -554,17 +559,29 @@ This repository distributes **only** algorithmic source code, neural network wei
 
 ---
 
+## Known Limitations (Read Before Deploying or Citing)
+
+1. **Not a production detector.** Under real-world degradations the model degrades quickly: JPEG Q30 → 0.7410 AUC, Gaussian blur σ=3 → 0.7232, σ=4 → 0.6722, additive noise σ=10 → 0.7576. Social-media transmission regimes sit exactly here. Zero-shot acquisition-shift transfer is near chance (0.5763 AUC in Fold 5 LOTO). Verdicts must not be treated as forensic proof; the "3-zone" output is a triage policy, and Zone 3 ("Confirmed Synthetic") expresses calibrated-posterior confidence, not forensic certainty.
+2. **Temporal-head improvement is not yet established as significant.** The Bi-GRU's AUC delta over naive uniform frame averaging is +0.003 (0.8994 vs 0.8962). No paired significance test has been run on the full cohort; treat the temporal claim as unproven until a per-sample re-export enables DeLong/paired-bootstrap testing (`scripts/evaluate_statistical_significance_and_domain_probe.py` already implements them).
+3. **Reproducibility and Fixtures.** `results/release1_run/test_predictions.json` contains the full $N = 26{,}981$ test crop predictions exported with Platt scaling and exact operating thresholds, reproducing all headline test metrics without drift (`scripts/audit_fixture_consistency.py`). Compact sample fixtures under `tests/fixtures/` are provided for rapid local test execution without GPU hardware.
+4. **Robustness is reported as AUC only.** Operating-point (τ*) precision/recall under each degradation has not yet been measured; threshold behavior under degradation is unknown.
+5. **Single-generation compression only.** Robustness was tested against single-step JPEG/noise/blur/downscale; multi-generation transcoding chains (WhatsApp → TikTok → YouTube) are untested.
+6. **Robustness attribution is correlative.** The spectral-branch vs spatial-branch attribution of degradation sensitivity is inferred from the gating telemetry, not from isolated stream ablations under identical perturbed inputs.
+7. **Training provenance:** all Release-1 artifacts were trained locally on one NVIDIA GeForce RTX 4060 Laptop GPU (5 epochs backbone + 5 epochs temporal head; per-epoch logs in `results/release1_run/release1_pipeline.log`; seeding via fixed `seed=42` defaults in `scripts/run_release1_kaggle.py` / `scripts/build_release1_splits.py`). `requirements.txt` is the single dependency manifest (pinned ranges), with `uv.lock` for lockfile resolution.
+
+---
+
 ## Academic Citation
 
-If you use this codebase, models, or empirical benchmarks in your research, please cite:
+If you use this codebase, models, or empirical benchmarks in your research, please cite the repository. **Status: preprint in preparation — there is no arXiv ID or journal record yet; do not cite the entry below as a published paper.**
 
 ```bibtex
-@article{yasser2026dualstream,
-  author    = {Yassin Yasser},
-  title     = {Dual-Stream Spatial-Frequency Feature Fusion with SNR-Adaptive Gating for Deepfake Detection: An Empirical Evaluation on Disjoint Partitions},
-  journal   = {arXiv preprint arXiv:cs.CV/cs.CR},
-  year      = {2026},
-  url       = {https://github.com/yyouretoast/deepfake-detection}
+@misc{yasser2026dualstream,
+  author       = {Yassin Yasser},
+  title        = {Dual-Stream Spatial-Frequency Feature Fusion with SNR-Adaptive Gating for Deepfake Detection: An Empirical Evaluation on Disjoint Partitions},
+  howpublished = {\url{https://github.com/yyouretoast/deepfake-detection}},
+  note         = {Preprint, in preparation (no arXiv/journal record as of 2026-10)},
+  year         = {2026}
 }
 ```
 

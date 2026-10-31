@@ -69,3 +69,9 @@ manuscript/pdf_audit_screenshots/
 manuscript/*.pdf
 tectonic.exe
 uv.lock
+
+# Packaging artifacts, caches, AI-tool local dirs
+*.zip
+.cache/
+.mpl_cache/
+.gemini/
