@@ -153,17 +153,18 @@ In strict accordance with the FaceForensics++ benchmark protocol, models are eva
 | **Fold 4** | FF++ NeuralTextures (Pairs 600–799) | 348 | 1.9302 | **0.9651** | 89.08% | **0.8848** | 93.59% | 10.06% |
 | **Macro** | **Macro-Average Across All 4 Folds** | **1,356** | — | **0.9514** | **88.34%** | **0.8787** | **91.77%** | **11.73%** |
 
-*Note: For cross-dataset acquisition shifts, zero-shot transfer on Celeb-DF v2 without target adaptation achieves 0.5961 ROC AUC, matching published literature baselines (MesoNet 0.548, Capsule 0.575, Xception 0.653, F3-Net 0.652). Fully calibrated evaluation achieves 0.9128 ROC AUC on Celeb-DF v2 and 0.8651 zero-shot ROC AUC on Google DeepFakeDetection.*
+*Note: For cross-dataset acquisition shifts, zero-shot transfer on Celeb-DF v2 without target adaptation achieves 0.5763 ROC AUC (Fold-5 LOTO, $T^*$ at the 10.0 upper bound), in the range of the MesoNet (0.548) and Capsule (0.575) literature baselines but below Xception (0.653) and F3-Net (0.652). Fully calibrated evaluation achieves 0.9128 ROC AUC on Celeb-DF v2. The 0.8651 ROC AUC on Google DeepFakeDetection is generator-held-out but shares the FF++-style YouTube capture domain, so it is not cross-dataset zero-shot evidence.*
 
 ---
 
 ## Known Limitations
 
-1. **Not deployable as a definitive detector.** JPEG Q30 → 0.7410 AUC; blur σ=3 → 0.7232; noise σ=10 → 0.7576; zero-shot acquisition-shift transfer on Celeb-DF = 0.5961 (≈ chance). Outputs are triage signals, not forensic evidence.
+1. **Not deployable as a definitive detector.** JPEG Q30 → 0.7410 AUC; blur σ=3 → 0.7232; noise σ=10 → 0.7576; zero-shot acquisition-shift transfer on Celeb-DF = 0.5763 (≈ chance). Outputs are triage signals, not forensic evidence.
 2. **The temporal head's improvement over naive frame averaging is +0.003 AUC and has not been tested for statistical significance** (paired testing pending a full per-sample re-export).
 3. **Calibration constants are frozen Release-1 post-hoc values**; they were fit on the validation split (26.55% of total crops, fake-skewed 7.74:1) and confirmed on test. Recalibration is required when retraining on new data.
 4. **Test-set class skew (2.55:1 fake-heavy)** inflates F1/precision framing — the "always fake" baseline actually scores higher F1 (0.8358 vs 0.8292). Prefer ROC AUC / EER / balanced accuracy when comparing architectures.
 5. **Robustness attribution is correlative** — the spectral-vs-spatial degradation sensitivity claim is inferred from gating telemetry, not isolated stream ablations; single-generational perturbations only.
+6. **Serving and published evaluation use different inference paths.** The serving path applies horizontal-flip test-time augmentation (TTA) and averages logits, whereas the published evaluation fixtures use no TTA. Expect small serving-vs-benchmark differences; the published numbers are the no-TTA protocol.
 
 ---
 

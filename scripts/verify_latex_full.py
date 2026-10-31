@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -158,7 +159,8 @@ def verify_latex_full(file_path, results_data=None):
         if missing_numbers:
             print(f"  [i] Note: {len(missing_numbers)} static ledger numbers not in text (use --results to verify live run numbers): {missing_numbers}")
 
-    # 6. Check Section headings
+    # 6. Check Section headings (ignore \mbox{} line-break guards)
+    content_for_sections = re.sub(r"\\mbox\{([^}]*)\}", r"\1", content)
     required_sections = [
         r"\section{Introduction}",
         r"\section{Related Work}",
@@ -167,9 +169,29 @@ def verify_latex_full(file_path, results_data=None):
         r"\section{Discussion, Forensic Degradation Dynamics, and Limitations}",
         r"\section{Conclusion}"
     ]
-    missing_sections = [s for s in required_sections if s not in content]
+    missing_sections = [s for s in required_sections if s not in content_for_sections]
     if missing_sections:
         errors.append(f"Missing required sections: {missing_sections}")
+
+    # 7. Prose-number provenance assertions (see AUDIT_REPORT.md section 5)
+    prose_numbers = {
+        "25.65": "ablation DeLong Z vs static gate",
+        "27.03": "ablation DeLong Z vs uniform concat",
+        "28.47": "spatial-baseline DeLong Z",
+    }
+    for num, desc in prose_numbers.items():
+        if num not in content:
+            errors.append(f"Prose number {num} ({desc}) missing from {os.path.basename(file_path)}")
+
+    sidecar_path = os.path.join(REPO_ROOT, "models", "dual_stream_detector.json")
+    if os.path.exists(sidecar_path):
+        with open(sidecar_path, "r", encoding="utf-8") as f:
+            sidecar = json.load(f)
+        if "temporal_optimal_threshold" not in sidecar:
+            errors.append(
+                "models/dual_stream_detector.json is missing 'temporal_optimal_threshold'; "
+                "the serving fallback would be untraceable (AUDIT_REPORT.md 3.5)."
+            )
 
     print("\nFull Manuscript Verification Summary:")
     print(f"Total lines: {len(content.splitlines())}")

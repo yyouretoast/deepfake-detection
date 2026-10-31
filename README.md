@@ -567,7 +567,7 @@ This repository distributes **only** algorithmic source code, neural network wei
 4. **Robustness is reported as AUC only.** Operating-point (τ*) precision/recall under each degradation has not yet been measured; threshold behavior under degradation is unknown.
 5. **Single-generation compression only.** Robustness was tested against single-step JPEG/noise/blur/downscale; multi-generation transcoding chains (WhatsApp → TikTok → YouTube) are untested.
 6. **Robustness attribution is correlative.** The spectral-branch vs spatial-branch attribution of degradation sensitivity is inferred from the gating telemetry, not from isolated stream ablations under identical perturbed inputs.
-7. **Training provenance:** all Release-1 artifacts were trained locally on one NVIDIA GeForce RTX 4060 Laptop GPU (5 epochs backbone + 5 epochs temporal head; per-epoch logs in `results/release1_run/release1_pipeline.log`; seeding via fixed `seed=42` defaults in `scripts/run_release1_kaggle.py` / `scripts/build_release1_splits.py`). `requirements.txt` is the single dependency manifest (pinned ranges), with `uv.lock` for lockfile resolution.
+7. **Training provenance:** all Release-1 artifacts were trained locally on one NVIDIA GeForce RTX 4060 Laptop GPU (5 epochs backbone + 5 epochs temporal head; per-epoch logs in `results/release1_run/release1_pipeline.log`; seeding via fixed `seed=42` defaults in `scripts/run_release1_kaggle.py` / `scripts/build_release1_splits.py`). `requirements.txt` is the single dependency manifest (pinned ranges).
 
 ---
 

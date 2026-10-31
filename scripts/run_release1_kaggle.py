@@ -4,7 +4,10 @@ Executes the complete Release 1 deepfake detection protocol:
 1. Integrity audit of splits (0 identity leakage, 0 DFD in train/val).
 2. Dual-stream training on clean 37,104 train split (5 epochs, cosine schedule with 1-epoch warmup,
    differential LRs, FP16 mixed precision with FP32-isolated FFT/atan2).
-3. Macro-AUC checkpoint selection across composite FF++ and Celeb-DF Set A validation.
+3. Macro-AUC checkpoint selection on validation (0.5 * FF++ AUC + 0.5 * Celeb-DF AUC).
+   The Celeb-DF branch can fall back to 0.5 when its validation stratum is degenerate
+   (empty or single-class); this is logged loudly, and in the Release-1 run it made
+   selection effectively FF++-AUC-driven (see AUDIT_REPORT.md section 3.4).
 4. Validation calibration: Platt temperature scaling T* in [0.1, 10.0], Youden's J threshold tau*,
    and Bayesian dual thresholds (tau_real, tau_fake) with certified precision >= 0.980.
 5. Held-out test evaluation (26,981 crops):
@@ -286,7 +289,11 @@ def evaluate_macro_val(
     device: torch.device,
     ema: ExponentialMovingAverage | None = None,
 ) -> tuple[float, float, float]:
-    """Computes Macro-AUC on composite validation split (0.5 * AUC_ffpp + 0.5 * AUC_celeb)."""
+    """Compute macro-AUC on the validation split as 0.5 * AUC_ffpp + 0.5 * AUC_celeb.
+
+    Degenerate branches (empty/single-class, or an exact 0.5 AUC despite two classes)
+    fall back to 0.5 and emit a warning so the fallback is never silent.
+    """
     model.eval()
     backup = ema.apply_shadow(model) if ema is not None else None
 
@@ -337,10 +344,29 @@ def evaluate_macro_val(
     auc_ffpp = 0.5
     if np.sum(ffpp_mask) > 0 and len(np.unique(targets_arr[ffpp_mask])) >= 2:
         auc_ffpp = float(roc_auc_score(targets_arr[ffpp_mask], preds_arr[ffpp_mask]))
+    else:
+        logger.warning(
+            "evaluate_macro_val: FF++ branch degenerate (n=%d, classes=%d); using 0.5 fallback.",
+            int(np.sum(ffpp_mask)),
+            int(len(np.unique(targets_arr[ffpp_mask]))) if np.sum(ffpp_mask) else 0,
+        )
 
     auc_celeb = 0.5
     if np.sum(celeb_mask) > 0 and len(np.unique(targets_arr[celeb_mask])) >= 2:
         auc_celeb = float(roc_auc_score(targets_arr[celeb_mask], preds_arr[celeb_mask]))
+        if auc_celeb == 0.5:
+            logger.warning(
+                "evaluate_macro_val: Celeb-DF AUC is exactly 0.5 despite two classes (n=%d); "
+                "treating the branch as degenerate and reporting the 0.5 fallback.",
+                int(np.sum(celeb_mask)),
+            )
+    else:
+        logger.warning(
+            "evaluate_macro_val: Celeb-DF branch degenerate (n=%d, classes=%d); using 0.5 fallback. "
+            "Macro-AUC is effectively FF++-only.",
+            int(np.sum(celeb_mask)),
+            int(len(np.unique(targets_arr[celeb_mask]))) if np.sum(celeb_mask) else 0,
+        )
 
     macro_auc = 0.5 * (auc_ffpp + auc_celeb)
     return macro_auc, auc_ffpp, auc_celeb

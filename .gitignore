@@ -20,7 +20,8 @@ dist/
 *.onnx_data
 *.bin
 *.h5
-/models/
+/models/*
+!/models/dual_stream_detector.json
 checkpoint_state/
 checkpoints_loto/
 

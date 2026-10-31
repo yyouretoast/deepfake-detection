@@ -1083,7 +1083,7 @@ def generate_figure9_video_timeline(model, t_model):
     ax_prob.set_xticks(t_steps)
     ax_prob.grid(True, linestyle=":", alpha=0.6)
     ax_prob.legend(loc="lower right", fontsize=7.8, ncol=4, framealpha=0.95)
-    ax_prob.set_title("(b) Frame-Level Posterior Dynamics & Decision Boundary Traversal", fontsize=9.5, fontweight="bold", pad=4)
+    ax_prob.set_title("(b) Frame-Level Posterior Dynamics", fontsize=9.5, fontweight="bold", pad=4)
 
     ax_vel = fig.add_subplot(gs[2, :])
     color_vel = PURPLE_MAIN

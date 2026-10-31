@@ -8,8 +8,8 @@ import zipfile
 def package_arxiv():
     manuscript_dir = "manuscript"
     figures_dir = os.path.join(manuscript_dir, "figures")
-    output_tar = "manuscript_arxiv.tar.gz"
-    output_zip = "manuscript_arxiv.zip"
+    output_tar = "paper.tar.gz"
+    output_zip = "paper.zip"
 
     figure_names = [
         "teaser_concept.pdf",

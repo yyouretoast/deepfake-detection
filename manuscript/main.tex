@@ -131,7 +131,7 @@ Early facial manipulation detectors evaluated mesoscopic biological inconsistenc
 \subsection{Frequency-Domain Media Forensics}
 To bypass semantic memorization, frequency-domain detectors leverage physical signal properties. Durall \etal~\cite{durall2020watch} and Frank \etal~\cite{frank2020leveraging} demonstrated that convolutional up-sampling operators (transposed convolutions and bilinear resizing) leave persistent periodic checkerboard artifacts across radial Fourier power spectra. Qian \etal~\cite{qian2020thinking} developed $F^3$-Net, decomposing facial crops into frequency bands via discrete cosine transforms (DCT) to isolate collaborative phase and frequency representations. Liu \etal~\cite{liu2021spatial} proposed SPSL, integrating spatial phase representations to capture up-sampling anomalies. In image steganography, Fridrich and Kodovsky~\cite{fridrich2012rich} established Spatial Rich Models (SRM) using hand-crafted high-pass filters to expose micro-textures, while Bayar and Stamm~\cite{bayar2018constrained} introduced constrained adaptive convolutions to suppress image content. However, unmodulated frequency detectors exhibit severe vulnerability to lossy compression and low-pass filtering, which destroy the very high-frequency residuals they rely upon.
 
-\subsection{Spatiotemporal Video Manipulation Analysis}
+\subsection{Spatiotemporal Video Manipulation \mbox{Analysis}}
 Video deepfakes frequently exhibit temporal jitter, frame-to-frame boundary flickering, and discontinuous facial trajectories. Early video forensics deployed 3D-CNNs (C3D~\cite{tran2015learning}, I3D~\cite{carreira2017quo}) to jointly model spatial and temporal features, but suffered from massive computational footprints. Hybrid architectures cascaded 2D CNN feature extractors with recurrent neural networks (RNNs/LSTMs/GRUs)~\cite{guera2018deepfake,sabir2019recurrent,cho2014learning} or temporal self-attention~\cite{zheng2021exploring}. However, standard pipelines rely on naive uniform probability averaging across frames, which severely dilutes localized 1--2 frame manipulation glitches. Furthermore, conventional recurrent models track static feature vectors $\mathbf{e}_t$ rather than explicit inter-frame velocity deltas ($\Delta \mathbf{e}_t = \mathbf{e}_t - \mathbf{e}_{t-1}$), limiting sensitivity to acceleration anomalies.
 
 \subsection{Probability Calibration \& Forensic Triaging}
@@ -226,7 +226,7 @@ yielding the fused frame embedding $\mathbf{f}_{\mathrm{fused}} = [(1 - \mathbf{
 \end{equation}
 with $\lambda_{\mathrm{aux}} = 0.30$. For downstream sequence modeling, a convex gated representation $\mathbf{e}_t = (1 - \mathbf{g}_{\mathrm{eff}}) \odot \mathbf{f}_s + \mathbf{g}_{\mathrm{eff}} \odot \mathbf{f}_f \in \mathbb{R}^{512}$ is emitted. As noise power collapses ($P_{\mathrm{noise}} \le \epsilon_0$), $\gamma \to 0$ and $\mathbf{g}_{\mathrm{eff}} \to \mathbf{0}$, gracefully transferring full decision authority to the spatial stream.
 
-\subsection{Spatiotemporal Bi-GRU Sequence Modeling}
+\subsection{Spatiotemporal Bi-GRU Sequence \mbox{Modeling}}
 \label{sec:method_temporal}
 
 For video sequences $\{\mathbf{x}_t\}_{t=1}^T$, frame embeddings $\mathbf{e}_t \in \mathbb{R}^{512}$ are augmented with first-order feature velocity deltas:
@@ -254,10 +254,10 @@ Optimized on validation logits via negative log-likelihood ($a = 0.2783, b = 0.4
 % -------------------------------------------------------------------------
 % Section 4: Experiments and Empirical Benchmarks
 % -------------------------------------------------------------------------
-\section{Experiments and Empirical Benchmarks}
+\section{Experiments and Empirical \mbox{Benchmarks}}
 \label{sec:experiments}
 
-\subsection{Evaluation Protocol and Benchmark Corpora}
+\subsection{Evaluation Protocol and Benchmark \mbox{Corpora}}
 \label{sec:exp_protocol}
 
 To evaluate forensic discrimination without biometric identity contamination, we benchmark our pipeline across three widely cited media forensics repositories: FaceForensics++ (FF++)~\cite{roessler2019faceforensicspp}, Celeb-DF v2~\cite{li2020celebdf}, and Google DeepFakeDetection (DFD). In contrast to published works employing random frame or video splits, we strictly enforce bipartite graph connected-component decomposition:
@@ -328,7 +328,7 @@ Evaluating across 2,248 held-out video sequences ($T = 8$ frames per sequence, s
 \begin{figure*}[t]
 \centering
 \includegraphics[width=0.96\textwidth]{figures/temporal_attention_dynamics.pdf}
-\caption{\textbf{Spatiotemporal Sequence Modeling: Transient Velocity Anomalies and Bi-GRU Temporal Aggregation.} (a) Diagnostic visualization across ten consecutive video test frames ($T=10, \Delta k=1$, whereas benchmark evaluation uses $T=8, \Delta k=2$) from a held-out manipulation sequence; frames with red borders indicate top-quartile Bi-GRU temporal self-attention weights ($t \in \{5, 6, 8\}$). (b) Calibrated frame-level posterior probability trajectory $\hat{p}_t$ traversing decision thresholds. (c) First-order feature velocity deltas $\|\Delta_t\|_2 = \|\mathbf{e}_t - \mathbf{e}_{t-1}\|_2$ (purple line, peaking at $t=7$ during an abrupt inter-frame transition) and Bi-GRU temporal self-attention weights $\alpha_t$ (red bars, concentrating on the flanking synthetic frames $t \in \{5, 6, 8\}$). The combined recurrent aggregation produces a definitive sequence-level posterior $\hat{P}_{\mathrm{video}} = 0.9210$ (Zone 3 Confirmed Deepfake).}
+\caption{\textbf{Spatiotemporal Sequence Modeling: Transient Velocity Anomalies and Bi-GRU Temporal Aggregation.} (a) Diagnostic visualization across ten consecutive video test frames ($T=10, \Delta k=1$, whereas benchmark evaluation uses $T=8, \Delta k=2$) from a held-out manipulation sequence; red borders mark the transition window $t \in \{5, 6, 8\}$ selected for qualitative inspection. (b) Calibrated frame-level posterior probability trajectory $\hat{p}_t$, which remains in Zone 3 ($\hat{p} \geq 0.60$) throughout and does not cross the operating threshold $\tau^* = 0.26$. (c) First-order feature velocity deltas $\|\Delta_t\|_2 = \|\mathbf{e}_t - \mathbf{e}_{t-1}\|_2$ (purple line, peaking at $t=7$ during an abrupt inter-frame transition) and Bi-GRU temporal self-attention weights $\alpha_t$ (red bars, near-uniform across the sequence). The combined recurrent aggregation produces a definitive sequence-level posterior $\hat{P}_{\mathrm{video}} = 0.9210$ (Zone 3 Confirmed Deepfake).}
 \label{fig:temporal_attention_dynamics}
 \end{figure*}
 
@@ -420,7 +420,7 @@ Our experimental stress-testing exposes a fundamental operational asymmetry gove
 \subsection{Statistical Hypothesis Testing \& Significance}
 \label{sec:disc_significance}
 
-To establish that reported empirical performance gains are non-stochastic, we conduct non-parametric hypothesis testing across paired model outputs (\texttt{tier1\_rigorous\_evaluation.json}). While the independently trained ConvNeXt-Small checkpoint attains 0.8370 ROC AUC (+2.86 pp below Dual-Stream 0.8656), evaluating the single-crop Dual-Stream detector against the paired spatial-only baseline (0.8297 ROC AUC) via DeLong's test~\cite{delong1988comparing} across $N = 26,981$ test crops yields a $Z$-score of $28.47$ ($p < 10^{-16}$, $\Delta\mathrm{AUC} = +0.0359$), with 1,000-iteration video-clustered bootstrap resampling confirming a 95\% confidence interval of $[+0.0309, +0.0406]$ ($[+3.09, +4.06]$ pp) that strictly excludes zero, and McNemar's test on discordant predictions yielding $\chi^2 = 614.35$ ($p < 10^{-16}$; fake recall gain $+7.82$ pp, $\chi^2 = 969.22$). Comparing SNR-adaptive gating against static sigmoid gating ($\gamma=1$) and uniform concatenation yields DeLong $Z = 25.65$ ($p < 10^{-140}$) and $Z = 27.03$ ($p < 10^{-160}$), respectively, while at the video sequence level uniform temporal averaging provides a +3.06 pp ROC AUC gain over single-crop scoring (0.8962 vs.\ 0.8656) and our Bi-GRU adds a further +0.32 pp ROC AUC (0.8994 vs.\ 0.8962) and reduces EER by 0.89 pp (18.54\% vs.\ 19.43\%).
+To establish that reported empirical performance gains are non-stochastic, we conduct non-parametric hypothesis testing across paired model outputs (\texttt{tier1\_rigorous\_evaluation.json} for the spatial-baseline test; ablation statistics recomputed from \texttt{ablation\_cache.npz}). While the independently trained ConvNeXt-Small checkpoint attains 0.8370 ROC AUC (+2.86 pp below Dual-Stream 0.8656), evaluating the single-crop Dual-Stream detector against the paired spatial-only baseline (0.8297 ROC AUC) via DeLong's test~\cite{delong1988comparing} across $N = 26,981$ test crops yields a $Z$-score of $28.47$ ($p < 10^{-16}$, $\Delta\mathrm{AUC} = +0.0359$), with 1,000-iteration video-clustered bootstrap resampling confirming a 95\% confidence interval of $[+0.0309, +0.0406]$ ($[+3.09, +4.06]$ pp) that strictly excludes zero, and McNemar's test on discordant predictions yielding $\chi^2 = 614.35$ ($p < 10^{-16}$; fake recall gain $+7.82$ pp, $\chi^2 = 969.22$). Comparing SNR-adaptive gating against static sigmoid gating ($\gamma=1$) and uniform concatenation yields DeLong $Z = 25.65$ ($p < 10^{-140}$) and $Z = 27.03$ ($p < 10^{-160}$), respectively, while at the video sequence level uniform temporal averaging provides a +3.06 pp ROC AUC gain over single-crop scoring (0.8962 vs.\ 0.8656) and our Bi-GRU adds a further +0.32 pp ROC AUC (0.8994 vs.\ 0.8962) and reduces EER by 0.89 pp (18.54\% vs.\ 19.43\%).
 
 \subsection{Emerging Generative Threat Models}
 \label{sec:disc_threat_models}

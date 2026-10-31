@@ -31,6 +31,9 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results" / "release1_run"
+CALIB_PATH = Path(__file__).resolve().parents[1] / "models" / "dual_stream_detector.json"
+with open(CALIB_PATH, "r", encoding="utf-8") as _calib_f:
+    _CALIB = json.load(_calib_f)
 
 # Headline claims as published in README.md / MODEL_CARD.md (Release-1 full run).
 # NOTE: the bundled per-sample fixtures are a legacy Phase-1 subset export and will
@@ -45,7 +48,7 @@ PUBLISHED_CLAIMS = {
         "n_sequences": 2248,
         "auc": 0.8994,
         "naive_avg_auc": 0.8962,
-        "optimal_threshold": 0.1100,
+        "optimal_threshold": _CALIB.get("temporal_optimal_threshold", 0.1100),
     },
 }
 

@@ -263,11 +263,17 @@ def predict_video(
             temporal_prob = float(torch.sigmoid(torch.tensor(temporal_logit)).item())
 
     effective_prob = temporal_prob if temporal_prob is not None else mean_prob
-    effective_threshold = (
-        float(calib.get("temporal_optimal_threshold", 0.1100))
-        if temporal_prob is not None
-        else calib["optimal_threshold"]
-    )
+    if temporal_prob is not None:
+        if "temporal_optimal_threshold" in calib:
+            effective_threshold = float(calib["temporal_optimal_threshold"])
+        else:
+            effective_threshold = 0.1100
+            logger.warning(
+                "temporal_optimal_threshold missing from the calibration sidecar; using "
+                "legacy fallback 0.1100 (provenance unverified, see AUDIT_REPORT.md 3.5)."
+            )
+    else:
+        effective_threshold = calib["optimal_threshold"]
     triage = classify_zone(effective_prob, effective_threshold)
 
     return {

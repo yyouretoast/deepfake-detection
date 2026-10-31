@@ -189,7 +189,8 @@ def build_html():
             row = re.sub(r'\\(toprule|midrule|bottomrule|cline\{[^}]+\})', '', row).strip()
             if not row:
                 continue
-            cells = [c.strip() for c in row.split('&')]
+            # Split on column separators only; escaped ampersands (\&) are literal text.
+            cells = [c.strip() for c in re.split(r'(?<!\\)&', row)]
             tag = "th" if is_first else "td"
             cell_htmls = []
             for c in cells:

@@ -1,0 +1,15 @@
+{
+  "optimal_threshold": 0.26,
+  "temperature": 3.5931,
+  "platt_a": 0.2783,
+  "platt_b": 0.4089,
+  "tau_real": 0.4,
+  "tau_fake": 0.6,
+  "calibrated_ece": 0.0994,
+  "test_roc_auc": 0.8656,
+  "test_pr_auc": 0.9374,
+  "temporal_test_roc_auc": 0.8994,
+  "temporal_test_pr_auc": 0.9571,
+  "temporal_optimal_threshold": 0.11,
+  "temporal_optimal_threshold_provenance": "legacy unsaved validation run; not recomputable from stored artifacts (AUDIT_REPORT.md section 3.5)"
+}
