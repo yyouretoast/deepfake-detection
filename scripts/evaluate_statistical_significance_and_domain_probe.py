@@ -19,9 +19,6 @@ import random
 import sys
 import time
 
-from src.utils.fs import patch_pathlib_mkdir
-
-patch_pathlib_mkdir()
 os.environ.setdefault("MPLCONFIGDIR", os.path.abspath(".mpl_cache"))
 os.makedirs(".mpl_cache", exist_ok=True)
 

@@ -7,7 +7,6 @@ from src.utils.checkpoint import (
     load_detector_checkpoint,
     normalize_confidence,
 )
-from src.utils.fs import patch_pathlib_mkdir
 from src.utils.interpretability import (
     ConvNeXtGradCAM,
     generate_face_diagnostics,
@@ -34,7 +33,6 @@ __all__ = [
     "load_detector_checkpoint",
     "mean_aggregation",
     "normalize_confidence",
-    "patch_pathlib_mkdir",
     "render_temporal_anomaly_timeline",
     "soft_max_weighted_aggregation",
     "top_k_aggregation",

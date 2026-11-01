@@ -24,10 +24,7 @@ from sklearn.metrics import precision_recall_curve, roc_curve
 from src.dataset.degradations import blur_fn, jpeg_fn
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.temporal_head import BiGRUTemporalDetector
-from src.utils.fs import patch_pathlib_mkdir
 from src.utils.interpretability import generate_face_diagnostics
-
-patch_pathlib_mkdir()
 
 os.environ["MPLCONFIGDIR"] = os.path.abspath(".mpl_cache")
 os.makedirs(".mpl_cache", exist_ok=True)
@@ -698,7 +695,9 @@ def generate_figure5_roc_pr():
             sel = [vals[start + i * stride] for i in range(seq_len)]
         else:
             indices = np.linspace(0, len(vals) - 1, seq_len)
-            sel = [vals[int(round(i))] for i in indices]
+            # int(): explicit cast — linspace yields non-integer indices; keep the
+            # round-then-index semantics (ruff RUF046 fix would change runtime behavior)
+            sel = [vals[int(round(i))] for i in indices]  # noqa: RUF046
         probs_sel = 1.0 / (1.0 + np.exp(-np.array(sel)))
         y_vid_list.append(vid_labels[vdir])
         score_vid_list.append(float(np.mean(probs_sel)))

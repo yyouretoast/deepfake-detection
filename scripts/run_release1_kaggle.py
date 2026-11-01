@@ -29,17 +29,12 @@ import hashlib
 import json
 import logging
 import os
-import pathlib
 import random
 import re
 import sys
 import time
 
-# Compatibility guard for pathlib and matplotlib cache under sandbox environments
-try:
-    pathlib._NormalAccessor.mkdir = lambda self, path, mode=0o777, **kwargs: os.mkdir(path, mode, **kwargs)
-except Exception:
-    pass
+# Keep matplotlib cache inside the repo clone (Kaggle/sandbox HOME dirs can be read-only)
 os.environ.setdefault("MPLCONFIGDIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".cache")))
 os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
 from collections import Counter
@@ -348,7 +343,7 @@ def evaluate_macro_val(
         logger.warning(
             "evaluate_macro_val: FF++ branch degenerate (n=%d, classes=%d); using 0.5 fallback.",
             int(np.sum(ffpp_mask)),
-            int(len(np.unique(targets_arr[ffpp_mask]))) if np.sum(ffpp_mask) else 0,
+            len(np.unique(targets_arr[ffpp_mask])) if np.sum(ffpp_mask) else 0,
         )
 
     auc_celeb = 0.5
@@ -365,7 +360,7 @@ def evaluate_macro_val(
             "evaluate_macro_val: Celeb-DF branch degenerate (n=%d, classes=%d); using 0.5 fallback. "
             "Macro-AUC is effectively FF++-only.",
             int(np.sum(celeb_mask)),
-            int(len(np.unique(targets_arr[celeb_mask]))) if np.sum(celeb_mask) else 0,
+            len(np.unique(targets_arr[celeb_mask])) if np.sum(celeb_mask) else 0,
         )
 
     macro_auc = 0.5 * (auc_ffpp + auc_celeb)
