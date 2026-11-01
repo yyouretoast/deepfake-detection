@@ -1,3 +1,5 @@
+"""Checkpointing, calibration-fallback constants, dual-threshold triage, and detector loading."""
+
 from typing import Any
 
 import numpy as np
@@ -9,9 +11,10 @@ from src.evaluation.metrics import (
     fit_platt_scaling,
     fit_temperature_log,
 )
+from src.utils.calibration_release1 import EFFECTIVE_TEMPERATURE, OPTIMAL_THRESHOLD
 
-DEFAULT_THRESHOLD: float = 0.26
-DEFAULT_TEMPERATURE: float = 3.5931
+DEFAULT_THRESHOLD: float = OPTIMAL_THRESHOLD
+DEFAULT_TEMPERATURE: float = EFFECTIVE_TEMPERATURE
 
 __all__ = [
     "DEFAULT_TEMPERATURE",

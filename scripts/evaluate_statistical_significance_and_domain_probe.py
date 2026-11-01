@@ -44,6 +44,7 @@ if REPO_ROOT not in sys.path:
 from src.dataset.datasets import FaceCropDataset
 from src.dataset.loader import get_transforms
 from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.utils.calibration_release1 import OPTIMAL_THRESHOLD, PLATT_BIAS_B, PLATT_SCALE_A
 from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -197,10 +198,10 @@ def main():
     val_samples = splits["val"]
     logger.info("Loaded splits: Test = %d, Val = %d", len(test_samples), len(val_samples))
 
-    # Platt calibration constants
-    scale_a = 0.27831112352514586
-    bias_b = 0.4089141487626174
-    tau_star = 0.2600
+    # Platt calibration constants (canonical Release-1 fitted values)
+    scale_a = PLATT_SCALE_A
+    bias_b = PLATT_BIAS_B
+    tau_star = OPTIMAL_THRESHOLD
 
     _, eval_transform = get_transforms(img_size=256, hardened=False)
 

@@ -18,15 +18,15 @@ However, the audit found and fixed **one real CI-breaking defect** plus several 
 | 2 | `patch_pathlib_mkdir()` globally monkey-patches `pathlib.Path.mkdir` on a bogus pretext ("Fixes Windows Python 3.10 issue" — none exists), invoked at import-time in 2 scripts and exported by `src.utils` | Medium | ✅ **Removed** (file deleted, 3 call sites cleaned) |
 | 3 | Dead sandbox hack in `run_release1_kaggle.py`: `pathlib._NormalAccessor.mkdir = ...` — `Path._NormalAccessor` was **removed in Python 3.12**, so this is a silently-skipped no-op (AttributeError swallowed) | Low | ✅ **Removed** |
 | 4 | Stale README paragraph: "Zero-GPU Reproduction" says the single-frame fixture is a legacy subset (N=13,444, AUC 0.8248, T=4.288). Verified: `test_predictions.json` stores `n_samples=26981, roc_auc=0.865645, temperature=3.593101` — it **is** the full Release-1 export; only the temporal fixture is legacy (N=1,120, AUC 0.8719, τ=0.3895) | Medium | ✅ **Corrected** with recomputed numbers |
-| 5 | Release-1 calibration constants duplicated in ≥6 files at **inconsistent precision** (0.2783 vs 0.27831112352514586 vs 0.278311): `predict.py`, `video_engine.py`+, `checkpoint.py` (T/τ only), `compute_table5_ablations.py`, `evaluate_statistical_significance_and_domain_probe.py`, `audit_fixture_consistency.py` | Medium | 📋 Recommendation R1 |
-| 6 | Two divergent triage classifiers: `predict.py: classify_zone()` ("Zone 1: Authentic Clearance…") vs `checkpoint.py: classify_three_zone()` ("Confirmed Authentic…") — app/CLI JSON reports use different zone vocabularies | Medium | 📋 Recommendation R2 |
-| 7 | Two divergent video inference paths: CLI `predict_video` (strided frames, no TTA, mean-aggregation) vs serving `video_engine.process_video_frames` (uniform seek, h-flip TTA, Platt; see AUDIT_REPORT §3.10) | Medium | 📋 Recommendation R3 |
-| 8 | `predict.py` loads state dict with `strict=False` and **no missing-key guard**, while `video_engine.load_prediction_engine` raises on missing critical keys — one silent-partial-load CLI path | Low | 📋 Recommendation R4 |
-| 9 | `run_release1_kaggle.py` is a 1,751-line monolith containing its own copies of training/eval/calibration logic | Medium | 📋 Recommendation R5 (phased plan below) |
-| 10 | `hybrid_detector.py`: `extract_features()` re-implements the ~35-line spatial+spectral+gate encoding pipeline already in `forward()` | Low | 📋 Recommendation R6 |
-| 11 | `video_engine.py`: duplicated frame-read loops (lines ~313–327 vs ~338–351) and calls the private `cropper._center_crop()` from outside the class | Low | 📋 Recommendation R7 |
-| 12 | Repo hygiene: `.audit_tmp/` ≈75 MB untracked junk (incl. 51 MB `tectonic.exe`, page render PNGs) not covered by `.gitignore`; `paper.tar.gz` (13 MB) untracked stale duplicate of gitignored `paper.zip`; 52-byte `uv.lock` stub; root `__pycache__/`; git repo = 90.57 MB all loose objects (never gc'd) | Low–Med | 📋 Recommendation R8 |
-| 13 | README hard-links `results/release1_run/*.json` fixtures, but `results/` is gitignored — links are dead for fresh clones | Low | 📋 Recommendation R9 |
+| 5 | Release-1 calibration constants duplicated in ≥6 files at **inconsistent precision** (0.2783 vs 0.27831112352514586 vs 0.278311): `predict.py`, `video_engine.py`+, `checkpoint.py` (T/τ only), `compute_table5_ablations.py`, `evaluate_statistical_significance_and_domain_probe.py`, `audit_fixture_consistency.py` | Medium | ✅ **Fixed (R1)** — `src/utils/calibration_release1.py`; all consumers rewired |
+| 6 | Two divergent triage classifiers: `predict.py: classify_zone()` ("Zone 1: Authentic Clearance…") vs `checkpoint.py: classify_three_zone()` ("Confirmed Authentic…") — app/CLI JSON reports use different zone vocabularies | Medium | ✅ **Fixed (R2)** — `classify_zone` is now a thin adapter over `classify_three_zone` |
+| 7 | Two divergent video inference paths: CLI `predict_video` (strided frames, no TTA, mean-aggregation) vs serving `video_engine.process_video_frames` (uniform seek, h-flip TTA, Platt; see AUDIT_REPORT §3.10) | Medium | ✅ **Fixed (R3)** — `predict_video` delegates to `process_video_frames` |
+| 8 | `predict.py` loads state dict with `strict=False` and **no missing-key guard**, while `video_engine.load_prediction_engine` raises on missing critical keys — one silent-partial-load CLI path | Low | ✅ **Fixed (R4)** — shared `assert_critical_weights_loaded` guard |
+| 9 | `run_release1_kaggle.py` is a 1,751-line monolith containing its own copies of training/eval/calibration logic | Medium | ✅ **Fixed (R5)** — decomposed into `scripts/release1/` (bodies byte-identical, verified 21/21) |
+| 10 | `hybrid_detector.py`: `extract_features()` re-implements the ~35-line spatial+spectral+gate encoding pipeline already in `forward()` | Low | ✅ **Fixed (R6)** — `_encode()` factor; forward/extract parity diff = 0.0 |
+| 11 | `video_engine.py`: duplicated frame-read loops (lines ~313–327 vs ~338–351) and calls the private `cropper._center_crop()` from outside the class | Low | ✅ **Fixed (R7)** — `_read_selected_frames()` helper; `_center_crop` renamed public `center_crop` |
+| 12 | Repo hygiene: `.audit_tmp/` ≈75 MB untracked junk (incl. 51 MB `tectonic.exe`, page render PNGs) not covered by `.gitignore`; `paper.tar.gz` (13 MB) untracked stale duplicate of gitignored `paper.zip`; 52-byte `uv.lock` stub; root `__pycache__/`; git repo = 90.57 MB all loose objects (never gc'd) | Low–Med | ✅ **Fixed (R8)** — junk deleted, receipts promoted to `scripts/verification/`, `.gitignore` updated, `git gc` run |
+| 13 | README hard-links `results/release1_run/*.json` prediction fixtures, but `results/` is gitignored — links are dead for fresh clones | Low | ✅ **Fixed (R9)** — fixtures staged with `.gitignore` negation pattern |
 
 **AI-slop verdict: effectively clean.** Verified explicitly: no emoji decor in `src/`/scripts (grep), no TODO/FIXME/HACK debris in tracked code (only a benign comment in untracked `.audit_tmp/`), no fabricated-looking claims (spot-recomputed; see §3), documentation that *warns against* over-claiming, and a test suite that predicates against leakage. The only slop-flavored artifact was the fake-compatibility-comment monkey-patch (#2/#3), now removed.
 
@@ -101,31 +101,33 @@ The old README text claimed the single-frame fixture was a legacy subset — con
 
 ## 4. Recommendations (ranked, with concrete approach)
 
-**R1 — Single source of truth for Release-1 calibration constants.**
+> **STATUS: R1–R9 all implemented** (see §5 "Remediation pass"). Original plans kept below for reference.
+
+**R1 — Single source of truth for Release-1 calibration constants.** ✅ **DONE**
 Create `src/utils/calibration_release1.py` (or extend `checkpoint.py`) with `PLATT_A = 0.27831112352514586`, `PLATT_B = 0.408914...`, `TAU_STAR = 0.2600`, `T_EFF = 3.5931`, `TAU_REAL/TAU_FAKE = 0.40/0.60` plus a docstring linking the sidecar `models/dual_stream_detector.json`. Replace the 6 hard-coded sites. This removes the inconsistent-precision drift class entirely (files listed in §1 #5).
 
-**R2 — One triage classifier.** Delete `predict.py:classify_zone()` and route through `checkpoint.py:classify_three_zone()` (keep the CLI's zone wording as a thin adapter if needed for report compatibility; tests hit both paths, so the diff is test-compatible).
+**R2 — One triage classifier.** ✅ **DONE** Delete `predict.py:classify_zone()` and route through `checkpoint.py:classify_three_zone()` (keep the CLI's zone wording as a thin adapter if needed for report compatibility; tests hit both paths, so the diff is test-compatible).
 
-**R3 — One video inference engine.** Make `predict.py: predict_video()` a wrapper over a plain-args call into `video_engine.process_video_frames()`, exposing aggregation policy as CLI flags. Kills the CLI/serving TTA-aggregation divergence (already cross-documented).
+**R3 — One video inference engine.** ✅ **DONE** Make `predict.py: predict_video()` a wrapper over a plain-args call into `video_engine.process_video_frames()`, exposing aggregation policy as CLI flags. Kills the CLI/serving TTA-aggregation divergence (already cross-documented).
 
-**R4 — Missing-key guard parity for the CLI.** Mirror `video_engine`'s critical-key check (spatial_backbone / freq tower / gate_fc / classifier) inside `predict.py:load_detector()` so a truncated checkpoint fails loudly instead of silently degrading.
+**R4 — Missing-key guard parity for the CLI.** ✅ **DONE** Mirror `video_engine`'s critical-key check (spatial_backbone / freq tower / gate_fc / classifier) inside `predict.py:load_detector()` so a truncated checkpoint fails loudly instead of silently degrading.
 
-**R5 — Decompose `run_release1_kaggle.py` (1,751 lines).** Phased, no-behavior-change plan:
+**R5 — Decompose `run_release1_kaggle.py` (1,751 lines).** ✅ **DONE** (step 1; helper dedup into `src/evaluation/` was rejected as pure churn — stage modules split cleanly with only intra-package imports of the existing `common.py` helpers) Phased, no-behavior-change plan:
 1. Extract stage functions into `scripts/release1/` modules: `training.py`, `calibration.py`, `test_eval.py`, `temporal.py`, `loto.py`, `robustness.py`, `latency.py` (they are already linear stages; move bodies, keep orchestration in runner).
 2. Shared tail-common helpers (`subsample_balanced`, `compute_eer`, bootstrap) go into `src/evaluation/` and are imported, not copied.
 3. Gate: tests/test_scripts.py keeps importing the same entry symbols; nothing else changes.
 
-**R6 — Factor the encoding pipeline.** Add `HybridDeepfakeDetector._encode(x) -> (f_s, f_f, gate, aux)` used by both `forward()` and `extract_features()`; forward consumes it to assemble the fused cat vector, features consume it to return the soft-mixed embedding (~35 duplicated lines removed; state dict unaffected).
+**R6 — Factor the encoding pipeline.** ✅ **DONE** Add `HybridDeepfakeDetector._encode(x) -> (f_s, f_f, gate, aux)` used by both `forward()` and `extract_features()`; forward consumes it to assemble the fused cat vector, features consume it to return the soft-mixed embedding (~35 duplicated lines removed; state dict unaffected).
 
-**R7 — video_engine cleanup.** Extract a `_read_target_frames(cap, frame_indices, extractor)` helper for the two read loops; either rename `_center_crop` → `center_crop` (public fallback) or add a public `crop_face(fallback="center")` parameter.
+**R7 — video_engine cleanup.** ✅ **DONE** Extract a `_read_target_frames(cap, frame_indices, extractor)` helper for the two read loops; either rename `_center_crop` → `center_crop` (public fallback) or add a public `crop_face(fallback="center")` parameter.
 
-**R8 — Repo hygiene sweep.**
+**R8 — Repo hygiene sweep.** ✅ **DONE**
 - `.audit_tmp/`: keep the `check_*.py` provenance scripts (worth promoting to `scripts/`) or delete; delete the 75 MB of render PNGs + `tectonic.exe`; add `.audit_tmp/` to `.gitignore` if kept.
 - Delete `paper.tar.gz` (untracked; the real bundle must be rebuilt via `scripts/package_arxiv.py` — the gitignored `paper.zip` is also stale per AUDIT_REPORT §3.6).
 - Delete or build the 52-byte `uv.lock` stub; delete stale root `__pycache__/`, `.cache/`, `.mpl_cache/` (all gitignored).
 - Run `git gc` once (all 9,073 objects are loose; ~90.57 MB → expect several-fold compaction with 10–19 MB figure/weights history blobs).
 
-**R9 — README dead links.** Either commit the two prediction fixtures to the repo (they are ~0.9 MB / 0.04 MB — well within budget) or render their self-declared metadata into an `etc/` snapshot; then README + provenance story works from a fresh clone (carries over AUDIT_REPORT recommendation #6, still open).
+**R9 — README dead links.** ✅ **DONE** — prediction fixtures committed via `.gitignore` negation (`results/*`, `!results/release1_run/`, `results/release1_run/*`, two file negations). Either commit the two prediction fixtures to the repo (they are ~0.9 MB / 0.04 MB — well within budget) or render their self-declared metadata into an `etc/` snapshot; then README + provenance story works from a fresh clone (carries over AUDIT_REPORT recommendation #6, still open).
 
 ---
 
@@ -145,8 +147,29 @@ Verification gates passed after the changes: `ruff check src scripts tests app.p
 
 ---
 
+## 5b. Remediation pass — R1–R9 implemented (this session)
+
+All nine recommendations were implemented and verified. Evidence summary:
+
+| Item | Change | Verification evidence |
+|---|---|---|
+| R1 | New `src/utils/calibration_release1.py` (full-precision constants + display constants + `TEMPORAL_OPTIMAL_THRESHOLD` with provenance note). Consumers rewired: `video_engine.py`, `checkpoint.py` (`DEFAULT_THRESHOLD/TEMPERATURE` derived), `predict.py` (defaults + `classify_zone(tau_star=OPTIMAL_THRESHOLD)`), `compute_table5_ablations.py`, `evaluate_statistical_significance_and_domain_probe.py`, `generate_publication_figures.py` (3 compute literals), `audit_fixture_consistency.py` (published-claims block) | `python scripts/audit_fixture_consistency.py` → "no internal inconsistencies found"; constants match `results/release1_results.json` calibration block exactly |
+| R2 | `predict.classify_zone` → thin adapter over `checkpoint.classify_three_zone` (legacy Zone 1/2/3 wording preserved for CLI/JSON) | boundary semantics identical (p≤0.40 real, p≥0.60 fake); tests green |
+| R3 | `predict_video` → delegation to `process_video_frames` (uniform sampling + h-flip TTA + Platt); legacy JSON schema preserved; engine extended with `total_frames`/`fps` keys and optional `device` param honoring `--device` | `tests/test_app_helpers.py` 15 passed |
+| R4 | `assert_critical_weights_loaded(model, incompatible_keys)` in `hybrid_detector.py`, wired into `predict.load_detector`. Empty state dicts (CLI placeholder-weights contract pinned by CI) warn instead of fail | `test_predict_cli_positional_and_json` + full suite green |
+| R5 | `scripts/run_release1_kaggle.py` 1,994 → 383 lines; all 20 stage functions moved to `scripts/release1/` (common, integrity, training, calibration, test_eval, temporal, loto, robustness, latency), runner re-exports every stage symbol + src-layer names via `__all__` | function bodies byte-identical to git HEAD (AST-compared, 21/21); all 40 re-export names importable; `compute_table5_ablations` / `run_lomo_canonical` / tests import cleanly |
+| R6 | `HybridDeepfakeDetector._encode(x)` shared by `forward()`/`extract_features()`; redundant pre-normalization removed from `forward` | parity: forward logits + extract_features `torch.equal` (diff 0.0), strict round-trip load OK |
+| R7 | `video_engine._read_selected_frames()` dedupes the two frame-read loops; `DynamicFaceCropper._center_crop` → public `center_crop` (5 internal call sites + engine fallback updated) | `tests/test_app_helpers.py` 15 passed; ruff clean |
+| R8 | Deleted `.audit_tmp/` (~276 MB incl. 51 MB `tectonic.exe`, render PNGs/PDFs, `parity_tmp.pth`), `paper.tar.gz`, `uv.lock`; 8 provenance receipts promoted to `scripts/verification/` (lint-clean, `__file__`-relative paths fixed); `.gitignore` + `.audit_tmp/`; `git gc` | `git count-objects` 3,085 objects / 90.93 MiB loose → 0 loose / 70.11 MiB packed |
+| R9 | `.gitignore`: `results/` → `results/*` + `!results/release1_run/` + `results/release1_run/*` + negations; staged `test_predictions.json` (0.83 MB) + `temporal_test_predictions.json` (0.04 MB) | `git status` shows only the two staged files; `git check-ignore` confirms npz/pth/log stay ignored |
+
+Final gates: `ruff check src scripts tests app.py predict.py` → 0 findings · `pytest tests -q` → **156 passed, 4 skipped** (baseline) · fixture audit → no INTERNAL inconsistencies · `py_compile app.py predict.py` OK.
+
+---
+
 ## 6. Decision points for the owner (not blocking)
 
-1. Whether to adopt R1–R7 as one remediation PR or split (recommend PR 1 = R1–R4 small code hygiene; PR 2 = R5 monolith decomposition; PR 3 = R6–R7).
-2. Whether the `.audit_tmp/check_*.py` verification scripts should be promoted into `scripts/` (they are genuine provenance tooling) or dropped.
-3. Committing the prediction fixtures (R9) versus shipping them via Hugging Face only.
+1. ~~Whether to adopt R1–R7 as one remediation PR~~ — R1–R9 are all implemented and uncommitted; committing them as one PR is now the default (commit + push to turn GitHub CI green).
+2. ~~Whether the `.audit_tmp/check_*.py` verification scripts should be promoted~~ — **done**: they live in `scripts/verification/` (lint-clean).
+3. ~~Committing the prediction fixtures (R9) versus Hugging Face only~~ — **done**: fixtures are staged for commit; HF-only delivery can remain a supplement.
+4. Temporal fixture re-export: the bundled `temporal_test_predictions.json` is still the legacy Phase-1 export (N=1,120, AUC 0.8719, τ=0.3895) vs. published Release-1 claims (N=2,248, AUC 0.8994, τ=0.11) — the fixture audit reports this as WARN only. Re-exporting from the current Release-1 artifacts needs the real dataset/GPU run; README already documents the discrepancy. Owner to schedule when convenient.

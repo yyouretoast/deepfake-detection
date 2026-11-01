@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+from collections.abc import Callable
 from typing import Any
 
 import cv2
@@ -15,7 +16,15 @@ from src.config import load_config
 from src.dataset.preprocess import DynamicFaceCropper, preprocess_tensors_batch
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.temporal_head import BiGRUTemporalDetector
-from src.utils.checkpoint import DEFAULT_THRESHOLD, classify_three_zone, clean_state_dict
+from src.utils.calibration_release1 import (
+    EFFECTIVE_TEMPERATURE,
+    OPTIMAL_THRESHOLD,
+    PLATT_BIAS_B,
+    PLATT_SCALE_A,
+    TAU_FAKE,
+    TAU_REAL,
+)
+from src.utils.checkpoint import classify_three_zone, clean_state_dict
 from src.utils.temporal_aggregation import aggregate_video_predictions
 
 logger = logging.getLogger(__name__)
@@ -41,11 +50,11 @@ class PredictionEngine(tuple):
         cropper: DynamicFaceCropper,
         has_weights: bool,
         threshold: float,
-        temperature: float,
-        tau_real: float = 0.40,
-        tau_fake: float = 0.60,
-        platt_scale_a: float = 0.2783,
-        platt_bias_b: float = 0.4089,
+        temperature: float = EFFECTIVE_TEMPERATURE,
+        tau_real: float = TAU_REAL,
+        tau_fake: float = TAU_FAKE,
+        platt_scale_a: float = PLATT_SCALE_A,
+        platt_bias_b: float = PLATT_BIAS_B,
     ) -> Self:
         instance = super().__new__(cls, (model, cropper, has_weights, threshold, temperature))
         instance.model = model
@@ -108,12 +117,12 @@ def load_prediction_engine(
         except (ImportError, OSError, ValueError, RuntimeError) as e:
             logger.warning("Could not download weights from HuggingFace Hub: %s", e)
 
-    opt_threshold = DEFAULT_THRESHOLD
-    temperature = 1.0
-    tau_real = 0.40
-    tau_fake = 0.60
-    platt_scale_a = 0.2783
-    platt_bias_b = 0.4089
+    opt_threshold = OPTIMAL_THRESHOLD
+    temperature = EFFECTIVE_TEMPERATURE
+    tau_real = TAU_REAL
+    tau_fake = TAU_FAKE
+    platt_scale_a = PLATT_SCALE_A
+    platt_bias_b = PLATT_BIAS_B
 
     sidecar_paths = ["models/dual_stream_detector.json", "dual_stream_detector.json"]
     for sp in sidecar_paths:
@@ -121,12 +130,12 @@ def load_prediction_engine(
             try:
                 with open(sp, "r", encoding="utf-8") as f:
                     meta = json.load(f)
-                    opt_threshold = float(meta.get("optimal_threshold", DEFAULT_THRESHOLD))
-                    temperature = float(meta.get("effective_temperature", meta.get("temperature", 1.0)))
-                    tau_real = float(meta.get("tau_real", 0.40))
-                    tau_fake = float(meta.get("tau_fake", 0.60))
-                    platt_scale_a = float(meta.get("platt_scale_a", meta.get("platt_a", 0.2783)))
-                    platt_bias_b = float(meta.get("platt_bias_b", meta.get("platt_b", 0.4089)))
+                    opt_threshold = float(meta.get("optimal_threshold", opt_threshold))
+                    temperature = float(meta.get("effective_temperature", meta.get("temperature", temperature)))
+                    tau_real = float(meta.get("tau_real", tau_real))
+                    tau_fake = float(meta.get("tau_fake", tau_fake))
+                    platt_scale_a = float(meta.get("platt_scale_a", meta.get("platt_a", platt_scale_a)))
+                    platt_bias_b = float(meta.get("platt_bias_b", meta.get("platt_b", platt_bias_b)))
                     break
             except (json.JSONDecodeError, OSError, ValueError) as e:
                 logger.warning("Could not load sidecar metadata: %s", e)
@@ -228,6 +237,54 @@ def load_temporal_engine(
     return None
 
 
+def _read_selected_frames(
+    video_path: str,
+    frame_indices: list[int],
+    fps: float,
+    extract: Callable[[np.ndarray], np.ndarray | None],
+) -> tuple[list[np.ndarray], list[int], list[float]]:
+    """Sequentially decodes the requested frames and extracts a crop per frame.
+
+    Sequential reading is significantly faster and more accurate than random seeking
+    via ``cap.set(CAP_PROP_POS_FRAMES)``. Random seeking on compressed formats (H.264)
+    forces decoding from the nearest I-frame, which is slow and can be inaccurate
+    for Variable Frame Rate videos or containers with bad headers.
+
+    Args:
+        video_path: Source media path.
+        frame_indices: Frame numbers to collect.
+        fps: Video frame rate, used for timestamp computation.
+        extract: Callable applied to each RGB frame; returning ``None`` skips the frame
+            (crop not usable for face-based extraction).
+
+    Returns:
+        (crops, frame_numbers, timestamps) in read order.
+    """
+    cap = cv2.VideoCapture(video_path)
+    crops: list[np.ndarray] = []
+    hit_indices: list[int] = []
+    timestamps: list[float] = []
+    target_set = set(frame_indices)
+    try:
+        current_frame = 0
+        while cap.isOpened() and target_set:
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                break
+            if current_frame in target_set:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                crop = extract(rgb)
+                if crop is not None:
+                    crops.append(crop)
+                    hit_indices.append(current_frame)
+                    timestamps.append(float(current_frame) / fps)
+                target_set.discard(current_frame)
+            current_frame += 1
+    finally:
+        cap.release()
+    return crops, hit_indices, timestamps
+
+
 def process_video_frames(
     video_path: str,
     pytorch_model: torch.nn.Module | None = None,
@@ -242,6 +299,7 @@ def process_video_frames(
     tau_fake: float | None = None,
     platt_a: float | None = None,
     platt_b: float | None = None,
+    device: torch.device | None = None,
 ) -> dict[str, Any] | None:
     """
     Video inference engine with OpenCV keyframe seeking, AMP autocast, and temporal aggregation.
@@ -253,8 +311,8 @@ def process_video_frames(
     if not cap.isOpened():
         return None
 
-    engine_tau_real = 0.40
-    engine_tau_fake = 0.60
+    engine_tau_real = TAU_REAL
+    engine_tau_fake = TAU_FAKE
     engine_platt_a = None
     engine_platt_b = None
     if pytorch_model is None or cropper is None or classification_threshold is None or temperature is None:
@@ -268,8 +326,8 @@ def process_video_frames(
         temperature = temperature if temperature is not None else temp
         if has_pytorch_weights is None:
             has_pytorch_weights = h_weights
-        engine_tau_real = getattr(engine, "tau_real", 0.40)
-        engine_tau_fake = getattr(engine, "tau_fake", 0.60)
+        engine_tau_real = getattr(engine, "tau_real", TAU_REAL)
+        engine_tau_fake = getattr(engine, "tau_fake", TAU_FAKE)
         engine_platt_a = getattr(engine, "platt_scale_a", None)
         engine_platt_b = getattr(engine, "platt_bias_b", None)
 
@@ -281,10 +339,13 @@ def process_video_frames(
     if temporal_model is None:
         temporal_model = load_temporal_engine()
 
+    # Honor an explicit caller device (e.g. the CLI's --device flag), else use the module default.
+    target_device = device if device is not None else DEVICE
+
     if pytorch_model is not None:
-        pytorch_model = pytorch_model.to(DEVICE)
+        pytorch_model = pytorch_model.to(target_device)
     if temporal_model is not None:
-        temporal_model = temporal_model.to(DEVICE)
+        temporal_model = temporal_model.to(target_device)
 
     try:
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -299,56 +360,24 @@ def process_video_frames(
         else:
             frame_indices = list(range(total))
 
-        all_faces: list[np.ndarray] = []
-        detected_frame_indices: list[int] = []
-        detected_timestamps: list[float] = []
-
-        # Sequential reading is significantly faster and more accurate than random seeking
-        # via cap.set(CAP_PROP_POS_FRAMES). Random seeking on compressed formats (H.264)
-        # forces decoding from the nearest I-frame, which is slow and can be inaccurate
-        # for Variable Frame Rate videos or containers with bad headers.
-        target_set = set(frame_indices)
-        current_frame = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                break
-            if current_frame in target_set:
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                face = cropper.crop_face(rgb, fallback_on_empty=False)
-                if face is not None:
-                    all_faces.append(face)
-                    detected_frame_indices.append(current_frame)
-                    detected_timestamps.append(float(current_frame) / fps)
-                target_set.discard(current_frame)
-                if not target_set:
-                    break  # All target frames collected — stop early
-            current_frame += 1
-
+        # Sequential decode of the selected keyframes; rationale in _read_selected_frames.
+        all_faces, detected_frame_indices, detected_timestamps = _read_selected_frames(
+            video_path,
+            frame_indices,
+            fps,
+            lambda rgb: cropper.crop_face(rgb, fallback_on_empty=False),
+        )
     finally:
         cap.release()
 
     if not all_faces:
         logger.warning("No face detections found in %s; falling back to center crops", video_path)
-        cap = cv2.VideoCapture(video_path)
-        try:
-            target_set = set(frame_indices)
-            current_frame = 0
-            while cap.isOpened() and target_set:
-                ret, frame = cap.read()
-                if not ret or frame is None:
-                    break
-                if current_frame in target_set:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    c = cropper._center_crop(rgb, target_size=cropper.target_size)
-                    all_faces.append(c)
-                    detected_frame_indices.append(current_frame)
-                    detected_timestamps.append(float(current_frame) / fps)
-                    target_set.discard(current_frame)
-                current_frame += 1
-        finally:
-            cap.release()
+        all_faces, detected_frame_indices, detected_timestamps = _read_selected_frames(
+            video_path,
+            frame_indices,
+            fps,
+            lambda rgb: cropper.center_crop(rgb, target_size=cropper.target_size),
+        )
 
     if not all_faces:
         return None
@@ -362,12 +391,12 @@ def process_video_frames(
 
     for i in range(0, len(all_faces), batch_size):
         batch_faces = all_faces[i : i + batch_size]
-        _, sub_torch = preprocess_tensors_batch(batch_faces, device=DEVICE)
+        _, sub_torch = preprocess_tensors_batch(batch_faces, device=target_device)
 
         with (
             MODEL_INFERENCE_LOCK,
             torch.inference_mode(),
-            torch.amp.autocast(device_type=DEVICE.type, enabled=(DEVICE.type == "cuda")),
+            torch.amp.autocast(device_type=target_device.type, enabled=(target_device.type == "cuda")),
         ):
             raw_p1 = pytorch_model(sub_torch).float()
             raw_p2 = pytorch_model(torch.flip(sub_torch, dims=[-1])).float()
@@ -418,6 +447,8 @@ def process_video_frames(
         "all_faces": all_faces,
         "frame_indices": detected_frame_indices,
         "timestamps": detected_timestamps,
+        "total_frames": total,
+        "fps": fps,
         "three_zone": three_zone,
         "temporal_attention": frame_attention,
         "tau_real": effective_tau_real,

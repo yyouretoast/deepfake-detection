@@ -24,6 +24,7 @@ from sklearn.metrics import precision_recall_curve, roc_curve
 from src.dataset.degradations import blur_fn, jpeg_fn
 from src.models.hybrid_detector import HybridDeepfakeDetector
 from src.models.temporal_head import BiGRUTemporalDetector
+from src.utils.calibration_release1 import PLATT_BIAS_B, PLATT_SCALE_A
 from src.utils.interpretability import generate_face_diagnostics
 
 os.environ["MPLCONFIGDIR"] = os.path.abspath(".mpl_cache")
@@ -931,7 +932,7 @@ def generate_figure8_real_qualitative(model):
         t = torch.from_numpy(img_rgb).permute(2, 0, 1).float().unsqueeze(0) / 255.0
         with torch.no_grad():
             logit = float(model(t).item())
-            prob = float(torch.sigmoid(torch.tensor(logit) * 0.278311 + 0.408914).item())
+            prob = float(torch.sigmoid(torch.tensor(logit) * PLATT_SCALE_A + PLATT_BIAS_B).item())
 
         if prob < 0.40:
             zone_str = "Zone 1 (Clearance)"
@@ -1026,7 +1027,7 @@ def generate_figure9_video_timeline(model, t_model):
             with torch.no_grad():
                 feat = model.extract_features(t)
                 logit = model(t)
-                prob = float(torch.sigmoid(logit * 0.278311 + 0.408914).item())
+                prob = float(torch.sigmoid(logit * PLATT_SCALE_A + PLATT_BIAS_B).item())
             feats.append(feat)
             frame_probs.append(prob)
     else:
@@ -1038,7 +1039,7 @@ def generate_figure9_video_timeline(model, t_model):
             with torch.no_grad():
                 feat = model.extract_features(t)
                 logit = model(t)
-                prob = float(torch.sigmoid(logit * 0.278311 + 0.408914).item())
+                prob = float(torch.sigmoid(logit * PLATT_SCALE_A + PLATT_BIAS_B).item())
             feats.append(feat)
             frame_probs.append(prob)
 

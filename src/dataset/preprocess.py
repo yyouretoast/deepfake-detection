@@ -219,7 +219,7 @@ class DynamicFaceCropper:
 
         if w_box <= 0 or h_box <= 0:
             logger.warning("Fallback center crop used due to non-positive box dimensions.")
-            fallback = self._center_crop(image_rgb, target_size=out_size)
+            fallback = self.center_crop(image_rgb, target_size=out_size)
             return fallback, fallback
 
         side = max(w_box, h_box) * self.scale_factor
@@ -253,13 +253,13 @@ class DynamicFaceCropper:
 
         if src_y2 <= src_y1 or src_x2 <= src_x1:
             logger.warning("Fallback center crop used due to invalid crop dimensions.")
-            fallback = self._center_crop(image_rgb, target_size=out_size)
+            fallback = self.center_crop(image_rgb, target_size=out_size)
             return fallback, fallback
 
         raw_crop = padded_img[src_y1:src_y2, src_x1:src_x2]
         if raw_crop.size == 0:
             logger.warning("Fallback center crop used due to empty crop.")
-            fallback = self._center_crop(image_rgb, target_size=out_size)
+            fallback = self.center_crop(image_rgb, target_size=out_size)
             return fallback, fallback
 
         if pad_left > 0 or pad_top > 0 or pad_right > 0 or pad_bottom > 0:
@@ -326,7 +326,7 @@ class DynamicFaceCropper:
         """Select largest detected bounding box and perform crop extraction."""
         out_size = target_size if target_size is not None else self.target_size
         if boxes is None or len(boxes) == 0:
-            c = self._center_crop(image_rgb, target_size=out_size)
+            c = self.center_crop(image_rgb, target_size=out_size)
             return c, c
 
         if landmarks is not None and len(landmarks) == len(boxes):
@@ -342,7 +342,7 @@ class DynamicFaceCropper:
 
         return self._crop_single_box(image_rgb, best_box, best_landmarks, target_size=out_size)
 
-    def _center_crop(
+    def center_crop(
         self, image_rgb: np.ndarray, target_size: int | None = None
     ) -> np.ndarray:
         """Fallback center square crop when no face bounding box is detected."""
@@ -397,7 +397,7 @@ class DynamicFaceCropper:
         if not fallback_on_empty:
             return None, None
 
-        c = self._center_crop(image_rgb, target_size=out_size)
+        c = self.center_crop(image_rgb, target_size=out_size)
         return c, c
 
     def crop_face(

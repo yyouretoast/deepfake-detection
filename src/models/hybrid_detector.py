@@ -192,8 +192,15 @@ class HybridDeepfakeDetector(nn.Module):
             (noise_power - self._GAMMA_LO) / (self._GAMMA_HI - self._GAMMA_LO), min=0.0, max=1.0
         )
 
-    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
-        """Extracts 512-dim fused feature embedding for downstream spatiotemporal sequence modeling."""
+    def _encode(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Shared spatial + spectral encoding pipeline used by forward() and extract_features().
+
+        Returns:
+            (f_s, f_f, effective_gate, aux_logit). When the FFT branch is disabled,
+            f_f and effective_gate are zeros and aux_logit is zeros.
+        """
         mean = self.imagenet_mean.to(dtype=x.dtype, device=x.device)
         std = self.imagenet_std.to(dtype=x.dtype, device=x.device)
         x_spatial = (x - mean) / std
@@ -203,24 +210,34 @@ class HybridDeepfakeDetector(nn.Module):
         f_s = self.spatial_pool(feat_maps).flatten(1)
         f_s = self.spatial_fc(f_s)
 
-        if self.use_fft_branch:
-            srm_out = self.srm(x)
-            bayar_out = self.bayar(x)
-            noise_combined = torch.cat([srm_out, bayar_out], dim=1)
-            freq_maps = self.fft(noise_combined)
-            if hasattr(self, "freq_tower"):
-                f_f, _ = self.freq_tower(freq_maps)
-            else:
-                f_f = self.freq_conv(freq_maps).flatten(1)
-                f_f = self.freq_fc(f_f)
+        aux_logit = torch.zeros(x.shape[0], 1, device=x.device, dtype=x.dtype)
+        if not self.use_fft_branch:
+            f_f = torch.zeros_like(f_s)
+            effective_gate = torch.zeros_like(f_s)
+            return f_s, f_f, effective_gate, aux_logit
 
-            concat_feat = torch.cat([f_s, f_f], dim=1)
-            gate = self.gate_fc(concat_feat)
-            if self.enable_snr_gating:
-                gamma = self._snr_gamma(noise_combined)
-                effective_gate = gate * gamma
-            else:
-                effective_gate = gate
+        srm_out = self.srm(x)
+        bayar_out = self.bayar(x)
+        noise_combined = torch.cat([srm_out, bayar_out], dim=1)
+        freq_maps = self.fft(noise_combined)
+        if hasattr(self, "freq_tower"):
+            f_f, aux_logit = self.freq_tower(freq_maps)
+        else:
+            f_f = self.freq_conv(freq_maps).flatten(1)
+            f_f = self.freq_fc(f_f)
+
+        concat_feat = torch.cat([f_s, f_f], dim=1)
+        gate = self.gate_fc(concat_feat)
+        if self.enable_snr_gating:
+            effective_gate = gate * self._snr_gamma(noise_combined)
+        else:
+            effective_gate = gate
+        return f_s, f_f, effective_gate, aux_logit
+
+    def extract_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Extracts 512-dim fused feature embedding for downstream spatiotemporal sequence modeling."""
+        f_s, f_f, effective_gate, _aux = self._encode(x)
+        if self.use_fft_branch:
             return (1.0 - effective_gate) * f_s + effective_gate * f_f
         return f_s
 
@@ -244,39 +261,12 @@ class HybridDeepfakeDetector(nn.Module):
                 float(x.max()),
             )
 
-        mean = self.imagenet_mean.to(dtype=x.dtype, device=x.device)
-        std = self.imagenet_std.to(dtype=x.dtype, device=x.device)
-        x_spatial = (x - mean) / std
+        f_s, f_f, effective_gate, aux_logit = self._encode(x)
 
-        feat_maps = self.spatial_backbone(x_spatial)
-        feat_maps = self.spatial_norm(feat_maps)
-        f_s = self.spatial_pool(feat_maps).flatten(1)
-        f_s = self.spatial_fc(f_s)
-
-        aux_logit = None
         if self.use_fft_branch:
-            srm_out = self.srm(x)
-            bayar_out = self.bayar(x)
-            noise_combined = torch.cat([srm_out, bayar_out], dim=1)
-            freq_maps = self.fft(noise_combined)
-            if hasattr(self, "freq_tower"):
-                f_f, aux_logit = self.freq_tower(freq_maps)
-            else:
-                f_f = self.freq_conv(freq_maps).flatten(1)
-                f_f = self.freq_fc(f_f)
-                aux_logit = torch.zeros(x.shape[0], 1, device=x.device, dtype=x.dtype)
-
-            concat_feat = torch.cat([f_s, f_f], dim=1)
-            gate = self.gate_fc(concat_feat)
-            if self.enable_snr_gating:
-                gamma = self._snr_gamma(noise_combined)
-                effective_gate = gate * gamma
-            else:
-                effective_gate = gate
             fused = torch.cat([f_s * (1.0 - effective_gate), f_f * effective_gate], dim=1)
         else:
             fused = f_s
-            aux_logit = torch.zeros(x.shape[0], 1, device=x.device, dtype=x.dtype)
 
         logits = self.classifier(fused)
         if not torch.jit.is_tracing() and return_aux:
@@ -297,3 +287,24 @@ class HybridDeepfakeDetector(nn.Module):
         logits = torch.cat(logits_list, dim=0)
         frame_logits = logits.view(b, t)
         return frame_logits.mean(dim=1, keepdim=True)
+
+
+def assert_critical_weights_loaded(
+    model: HybridDeepfakeDetector, incompatible_keys: Any
+) -> None:
+    """Raises if a non-strict checkpoint left critical stream weights unloaded.
+
+    Shared guard for both serving (src/services/video_engine.py) and the CLI
+    (predict.py): a silently partial state_dict load degrades detection quality
+    invisibly, so both entry points must refuse to run on truncated weights.
+    """
+    freq_prefix = (
+        "freq_tower" if getattr(model, "frequency_backbone", "legacy") == "resse" else "freq_conv"
+    )
+    missing_critical = [
+        k
+        for k in incompatible_keys.missing_keys
+        if any(prefix in k for prefix in ["spatial_backbone", freq_prefix, "gate_fc", "classifier"])
+    ]
+    if missing_critical:
+        raise RuntimeError(f"Critical model weights missing from loaded checkpoint: {missing_critical[:5]}")

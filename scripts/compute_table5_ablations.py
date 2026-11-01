@@ -45,6 +45,7 @@ from scripts.run_release1_kaggle import (
 )
 from src.evaluation.metrics import compute_eer, find_optimal_threshold
 from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.utils.calibration_release1 import PLATT_BIAS_B, PLATT_SCALE_A
 from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -79,8 +80,8 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Using device: %s", device)
 
-    scale_a = 0.2783
-    bias_b = 0.4089
+    scale_a = PLATT_SCALE_A
+    bias_b = PLATT_BIAS_B
 
     if os.path.exists(cache_path):
         logger.info("Loading cached ablation logits from %s...", cache_path)

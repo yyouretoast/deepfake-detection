@@ -28,6 +28,13 @@ import logging
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.utils.calibration_release1 import (
+    EFFECTIVE_TEMPERATURE,
+    TEMPORAL_OPTIMAL_THRESHOLD,
+)
+
 logger = logging.getLogger(__name__)
 
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results" / "release1_run"
@@ -42,13 +49,13 @@ PUBLISHED_CLAIMS = {
     "test_predictions.json": {
         "n_samples": 26981,
         "auc": 0.8656,
-        "temperature": 3.5931,
+        "temperature": EFFECTIVE_TEMPERATURE,
     },
     "temporal_test_predictions.json": {
         "n_sequences": 2248,
         "auc": 0.8994,
         "naive_avg_auc": 0.8962,
-        "optimal_threshold": _CALIB.get("temporal_optimal_threshold", 0.1100),
+        "optimal_threshold": _CALIB.get("temporal_optimal_threshold", TEMPORAL_OPTIMAL_THRESHOLD),
     },
 }
 

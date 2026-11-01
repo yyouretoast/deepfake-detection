@@ -47,9 +47,18 @@ venv/
 Thumbs.db
 .gemini/
 scratch/
+.audit_tmp/
 study_guide/
 rerun_pipeline.ipynb
-results/
+
+# results/: everything ignored by default, EXCEPT the Release-1 per-sample prediction
+# fixtures consumed by scripts/audit_fixture_consistency.py (staged explicitly; the
+# audit recomputes metrics from them).
+results/*
+!results/release1_run/
+results/release1_run/*
+!results/release1_run/test_predictions.json
+!results/release1_run/temporal_test_predictions.json
 archive.zip
 deepfake_crops_512/
 .virtual_documents/

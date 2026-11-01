@@ -27,9 +27,22 @@ import numpy as np
 import torch
 
 from src.dataset.preprocess import DynamicFaceCropper
-from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.models.hybrid_detector import (
+    HybridDeepfakeDetector,
+    assert_critical_weights_loaded,
+)
 from src.models.temporal_head import BiGRUTemporalDetector
-from src.utils.checkpoint import clean_state_dict
+from src.services.video_engine import process_video_frames
+from src.utils.calibration_release1 import (
+    EFFECTIVE_TEMPERATURE,
+    OPTIMAL_THRESHOLD,
+    PLATT_BIAS_B,
+    PLATT_SCALE_A,
+    TAU_FAKE,
+    TAU_REAL,
+    TEMPORAL_OPTIMAL_THRESHOLD,
+)
+from src.utils.checkpoint import classify_three_zone, clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("predict_cli")
@@ -66,10 +79,10 @@ def load_detector(
     ckpt = torch.load(weights_path, map_location=device, weights_only=False)
 
     calib_params = {
-        "platt_scale_a": 0.2783,
-        "platt_bias_b": 0.4089,
-        "optimal_threshold": 0.2600,
-        "temperature": 3.5931,
+        "platt_scale_a": PLATT_SCALE_A,
+        "platt_bias_b": PLATT_BIAS_B,
+        "optimal_threshold": OPTIMAL_THRESHOLD,
+        "temperature": EFFECTIVE_TEMPERATURE,
     }
 
     # Traceability: record whether the calibration constants actually came from the
@@ -90,6 +103,9 @@ def load_detector(
                 calib_params[k] = float(calib_dict[k])
             elif k in ckpt:
                 calib_params[k] = float(ckpt[k])
+        for k in ("tau_real", "tau_fake"):
+            if k in calib_dict:
+                calib_params[k] = float(calib_dict[k])
         if "effective_temperature" in calib_dict:
             calib_params["temperature"] = float(calib_dict["effective_temperature"])
     else:
@@ -106,19 +122,37 @@ def load_detector(
     calib_params["calibration_source"] = calibration_source
     calib_params["weights_source"] = weights_path
 
-    model.load_state_dict(clean_state_dict(state_dict), strict=False)
+    incompatible_keys = model.load_state_dict(clean_state_dict(state_dict), strict=False)
+    if len(state_dict) == 0:
+        # Placeholder weights (e.g. CLI smoke tests using {"model_state_dict": {}}): there
+        # are no parameters to be silently dropped, so keep the legacy structural-report
+        # behavior but say loudly that the backbones are randomly initialized.
+        logger.warning(
+            "Checkpoint %s contains no model weights; running with randomly initialized "
+            "backbones (placeholder-weights behavior).",
+            weights_path,
+        )
+    else:
+        assert_critical_weights_loaded(model, incompatible_keys)
     model.to(device)
     model.eval()
     return model, calib_params
 
 
-def classify_zone(prob: float, tau_star: float = 0.26) -> dict[str, Any]:
-    """Classifies posterior probability into Bayesian 3-zone operational triage."""
-    if prob <= 0.40:
+def classify_zone(prob: float, tau_star: float = OPTIMAL_THRESHOLD) -> dict[str, Any]:
+    """Classifies posterior probability into the Bayesian 3-zone operational triage.
+
+    Thin adapter over ``src.utils.checkpoint.classify_three_zone`` so the CLI and the
+    serving engine share a single triage policy; the legacy Zone 1/2/3 wording is kept
+    for CLI/JSON report compatibility.
+    """
+    zone_result = classify_three_zone(prob, tau_real=TAU_REAL, tau_fake=TAU_FAKE)
+    zone_key = zone_result["zone"]
+    if zone_key == "high_confidence_real":
         zone = "Zone 1: Authentic Clearance"
         action = "Cleared (Low synthetic probability)"
         risk = "Low"
-    elif prob < 0.60:
+    elif zone_key == "ambiguity_zone":
         zone = "Zone 2: Human Forensic Review"
         action = "Flagged for manual expert review (Ambiguous posterior)"
         risk = "Moderate (High forensic entropy)"
@@ -205,72 +239,52 @@ def predict_video(
     calib: dict[str, float],
     device: torch.device,
     max_frames: int = 8,
-    frame_stride: int = 2,
 ) -> dict[str, Any]:
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise ValueError(f"Could not open video file: {video_path}")
+    """Video verdict JSON, delegating sampling/inference to the serving engine.
 
-    frames_rgb: list[np.ndarray] = []
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
+    Unifies the CLI with ``src.services.video_engine.process_video_frames`` so the CLI and
+    the Streamlit app share one video pipeline: uniform keyframe sampling, horizontal-flip
+    TTA (both Platt-calibrated), and BiGRU temporal scoring when a temporal head is present.
+    Mapping keeps the legacy JSON schema (names and rounding) unchanged:
 
-    frame_idx = 0
-    while True:
-        ret, frame_bgr = cap.read()
-        if not ret:
-            break
-        if frame_idx % frame_stride == 0:
-            frames_rgb.append(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
-            if len(frames_rgb) >= max_frames:
-                break
-        frame_idx += 1
-    cap.release()
+    - ``frame_probabilities`` / ``mean`` / ``max``  <- engine per-frame calibrated probs
+    - ``temporal_bigru_probability``                <- engine sigmoid(video logit) if temporal ran
+    - ``calibrated_posterior_probability``          <- temporal video prob if temporal ran,
+      else mean frame probability (legacy aggregation policy: mean)
+    """
+    result = process_video_frames(
+        video_path,
+        pytorch_model=model,
+        cropper=cropper,
+        aggregation_method="mean",
+        num_frames=max_frames,
+        temporal_model=temporal_model,
+        platt_a=calib["platt_scale_a"],
+        platt_b=calib["platt_bias_b"],
+        device=device,
+    )
+    if result is None:
+        raise ValueError(f"Could not open video or no faces detected: {video_path}")
 
-    if not frames_rgb:
-        raise ValueError(f"No frames could be extracted from video: {video_path}")
-
-    crops_rgb: list[np.ndarray] = []
-    for f in frames_rgb:
-        c = cropper.crop_face(f, target_size=256)
-        if c is None:
-            c = cv2.resize(f, (256, 256), interpolation=cv2.INTER_AREA)
-        crops_rgb.append(c)
-
-    tensors = [torch.from_numpy(c).permute(2, 0, 1).float() / 255.0 for c in crops_rgb]
-    batch = torch.stack(tensors, dim=0)  # (T, 3, 256, 256)
-    batch = batch.to(device)
-
-    with torch.inference_mode():
-        logits, _ = model(batch, return_aux=True)
-        raw_logits = logits.view(-1).cpu().numpy()
-
-    a = calib["platt_scale_a"]
-    b = calib["platt_bias_b"]
-    frame_probs = 1.0 / (1.0 + np.exp(-(a * raw_logits + b)))
-
+    frame_probs: list[float] = result["all_probs"]
     mean_prob = float(np.mean(frame_probs))
     max_prob = float(np.max(frame_probs))
 
-    # Temporal head inference if available
-    temporal_prob = None
-    if temporal_model is not None and len(crops_rgb) >= 4:
-        with torch.inference_mode():
-            feats = model.extract_features(batch)  # (T, 512)
-            seq_feats = feats.unsqueeze(0)  # (1, T, 512)
-            seq_logits, _ = temporal_model(seq_feats)
-            temporal_logit = float(seq_logits[0].item())
-            temporal_prob = float(torch.sigmoid(torch.tensor(temporal_logit)).item())
+    # Temporal-head verdict if the engine ran it (attention list is non-None only then).
+    temporal_prob: float | None = None
+    if result.get("temporal_attention") is not None:
+        temporal_prob = float(result["raw_video_prob"])
 
     effective_prob = temporal_prob if temporal_prob is not None else mean_prob
     if temporal_prob is not None:
         if "temporal_optimal_threshold" in calib:
             effective_threshold = float(calib["temporal_optimal_threshold"])
         else:
-            effective_threshold = 0.1100
+            effective_threshold = TEMPORAL_OPTIMAL_THRESHOLD
             logger.warning(
                 "temporal_optimal_threshold missing from the calibration sidecar; using "
-                "legacy fallback 0.1100 (provenance unverified, see AUDIT_REPORT.md 3.5)."
+                f"legacy fallback {TEMPORAL_OPTIMAL_THRESHOLD} (provenance unverified, "
+                "see AUDIT_REPORT.md section 3.5)."
             )
     else:
         effective_threshold = calib["optimal_threshold"]
@@ -279,13 +293,13 @@ def predict_video(
     return {
         "input_path": video_path,
         "media_type": "video",
-        "total_video_frames": total_frames,
-        "analyzed_frames": len(crops_rgb),
-        "fps": round(fps, 2) if fps else 30.0,
+        "total_video_frames": int(result["total_frames"]),
+        "analyzed_frames": len(result["all_faces"]),
+        "fps": round(float(result["fps"]), 2) if result["fps"] else 30.0,
         "frame_probabilities": [round(float(p), 4) for p in frame_probs],
         "mean_frame_probability": round(mean_prob, 4),
         "max_frame_probability": round(max_prob, 4),
-        "temporal_bigru_probability": round(temporal_prob, 4) if temporal_prob else None,
+        "temporal_bigru_probability": round(temporal_prob, 4) if temporal_prob is not None else None,
         "calibrated_posterior_probability": round(effective_prob, 4),
         "triage": triage,
         "calibration": {
