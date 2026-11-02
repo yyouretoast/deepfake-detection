@@ -23,11 +23,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest
+          pip install ruff==0.17.3 pytest
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
       - name: Run Ruff Linter
-        run: ruff check src scripts tests app.py predict.py
+        run: ruff check --output-format=github src scripts tests app.py predict.py
 
       - name: Run Pytest Suite
         run: python -m pytest tests/ -v
