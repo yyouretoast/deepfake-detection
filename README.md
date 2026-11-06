@@ -17,7 +17,7 @@ license: mit
 
 [![CI Test Suite](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/yyouretoast/deepfake-detection/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-160%20collected-success?style=flat&logo=pytest&logoColor=white)](tests/)
-[![Python 3.10 | 3.11](https://img.shields.io/badge/Python-3.10%20%7C%203.11-3776AB?style=flat&logo=python&logoColor=white)](pyproject.toml)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat&logo=python&logoColor=white)](pyproject.toml)
 
 [![PyTorch 2.1+](https://img.shields.io/badge/PyTorch-2.1+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Accelerate DDP](https://img.shields.io/badge/Accelerate-DDP-005CED?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/docs/accelerate)
@@ -26,7 +26,34 @@ license: mit
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[**Live Interactive Demo**](https://huggingface.co/spaces/yyouretoast/deepfake-detector) • [**Model Zoo**](#model-zoo--checkpoint-downloads) • [**Quickstart**](#quickstart) • [**Benchmarks**](#empirical-benchmarks--literature-comparison) • [**System Architecture**](#system-architecture--methodology) • [**Zero-GPU Reproduction**](#zero-gpu-figure-reproduction) • [**BibTeX**](#academic-citation)
+<img src="figures/teaser_concept.png" width="94%" alt="Teaser figure: (a) the spatial-frequency asymmetry paradox, (b) physical acquisition vs. generative artifacts (PRNU noise vs. 2D FFT Dirac lattice), (c) the proposed SNR-adaptive gate mediation" />
+
+<details>
+<summary><b>📑 Table of Contents</b> — click to expand</summary>
+
+1. [**Live Demo (Hugging Face Space)**](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
+2. [4-Panel Forensic Diagnostics](#4-panel-forensic-diagnostics-authentic-vs-deepfake)
+3. [System Methodology](#system-methodology)
+4. [Model Zoo & Checkpoint Downloads](#model-zoo--checkpoint-downloads)
+5. [Quickstart](#quickstart) — installation, CLI, Python API, web dashboard
+6. [Empirical Benchmarks & Literature Comparison](#empirical-benchmarks--literature-comparison)
+   - [Held-Out Evaluation Benchmark](#1-held-out-evaluation-benchmark-n--26981-crops-2248-video-sequences)
+   - [Fine-Grained Subdomain Breakdown](#2-fine-grained-subdomain-performance-breakdown)
+   - [Cross-Generator LOMO Benchmark](#3-cross-generator-generalization--canonical-4-fold-lomo-benchmark)
+   - [Robustness Stress-Testing](#4-robustness-stress-testing-under-forensic-degradations)
+7. [Zero-GPU Figure Reproduction](#zero-gpu-figure-reproduction)
+8. [System Architecture & Methodology](#system-architecture--methodology)
+9. [Dataset Layout & Split Protocol](#dataset-layout--split-protocol)
+10. [Technical Specifications](#technical-specifications)
+11. [Academic References](#academic-references)
+12. [Data Use Agreements & Ethical Compliance](#data-use-agreements--ethical-compliance)
+13. [Known Limitations](#known-limitations-read-before-deploying-or-citing)
+14. [Roadmap](#roadmap)
+15. [Contributing](#contributing)
+16. [Contact](#contact)
+17. [Academic Citation](#academic-citation)
+
+</details>
 
 </div>
 
@@ -75,6 +102,11 @@ Intermediate representations extracted across the spatial, residual steganograph
 ## Model Zoo & Checkpoint Downloads
 
 All model weights are hosted on the Hugging Face Model Hub: [`yyouretoast/deepfake-detector`](https://huggingface.co/yyouretoast/deepfake-detector).
+
+Full model card: [**`MODEL_CARD.md`**](MODEL_CARD.md) — canonical metrics, intended use, in-depth limitations, and hosted-checkpoint inventory.
+
+> [!WARNING]
+> **Do not copy Phase-1 metrics from older artifacts of this project.** Until 2026-11-06, the `model-index` metadata on [`yyouretoast/deepfake-detector`](https://huggingface.co/yyouretoast/deepfake-detector) carried stale Phase-1 values (Video ROC AUC `0.8719`, single-frame AUC `0.8248`, ECE `0.005`, EER `0.1898`) from an earlier evaluation export; it now reports the canonical Release-1 numbers. The canonical, audited figures live in this README and in [`MODEL_CARD.md`](MODEL_CARD.md) (video **0.8994** / frame **0.8656** AUC, ECE **0.0994**, EER **18.54% / 21.82%**) — disregard any older export quoting the Phase-1 values.
 
 | Model Checkpoint | Weights File | Parameters | Size | Task / Domain | ROC AUC | Calibrated Threshold ($\tau^*$) | SHA-256 Checksum | Direct Download |
 | :--- | :--- | :---: | :---: | :--- | :---: | :---: | :---: | :---: |
@@ -177,6 +209,12 @@ streamlit run app.py
 # Option B: Docker Container
 docker build -t deepfake-detector . && docker run -p 8501:8501 deepfake-detector
 ```
+<div align="center">
+  <img src="figures/app_dashboard.png" width="92%" alt="Local Streamlit forensic dashboard: hero panel with device and Bi-GRU status pills, single photo / video mode radio buttons, image upload intake, sidebar with decision threshold (τ* = 0.26), sampled keyframes (N = 16), temporal aggregation policy (soft_max) and live architecture telemetry" />
+</div>
+
+*Screenshot: the local Streamlit dashboard — the same UI as the live Hugging Face Space. Dual intake modes (photo / video), decision-threshold and temporal-aggregation controls, and live architecture telemetry.*
+
 Access the application at `http://localhost:8501` supporting:
 * **Single Photo / Frame Mode**: Drag-and-drop intake with real-time gating and noise parameters ($g, \gamma, \sigma^2$) and the complete 4-panel diagnostic quad.
 * **Video Sequence Mode**: Temporal anomaly timeline with amber Bi-GRU attention highlight markers ($\alpha_t > 1/T$), interactive frame scrubbing, and structured JSON report export.
@@ -197,6 +235,8 @@ Evaluated across the strictly disjoint held-out test cohort (7,609 authentic, 19
 | Naive Uniform Frame Averaging | Video | $8 \times 256^2$ | 0.8962 | 0.9559 | 0.8515 | 81.98% | 93.28% | 78.31% | 19.43% |
 | Temporal Max-Pooling | Video | $8 \times 256^2$ | 0.8544 | 0.9167 | 0.8785 | 77.48% | 87.00% | 88.72% | 21.48% |
 | **Spatiotemporal Bi-GRU (Ours)** | **Video** | **$8 \times 256^2$** | **0.8994** | **0.9571** | **0.8517** | **82.28%** | **93.62%** | **78.13%** | **18.54%** |
+
+*Sequence accounting: the split manifest defines **2,250** unique test videos. Frame-level metrics cover all 26,981 crops of those videos; the video-level export covers **2,248** sequences (per-source `n_videos` fields in `results/release1_run/release1_results.json` and `results/release1_run/temporal_subdomain_results.json`) — two manifest videos contribute no video-level prediction. Frame benchmarks therefore report N = 26,981 crops over 2,250 videos, and video benchmarks report N = 2,248 sequences.*
 
 <details>
 <summary><b>📊 Click to view ROC / Precision-Recall curves & calibration reliability diagram</b></summary>
@@ -223,6 +263,8 @@ Evaluated on held-out test synthetic media alongside matched authentic controls 
 | **Celeb-DF v2** | 5,700 | 0.9128 | 0.8754 | 0.9162 | 0.8381 | 2.45 : 1 |
 | **Google DFD (Zero-Shot)** | 11,992 | 0.8651 | 0.8201 | 0.9727 | 0.7090 | 7.14 : 1 |
 | **Complete Test Cohort** | **19,372** | **0.8656** | **0.8292** | **0.9051** | **0.7650** | **2.55 : 1** |
+
+*Coverage note: the rows above itemize **19,048** fake crops (1,356 FF++ generator fakes + 5,700 Celeb-DF v2 + 11,992 DFD, metrically matching `results/release1_run/subdomain_results.json`). The remaining **324** test fakes — tagged `ffpp_extended` in `splits/test_split.csv` — are additional FF++-domain manipulations not broken out by subdomain; together both parts form the complete 19,372-fake cohort summarized in the "Complete Test Cohort" row (whose metrics replicate the headline frame-level table).*
 
 ---
 
@@ -382,7 +424,7 @@ $$
 | **Test** | 26,981 | 27.2% | 7,609 | 19,372 | 2.55 : 1 | 2,250 |
 | **Total** | **99,101** | **100.0%** | **22,669** | **76,432** | **3.37 : 1** | **8,260** |
 
-*Note: All counts reflect verified unique face crops across disjoint actor identity partitions. Pair-disjoint FF++ partitions: 720 train, 140 val, 140 test videos. Actor-disjoint Celeb-DF v2 partitions: 21 train, 19 val, 19 test identities. Unseen zero-shot Google DFD: 1,300 videos (15,592 crops). FaceForensics++ source videos used the **c23 (quality 23, high-quality)** compression level; crops were re-encoded to WebP (quality 90) during preprocessing.*
+*Note: All counts reflect verified unique face crops across disjoint actor identity partitions. Pair-disjoint FF++ partitions: 720 train, 140 val, 140 test videos. Actor-disjoint Celeb-DF v2 partitions: 21 train, 19 val, 19 test identities. Unseen zero-shot Google DFD: 1,300 videos (15,592 crops). FaceForensics++ source videos used the **c23 (quality 23, high-quality)** compression level; crops were re-encoded to WebP (quality 90) during preprocessing. Video-level metrics cover 2,248 of these 2,250 test videos — see the sequence-accounting note in Benchmarks §1.*
 
 *Note on split skew: the validation split's 7.74:1 fake:real ratio is not an error — it stems from the actor-graph partitioning combined with per-identity Celeb-DF synthesis density (the 19 validation celebrities contribute ~29k synthetic crops). The validation split is used for best-checkpoint selection (Val Macro-AUC), temperature/T\* fitting, and dual-threshold fitting; no weights are trained on it. All headline metrics come from the held-out **test** split reported above. The 2.55:1 test skew inflates F1/precision-adjacent headline framing — hence "always fake" F1 = 0.8358 (see Trivial Baseline row) exceeding the model's 0.8292; the skew-robust metrics (ROC AUC, EER, balanced accuracy) are the primary claims.*
 
@@ -489,19 +531,25 @@ deepfake-detection/
 │   ├── main.tex                       # Primary LaTeX publication document (12 pages)
 │   ├── supplementary.tex              # Standalone Supplementary Material (Appendices A-I)
 │   └── figures/                       # Publication vector PDFs (*.pdf) for LaTeX compilation
+├── models/                            # YuNet face detector (ONNX) + checkpoints fetched from the Model Zoo
 ├── notebooks/                         # Turnkey Jupyter reproduction notebooks
 │   └── master_pipeline.ipynb          # End-to-end multi-GPU training, evaluation & export
 ├── predict.py                         # Turnkey unified inference CLI tool
+├── results/                           # Release-1 evaluation artifacts: prediction fixtures, logs, metric JSONs
 ├── scripts/                           # Standalone CLI execution entry points
 │   ├── audit_fixture_consistency.py   # Recompute metrics from prediction fixtures vs published claims
+│   ├── audit_splits_and_confounds.py  # Class-balance / identity-confound audit over raw FF++ splits.json manifests
 │   ├── benchmark_latency.py           # Latency & throughput benchmarking (PyTorch CUDA/CPU & ONNX Runtime)
+│   ├── build_html_preview.py          # Interactive publication-quality HTML preview of manuscript/main.tex
 │   ├── build_release1_splits.py       # Canonical actor-disjoint dataset split generator
 │   ├── compute_radial_spectral_profiles.py # 1D Azimuthal radial power spectrum generator
 │   ├── compute_table5_ablations.py    # Architecture ablation suite generator
 │   ├── evaluate_robustness.py         # Degradation perturbation stress sweeps
+│   ├── evaluate_statistical_significance_and_domain_probe.py # DeLong/paired-bootstrap significance testing + domain-classifier probe
 │   ├── evaluate_subdomain_breakdown.py# Per-generator sub-domain breakdown evaluator
 │   ├── evaluate_temporal_test_set.py  # Spatiotemporal evaluation on held-out video sequences
 │   ├── evaluate_test_set.py           # Single-frame evaluation, T* & operational thresholds
+│   ├── extract_face_crops.py          # Threaded YuNet face-crop extractor from raw source videos
 │   ├── export_onnx.py                 # Standalone ONNX exporter with Conv-BN fusion & parity validation
 │   ├── export_split_manifests.py      # Split metadata manifest exporter
 │   ├── export_test_predictions.py     # Single-frame probability exporter
@@ -510,6 +558,7 @@ deepfake-detection/
 │   ├── generate_publication_figures.py# Complete 11 publication figure compiler
 │   ├── package_arxiv.py               # ArXiv submission bundle packager
 │   ├── profile_latency_live.py        # Live GPU/CPU event-based profiling
+│   ├── recalibrate_and_evaluate.py    # Recalibration (τ*, dual thresholds) + evaluation on sanitized splits
 │   ├── run_lomo_canonical.py          # 4-fold Leave-One-Manipulation-Out evaluation
 │   ├── run_release1_kaggle.py         # Standalone 2× T4 Kaggle reproduction pipeline
 │   ├── train_dual_stream_ddp.py       # Multi-GPU DDP training (ResSE architecture)
@@ -563,11 +612,49 @@ This repository distributes **only** algorithmic source code, neural network wei
 
 1. **Not a production detector.** Under real-world degradations the model degrades quickly: JPEG Q30 → 0.7410 AUC, Gaussian blur σ=3 → 0.7232, σ=4 → 0.6722, additive noise σ=10 → 0.7576. Social-media transmission regimes sit exactly here. Zero-shot acquisition-shift transfer is near chance (0.5763 AUC in Fold 5 LOTO). Verdicts must not be treated as forensic proof; the "3-zone" output is a triage policy, and Zone 3 ("Confirmed Synthetic") expresses calibrated-posterior confidence, not forensic certainty.
 2. **Temporal-head improvement is not yet established as significant.** The Bi-GRU's AUC delta over naive uniform frame averaging is +0.003 (0.8994 vs 0.8962). No paired significance test has been run on the full cohort; treat the temporal claim as unproven until a per-sample re-export enables DeLong/paired-bootstrap testing (`scripts/evaluate_statistical_significance_and_domain_probe.py` already implements them).
-3. **Reproducibility and Fixtures.** `results/release1_run/test_predictions.json` contains the full $N = 26{,}981$ test crop predictions exported with Platt scaling and exact operating thresholds, reproducing all headline test metrics without drift (`scripts/audit_fixture_consistency.py`). Compact sample fixtures under `tests/fixtures/` are provided for rapid local test execution without GPU hardware.
+3. **Reproducibility and Fixtures.** `results/release1_run/test_predictions.json` contains the full $N = 26{,}981$ test crop predictions exported with Platt scaling and exact operating thresholds, reproducing all headline test metrics without drift (`scripts/audit_fixture_consistency.py`). The pytest suite runs GPU-free by design (CI installs the CPU-only PyTorch wheel); no compact per-test fixtures are currently bundled — the per-sample exports under `results/release1_run/` serve as the fixtures (see Zero-GPU Figure Reproduction), and lightweight per-test fixture packs are on the Roadmap.
 4. **Robustness is reported as AUC only.** Operating-point (τ*) precision/recall under each degradation has not yet been measured; threshold behavior under degradation is unknown.
 5. **Single-generation compression only.** Robustness was tested against single-step JPEG/noise/blur/downscale; multi-generation transcoding chains (WhatsApp → TikTok → YouTube) are untested.
 6. **Robustness attribution is correlative.** The spectral-branch vs spatial-branch attribution of degradation sensitivity is inferred from the gating telemetry, not from isolated stream ablations under identical perturbed inputs.
 7. **Training provenance:** all Release-1 artifacts were trained locally on one NVIDIA GeForce RTX 4060 Laptop GPU (5 epochs backbone + 5 epochs temporal head; per-epoch logs in `results/release1_run/release1_pipeline.log`; seeding via fixed `seed=42` defaults in `scripts/run_release1_kaggle.py` / `scripts/build_release1_splits.py`). `requirements.txt` is the single dependency manifest (pinned ranges).
+
+---
+
+## Roadmap
+
+- [ ] **Settle the temporal-head claim with significance testing** — full per-sample temporal re-export to enable paired DeLong / bootstrap tests (both already implemented in `scripts/evaluate_statistical_significance_and_domain_probe.py`); resolves whether the +0.003 AUC delta over naive frame averaging is real (Limitation #2).
+- [ ] **Operating-point robustness** — measure τ*-stage precision/recall under each of the 16 degradation profiles; robustness is currently reported as AUC only (Limitation #4).
+- [ ] **Per-stream degradation ablations** — sweep spatial-only vs. spectral-only on identical perturbed inputs to move beyond the correlative gating-telemetry attribution (Limitation #6).
+- [ ] **Multi-generation transcoding chains** — evaluate chained social-media regimes (WhatsApp → TikTok → YouTube re-encode/reframe/recompress loops), currently untested (Limitation #5).
+- [ ] **GPU-free compact test fixtures** — bundle small per-test fixtures so the suite executes without checkpoint downloads (Limitation #3).
+- [x] **Update stale Hugging Face model-index metadata** — done 2026-11-06: canonical Release-1 values now live on the Hub (details in the Model Zoo warning).
+- [ ] **Publish the arXiv preprint** — replaces the "in preparation" BibTeX note in Academic Citation.
+
+---
+
+## Contributing
+
+Issues, bug reports, robustness experiments, docs, and test coverage are welcome.
+
+1. Fork the repo and create a branch (`git checkout -b feature/my-change`).
+2. Dev setup: `pip install -r requirements.txt` — the full pytest suite runs on CPU-only hardware.
+3. Lint and test before opening the PR:
+   ```bash
+   ruff check src scripts tests app.py predict.py
+   python -m pytest tests/ -v
+   ```
+   Style rules live in `pyproject.toml` (ruff, 100-char lines).
+
+> [!IMPORTANT]
+> Institutional data-use agreements forbid redistributing FaceForensics++ / Celeb-DF v2 / Google DFD source media. Please PR code, split manifests (`splits/`), and evaluation fixtures only — never crops, frames, or videos.
+
+---
+
+## Contact
+
+- **Maintainer**: Yassin Yasser — [@yyouretoast on GitHub](https://github.com/yyouretoast) · [Hugging Face profile](https://huggingface.co/yyouretoast)
+- **Bugs & questions**: [open a GitHub issue](https://github.com/yyouretoast/deepfake-detection/issues)
+- **Live demo**: [Hugging Face Space](https://huggingface.co/spaces/yyouretoast/deepfake-detector)
 
 ---
 
