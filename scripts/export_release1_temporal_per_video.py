@@ -10,7 +10,6 @@ Sanity gates (must hold or the run is NOT canonical):
   * temporal/exported video AUC == 0.8994
 """
 
-import argparse
 import csv
 import hashlib
 import json
@@ -21,24 +20,24 @@ import sys
 import numpy as np
 import torch
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    average_precision_score,
+    balanced_accuracy_score,
+    roc_auc_score,
+    roc_curve,
+)
 from torch.utils.data import DataLoader
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from scripts.evaluate_temporal_test_set import evaluate_loader  # noqa: E402
-from src.dataset.loader import SequenceVideoDataset, get_transforms, group_video_sequences  # noqa: E402
-from src.evaluation.metrics import compute_eer  # noqa: E402
-from src.models.hybrid_detector import HybridDeepfakeDetector  # noqa: E402
-from src.models.temporal_head import BiGRUTemporalDetector  # noqa: E402
-from src.utils.checkpoint import clean_state_dict  # noqa: E402
-from sklearn.metrics import (  # noqa: E402
-    average_precision_score,
-    balanced_accuracy_score,
-    roc_auc_score,
-    roc_curve,
-)
+from scripts.evaluate_temporal_test_set import evaluate_loader
+from src.dataset.loader import SequenceVideoDataset, get_transforms, group_video_sequences
+from src.evaluation.metrics import compute_eer
+from src.models.hybrid_detector import HybridDeepfakeDetector
+from src.models.temporal_head import BiGRUTemporalDetector
+from src.utils.checkpoint import clean_state_dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
