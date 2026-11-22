@@ -329,10 +329,10 @@ Table~\ref{tab:robustness_benchmarks} provides full numerical results across all
 \label{fig:gating_attenuation_dynamics}
 \end{figure}
 
-\section{Calibration Reliability Diagrams and Bayesian Triage}
+\section{Calibration Reliability Diagrams and Dual-Threshold Triage}
 \label{app:calibration_triage}
 
-Fig.~\ref{fig:calibration_reliability} presents calibration reliability diagrams before and after Platt scaling. Fig.~\ref{fig:bayesian_decision_zones} displays empirical score distributions across Bayesian triage zones.
+Fig.~\ref{fig:calibration_reliability} presents calibration reliability diagrams before and after Platt scaling. Fig.~\ref{fig:bayesian_decision_zones} displays empirical score distributions across the dual-threshold 3-zone triage policy.
 
 \begin{figure}[t]
 \centering
@@ -344,7 +344,7 @@ Fig.~\ref{fig:calibration_reliability} presents calibration reliability diagrams
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/bayesian_decision_zones.pdf}
-\caption{\textbf{Bayesian Three-Zone Decision Policy.} Calibrated posterior distribution partitioned into Zone 1 (Automated Clearance, $\hat{p} \le 0.40$), Zone 2 (Forensic Review, $0.40 < \hat{p} < 0.60$), and Zone 3 (Automated Interdiction, $\hat{p} \ge 0.60$).}
+\caption{\textbf{Calibrated Three-Zone Decision Policy.} Calibrated posterior distribution partitioned into Zone 1 (Automated Clearance, $\hat{p} \le 0.40$), Zone 2 (Forensic Review, $0.40 < \hat{p} < 0.60$), and Zone 3 (Automated Interdiction, $\hat{p} \ge 0.60$).}
 \label{fig:bayesian_decision_zones}
 \end{figure}
 
@@ -380,7 +380,7 @@ SNR Fusion Gating \& Classification Heads & 0.06 & 0.4 \\
 }
 \end{table}
 
-\section{Dual-Stream Forensic Inference and Bayesian Triage Algorithm}
+\section{Dual-Stream Forensic Inference and Dual-Threshold Triage Algorithm}
 \label{app:algorithm}
 
 Algorithm~1 formalizes the end-to-end inference and triaging workflow.
@@ -393,7 +393,7 @@ Algorithm~1 formalizes the end-to-end inference and triaging workflow.
 \textbf{Algorithm 1: Dual-Stream Spatial-Frequency Video Verification} \\
 \midrule
 \textbf{Input}: Video stream $\mathcal{V}$, Model $\{\mathcal{M}_{\mathrm{spatial}}, \mathcal{M}_{\mathrm{spec}}, \mathcal{G}, \mathcal{H}_{\mathrm{seq}}\}$, Calibration $\{a, b\}$, Thresholds $\{\tau^*, \tau_{\mathrm{real}}, \tau_{\mathrm{fake}}\}$. \\
-\textbf{Output}: Calibrated probability $\hat{p}$, Bayesian triage zone $\mathcal{Z}$, Forensic verdict. \\
+\textbf{Output}: Calibrated probability $\hat{p}$, triage zone $\mathcal{Z}$, Forensic verdict. \\
 \midrule
 1: Extract $T = 8$ uniformly sampled frames $\{I_1, I_2, \dots, I_T\}$ at stride $s = 2$ (up to $T=30$ for inference). \\
 2: \textbf{for} each frame $I_t \in \mathcal{V}$ \textbf{do} \\

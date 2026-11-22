@@ -186,7 +186,7 @@ def generate_figure1_clean_architecture():
     ax.add_patch(FancyBboxPatch((126.0, 4.0), 47.5, 79.0, boxstyle="round,pad=0.3,rounding_size=0.8", facecolor=AMBER_BG, edgecolor=AMBER_BORDER, lw=1.0, zorder=0))
 
     # Section Headers
-    draw_section_pill(2.5, 78.5, 21.5, 3.5, "I. PREPROCESSING & ALIGNMENT", SLATE_DARK, "white", BORDER_GRAY, fontsize=6.6)
+    draw_section_pill(2.2, 78.5, 22.1, 3.5, "I. PREPROCESSING & ALIGNMENT", SLATE_DARK, "white", BORDER_GRAY, fontsize=6.0)
     draw_section_pill(27.5, 78.5, 40.0, 3.5, "II-A. SPATIAL STREAM: ConvNeXt-Small (49.8M)", BLUE_MAIN, "white", BLUE_BORDER, fontsize=8.0)
     draw_section_pill(27.5, 39.0, 38.0, 3.5, "II-B. SPECTRAL STREAM: ResSE Tower (2.99M)", PURPLE_MAIN, "white", PURPLE_BORDER, fontsize=8.0)
     draw_section_pill(86.5, 78.5, 36.5, 3.5, "III. SNR-ADAPTIVE GATED FUSION", GREEN_MAIN, "white", GREEN_BORDER, fontsize=8.0)
@@ -307,7 +307,7 @@ def generate_figure1_clean_architecture():
     # 5. COLUMN 3: SNR-ADAPTIVE GATING CIRCUIT & CLEAN ROUTING
     # Clean X_noise corridor along y=5.5 (completely below all boxes)
     draw_ortho_arrow([(33.75, 11.0), (33.75, 5.5), (94.0, 5.5), (94.0, 8.5)], col=GREEN_MAIN, lw=1.3)
-    ax.text(48.0, 6.7, "$\\mathbf{X}_{\\mathrm{noise}}$ Filter Residuals $\\in \\mathbb{R}^{10 \\times 256^2}$", fontsize=7.0, fontweight="bold", color=GREEN_MAIN)
+    ax.text(56.0, 5.5, "$\\mathbf{X}_{\\mathrm{noise}}$ Filter Residuals $\\in \\mathbb{R}^{10 \\times 256^2}$", fontsize=6.8, fontweight="bold", color=GREEN_MAIN, va="center", ha="center", bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "none", "alpha": 0.94}, zorder=5)
 
     # Noise Power Monitor Box (Bottom of Column 3: [8.5, 20.5])
     draw_layer_box(88.0, 8.5, 33.5, 12.0, "Noise Power Monitor Circuit",
@@ -354,11 +354,11 @@ def generate_figure1_clean_architecture():
 
     # Fused Output Vector f_fused -> Branch A Bus (Route cleanly into Branch A)
     draw_ortho_arrow([(121.5, 71.0), (124.0, 71.0), (124.0, 64.0), (129.5, 64.0)], col=DARK_NAVY, lw=1.4)
-    ax.text(122.8, 72.2, "$\\mathbf{f}_{\\mathrm{fused}}$", fontsize=6.8, fontweight="bold", color=DARK_NAVY, ha="center")
+    ax.text(124.0, 73.2, "$\\mathbf{f}_{\\mathrm{fused}}$", fontsize=6.8, fontweight="bold", color=DARK_NAVY, ha="center", bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.92}, zorder=5)
 
     # Video Embedding e_t -> Branch B Bus (Route cleanly into Branch B)
     draw_ortho_arrow([(121.5, 66.0), (124.0, 66.0), (124.0, 41.0), (129.5, 41.0)], col=AMBER_MAIN, lw=1.4)
-    ax.text(122.8, 67.2, "$\\mathbf{e}_t$", fontsize=6.8, fontweight="bold", color=AMBER_MAIN, ha="center")
+    ax.text(124.0, 56.5, "$\\mathbf{e}_t$", fontsize=6.8, fontweight="bold", color=AMBER_MAIN, ha="center", bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.92}, zorder=5)
 
     # 6. COLUMN 4: DUAL FORENSIC HEADS & BAYESIAN TRIAGE
     # [BRANCH A] Single-Frame Classifier Card: [51.5, 76.5]
@@ -816,13 +816,13 @@ def generate_figure6_bayesian_zones():
     ax.text(0.50, 5.85, "Zone 2: Ambiguous\n$[0.40, 0.60)$ (5.1%)\nExpert Human Triage", ha="center", va="center", fontsize=7.6, fontweight="bold", color=AMBER_MAIN, bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": AMBER_BORDER, "lw": 1.0, "alpha": 0.95})
     ax.text(0.80, 5.85, "Zone 3: Confirmed\n$\\hat{p} \\geq 0.60$ (48.6%)\nAuto-Interdicted", ha="center", va="center", fontsize=7.6, fontweight="bold", color=RED_MAIN, bbox={"boxstyle": "round,pad=0.3", "fc": "white", "ec": RED_BORDER, "lw": 1.0, "alpha": 0.95})
 
-    ax.set_title("Operational Bayesian 3-Zone Triage Empirical Density on Held-Out Cohort", fontsize=10.5, fontweight="bold", pad=10)
+    ax.set_title("Calibrated Dual-Threshold 3-Zone Triage Density on Held-Out Cohort", fontsize=10.5, fontweight="bold", pad=10)
     ax.set_xlabel("Calibrated Posterior Probability $\\hat{p} = \\sigma(a \\cdot z + b)$", fontsize=9.5)
     ax.set_ylabel("Empirical Probability Density $p(\\hat{p})$", fontsize=9.5)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 6.6)
     ax.grid(True, linestyle=":", alpha=0.6)
-    ax.legend(fontsize=7.6, loc="upper right", bbox_to_anchor=(0.98, 0.82), framealpha=0.92)
+    ax.legend(fontsize=7.4, loc="upper center", bbox_to_anchor=(0.50, 0.78), framealpha=0.95)
 
     _save_fig(fig, "bayesian_decision_zones")
 
@@ -893,7 +893,7 @@ def generate_figure7_robustness():
     ax.set_ylabel("ROC AUC", fontsize=9)
     ax.set_ylim(0.45, 0.92)
     ax.grid(True, linestyle=":", alpha=0.6)
-    ax.legend(fontsize=7.8, loc="upper right", framealpha=0.9)
+    ax.legend(fontsize=7.8, loc="lower left", bbox_to_anchor=(0.02, 0.14), framealpha=0.92)
 
     _save_fig(fig, "robustness_curves")
 
@@ -911,7 +911,7 @@ def generate_figure8_real_qualitative(model):
     ]
 
     fig, axes = plt.subplots(4, 4, figsize=(11.5, 10.5), dpi=300)
-    plt.subplots_adjust(left=0.20, right=0.98, top=0.92, bottom=0.03, wspace=0.12, hspace=0.24)
+    plt.subplots_adjust(left=0.18, right=0.98, top=0.92, bottom=0.03, wspace=0.22, hspace=0.24)
 
     col_titles = [
         "(a) Aligned RGB Face Crop",
@@ -982,7 +982,7 @@ def generate_figure8_real_qualitative(model):
             ax.set_yticks([])
 
             if row_idx == 0:
-                ax.set_title(col_titles[col_idx], fontsize=9.5, fontweight="bold", pad=6)
+                ax.set_title(col_titles[col_idx], fontsize=8.8, fontweight="bold", pad=6)
 
             if col_idx == 0:
                 ax.set_ylabel(
@@ -1055,7 +1055,8 @@ def generate_figure9_video_timeline(model, t_model):
         deltas[i] = float(np.linalg.norm(feats_np[i] - feats_np[i - 1]))
 
     fig = plt.figure(figsize=(13.0, 7.2), dpi=300)
-    gs = plt.GridSpec(3, 10, height_ratios=[1.2, 1.0, 1.1], hspace=0.45, wspace=0.15)
+    gs = plt.GridSpec(3, 10, height_ratios=[1.2, 1.0, 1.1], hspace=0.48, wspace=0.15, top=0.88)
+    fig.text(0.51, 0.915, "(a) Consecutive Video Test Frames ($T=10, \\Delta k=1$)", ha="center", fontsize=9.5, fontweight="bold")
 
     for i in range(10):
         ax = fig.add_subplot(gs[0, i])
@@ -1075,14 +1076,14 @@ def generate_figure9_video_timeline(model, t_model):
     t_steps = np.arange(1, 11)
     ax_prob.plot(t_steps, frame_probs, "o-", color=BLUE_MAIN, lw=2.0, ms=5.5, label="Frame Posterior $\\hat{p}_t$")
     ax_prob.axhline(0.26, color=LINE_GRAY, linestyle="--", lw=1.2, label="Optimal Threshold ($\\tau^* = 0.26$)")
-    ax_prob.axhspan(0.40, 0.60, color=AMBER_BG, alpha=0.6, label="Zone 2: Human Review ($0.40 \\leq \\hat{p} < 0.60$)")
-    ax_prob.axhspan(0.60, 1.00, color=RED_BG, alpha=0.35, label="Zone 3: Confirmed Synthetic ($\\hat{p} \\geq 0.60$)")
+    ax_prob.axhspan(0.40, 0.60, color=AMBER_BG, alpha=0.85, label="Zone 2: Human Review ($0.40 \\leq \\hat{p} < 0.60$)")
+    ax_prob.axhspan(0.60, 1.00, color=RED_BG, alpha=0.55, label="Zone 3: Confirmed Synthetic ($\\hat{p} \\geq 0.60$)")
     ax_prob.set_xlim(0.8, 10.2)
     ax_prob.set_ylim(0.0, 1.05)
     ax_prob.set_ylabel("Posterior $\\hat{p}_t$", fontsize=9.0, fontweight="bold")
     ax_prob.set_xticks(t_steps)
     ax_prob.grid(True, linestyle=":", alpha=0.6)
-    ax_prob.legend(loc="lower right", fontsize=7.8, ncol=4, framealpha=0.95)
+    ax_prob.legend(loc="center", bbox_to_anchor=(0.50, 0.54), fontsize=7.6, ncol=4, framealpha=0.95)
     ax_prob.set_title("(b) Frame-Level Posterior Dynamics", fontsize=9.5, fontweight="bold", pad=4)
 
     ax_vel = fig.add_subplot(gs[2, :])
@@ -1263,8 +1264,8 @@ def generate_figure11_gating_dynamics(model):
     for col_idx, (cond_title, cond_img) in enumerate(conditions_raw):
         t_cond = torch.from_numpy(cond_img).permute(2, 0, 1).float().unsqueeze(0) / 255.0
         with torch.no_grad():
-            res_srm = model.srm_conv(t_cond)
-            res_bayar = model.bayar_conv(t_cond)
+            res_srm = model.srm(t_cond)
+            res_bayar = model.bayar(t_cond)
             noise_combined = torch.cat([res_srm, res_bayar], dim=1)
             noise_power = noise_combined.pow(2).mean(dim=[-2, -1]).mean(dim=1, keepdim=True)
             gamma_val = float(torch.clamp((noise_power - 0.005) / (0.025 - 0.005), min=0.0, max=1.0).item())
