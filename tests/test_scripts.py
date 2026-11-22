@@ -77,6 +77,7 @@ class TestRobustnessDegradations:
 
 
 class TestExportONNX:
+    @pytest.mark.slow
     def test_onnx_export_and_file_creation(self, tmp_path) -> None:
         try:
             import onnx  # noqa: F401
@@ -95,7 +96,7 @@ class TestExportONNX:
         model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
         model.eval()
 
-        dummy_input = torch.randn(1, 3, 256, 256, dtype=torch.float32)
+        dummy_input = torch.randn(1, 3, 64, 64, dtype=torch.float32)
         onnx_out = str(tmp_path / "test_model.onnx")
 
         try:
@@ -111,10 +112,8 @@ class TestExportONNX:
                 output_names=["logits"],
                 dynamic_shapes={"x": {0: torch.export.Dim.AUTO}},
             )
-        except (ModuleNotFoundError, ImportError, Exception) as e:
-            if "not supported" in str(e).lower() or "unsupported" in str(e).lower() or isinstance(e, (ModuleNotFoundError, ImportError)):
-                pytest.skip(f"ONNX export not supported in this environment: {e}")
-            raise
+        except (ModuleNotFoundError, ImportError) as e:
+            pytest.skip(f"ONNX export dependency missing in this environment: {e}")
 
         assert os.path.exists(onnx_out), "Exported ONNX file does not exist"
         assert os.path.getsize(onnx_out) > 1000, "Exported ONNX file is empty"
@@ -123,10 +122,10 @@ class TestExportONNX:
 class TestPredictCLI:
     """Verifies standalone predict.py CLI argument parsing and execution."""
 
-    def test_predict_cli_positional_and_json(self, tmp_path):
-        import subprocess
-
+    def test_predict_cli_positional_and_json(self, tmp_path, monkeypatch, capsys):
         import torch
+
+        import predict
 
         img_path = str(tmp_path / "dummy_face.png")
         cv2.imwrite(img_path, np.full((256, 256, 3), 128, dtype=np.uint8))
@@ -134,22 +133,22 @@ class TestPredictCLI:
         dummy_weights = str(tmp_path / "dummy_weights.pth")
         torch.save({"model_state_dict": {}}, dummy_weights)
 
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        cmd = [
-            sys.executable,
-            "predict.py",
-            img_path,
-            "--weights",
-            dummy_weights,
-            "--is_crop",
-            "--device",
-            "cpu",
-            "--json",
-        ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root, check=False)
-        assert proc.returncode == 0, f"predict.py failed: {proc.stderr}"
-        # Filter stdout for JSON payload (logging goes to stderr or before JSON)
-        stdout_clean = proc.stdout.strip()
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "predict.py",
+                img_path,
+                "--weights",
+                dummy_weights,
+                "--is_crop",
+                "--device",
+                "cpu",
+                "--json",
+            ],
+        )
+        predict.main()
+        stdout_clean = capsys.readouterr().out.strip()
         json_start = stdout_clean.find("{")
         assert json_start != -1, f"No JSON object found in output: {stdout_clean}"
         data = json.loads(stdout_clean[json_start:])

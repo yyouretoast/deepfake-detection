@@ -31,6 +31,9 @@ ignore = ["E402", "BLE001", "LOG015", "S110", "UP035"]
 testpaths = ["tests"]
 norecursedirs = ["scratch", ".*", "build", "dist", "venv", ".venv", "env"]
 python_files = ["test_*.py"]
+markers = [
+    "slow: slow export or end-to-end integration tests",
+]
 filterwarnings = [
     "ignore:.*The epoch parameter in.*scheduler.*:UserWarning",
 ]

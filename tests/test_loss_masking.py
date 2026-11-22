@@ -20,7 +20,7 @@ def test_loss_masking_zero_gradient_for_corrupt_samples(
     eval_model_factory: Callable[[bool], HybridDeepfakeDetector]
 ) -> None:
     model = eval_model_factory(use_fft=True)
-    images = torch.randn(2, 3, 256, 256)
+    images = torch.randn(2, 3, 64, 64)
     labels = torch.tensor([1.0, 0.0])
 
     valid_flags = torch.tensor([1.0, 0.0])
@@ -55,12 +55,12 @@ def test_loss_masking_amp_autocast_precision(
     eval_model_factory: Callable[[bool], HybridDeepfakeDetector]
 ) -> None:
     model = eval_model_factory(use_fft=True)
-    images = torch.randn(2, 3, 256, 256)
+    images = torch.randn(2, 3, 64, 64)
     labels = torch.tensor([1.0, 0.0])
     valid_flags = torch.tensor([1.0, 0.0])
 
     device_type = "cuda" if torch.cuda.is_available() else "cpu"
-    with torch.amp.autocast(device_type):
+    with torch.no_grad(), torch.amp.autocast(device_type):
         outputs = model(images).squeeze(1)
         loss_unreduced = F.binary_cross_entropy_with_logits(outputs, labels, reduction="none")
         loss = (loss_unreduced * valid_flags).sum() / valid_flags.sum().clamp(min=1.0)
@@ -73,7 +73,7 @@ def test_loss_masking_all_corrupt_batch(
     eval_model_factory: Callable[[bool], HybridDeepfakeDetector]
 ) -> None:
     model = eval_model_factory(use_fft=True)
-    images = torch.randn(2, 3, 256, 256)
+    images = torch.randn(2, 3, 64, 64)
     labels = torch.tensor([1.0, 0.0])
     valid_flags = torch.tensor([0.0, 0.0])
 
