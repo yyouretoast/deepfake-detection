@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import threading
@@ -21,6 +22,7 @@ except ImportError:
 
 YUNET_MODEL_FILENAME = "face_detection_yunet_2023mar.onnx"
 YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+YUNET_MODEL_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
 
 
 def get_yunet_model_path() -> str | None:
@@ -53,6 +55,19 @@ def get_yunet_model_path() -> str | None:
         with urllib.request.urlopen(req, timeout=15) as resp, open(local_path, "wb") as f:
             f.write(resp.read())
         if os.path.exists(local_path) and os.path.getsize(local_path) > 1000:
+            sha256 = hashlib.sha256()
+            with open(local_path, "rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    sha256.update(chunk)
+            computed = sha256.hexdigest()
+            if computed.lower() != YUNET_MODEL_SHA256.lower():
+                logger.warning(
+                    "YuNet download checksum mismatch (expected %s, got %s); removing untrusted file.",
+                    YUNET_MODEL_SHA256,
+                    computed,
+                )
+                os.remove(local_path)
+                return None
             return local_path
     except (urllib.error.URLError, OSError, ValueError) as e:
         logger.warning("Failed to download YuNet model file: %s", e)

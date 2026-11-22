@@ -115,7 +115,7 @@ def main() -> None:
         logger.info("Loading dual-stream backbone from %s", dual_ckpt_path)
 
         model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse").to(device)
-        ckpt = torch.load(dual_ckpt_path, map_location=device, weights_only=False)
+        ckpt = torch.load(dual_ckpt_path, map_location=device, weights_only=True)
         state = ckpt.get("model_state_dict", ckpt)
         model.load_state_dict(clean_state_dict(state), strict=False)
         model.eval()

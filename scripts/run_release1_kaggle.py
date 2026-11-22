@@ -264,7 +264,7 @@ def main() -> None:
             force_rerun=args.force_rerun,
         )
     elif os.path.exists(calibrated_weights):
-        ckpt_temp = torch.load(calibrated_weights, map_location=device, weights_only=False)
+        ckpt_temp = torch.load(calibrated_weights, map_location=device, weights_only=True)
         calib_meta = ckpt_temp.get("calibration", calib_meta)
 
     # 4. Evaluate Test Split with Clustered Bootstrap

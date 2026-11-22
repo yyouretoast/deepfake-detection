@@ -111,7 +111,7 @@ def train_and_eval_temporal(
 
     # Load frozen backbone
     backbone = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
-    ckpt = torch.load(backbone_path, map_location=device, weights_only=False)
+    ckpt = torch.load(backbone_path, map_location=device, weights_only=True)
     state_dict = ckpt.get("model_state_dict", ckpt)
     backbone.load_state_dict(clean_state_dict(state_dict), strict=False)
     backbone.to(device).eval()
@@ -177,7 +177,7 @@ def train_and_eval_temporal(
         logger.info("Saved Final Bi-GRU Checkpoint -> %s", temporal_save_path)
 
     # Sequence-level evaluation on Test
-    temporal_model.load_state_dict(torch.load(temporal_save_path, map_location=device, weights_only=False))
+    temporal_model.load_state_dict(torch.load(temporal_save_path, map_location=device, weights_only=True))
     temporal_model.eval()
 
     test_targets: list[int] = []

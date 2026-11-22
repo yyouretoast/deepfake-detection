@@ -118,7 +118,7 @@ def evaluate_held_out_test(
     )
 
     model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
-    ckpt = torch.load(calibrated_path, map_location=device, weights_only=False)
+    ckpt = torch.load(calibrated_path, map_location=device, weights_only=True)
     state_dict = ckpt.get("model_state_dict", ckpt)
     model.load_state_dict(clean_state_dict(state_dict), strict=False)
     model.to(device)
@@ -173,7 +173,7 @@ def evaluate_held_out_test(
     if spatial_checkpoint_path and os.path.exists(spatial_checkpoint_path):
         try:
             sp_model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=False)
-            sp_state = torch.load(spatial_checkpoint_path, map_location=device, weights_only=False)
+            sp_state = torch.load(spatial_checkpoint_path, map_location=device, weights_only=True)
             sp_model.load_state_dict(clean_state_dict(sp_state), strict=False)
             sp_model.to(device)
             sp_eval = ModelEvaluator(sp_model, device=device)

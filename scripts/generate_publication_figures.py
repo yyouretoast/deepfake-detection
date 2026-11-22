@@ -86,7 +86,7 @@ plt.rcParams.update({
 def load_models():
     """Load pretrained production checkpoints."""
     model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=True)
-    ckpt = torch.load("models/dual_stream_calibrated.pth", map_location="cpu", weights_only=False)
+    ckpt = torch.load("models/dual_stream_calibrated.pth", map_location="cpu", weights_only=True)
     sd = ckpt.get("model_state_dict", ckpt)
     model.load_state_dict(
         {k.replace("module.", "").replace("_orig_mod.", ""): v for k, v in sd.items() if not k.startswith("lora")},
@@ -95,7 +95,7 @@ def load_models():
     model.eval()
 
     t_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=256)
-    t_ckpt = torch.load("models/temporal_head_best.pth", map_location="cpu", weights_only=False)
+    t_ckpt = torch.load("models/temporal_head_best.pth", map_location="cpu", weights_only=True)
     t_sd = t_ckpt.get("model_state_dict", t_ckpt)
     t_model.load_state_dict(t_sd, strict=False)
     t_model.eval()

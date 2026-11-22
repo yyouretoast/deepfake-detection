@@ -31,7 +31,7 @@ def run_live_profile():
     model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse").to(device).eval()
     
     if os.path.exists(weights_path):
-        ckpt = torch.load(weights_path, map_location=device, weights_only=False)
+        ckpt = torch.load(weights_path, map_location=device, weights_only=True)
         sd = ckpt.get("model_state_dict", ckpt)
         model.load_state_dict(clean_state_dict(sd), strict=False)
         print(f"[+] Successfully loaded trained weights from: {weights_path}", flush=True)

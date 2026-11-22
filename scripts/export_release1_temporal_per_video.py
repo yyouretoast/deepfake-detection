@@ -72,14 +72,14 @@ def main() -> None:
     logger.info("device: %s", device)
 
     # Checkpoints (mirrors evaluate_temporal_test_set.py)
-    b_ckpt = torch.load(BACKBONE, map_location="cpu", weights_only=False)
+    b_ckpt = torch.load(BACKBONE, map_location="cpu", weights_only=True)
     backbone = HybridDeepfakeDetector(pretrained=False)
     backbone.load_state_dict(clean_state_dict(b_ckpt.get("model_state_dict", b_ckpt)), strict=False)
     backbone.to(device).eval()
     for p in backbone.parameters():
         p.requires_grad = False
 
-    t_ckpt = torch.load(TEMPORAL, map_location="cpu", weights_only=False)
+    t_ckpt = torch.load(TEMPORAL, map_location="cpu", weights_only=True)
     t_state = t_ckpt.get("model_state_dict", t_ckpt)
     hidden_dim = t_ckpt.get("hidden_dim", 256)
     use_deltas = "use_deltas" in t_ckpt and bool(t_ckpt["use_deltas"])

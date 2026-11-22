@@ -101,17 +101,15 @@ class TestExportONNX:
         try:
             torch.onnx.export(
                 model,
-                dummy_input,
+                (dummy_input,),
                 onnx_out,
                 export_params=True,
-                opset_version=17,
+                opset_version=18,
                 do_constant_folding=True,
+                dynamo=True,
                 input_names=["input_rgb"],
                 output_names=["logits"],
-                dynamic_axes={
-                    "input_rgb": {0: "batch_size"},
-                    "logits": {0: "batch_size"},
-                },
+                dynamic_shapes={"x": {0: torch.export.Dim.AUTO}},
             )
         except (ModuleNotFoundError, ImportError, Exception) as e:
             if "not supported" in str(e).lower() or "unsupported" in str(e).lower() or isinstance(e, (ModuleNotFoundError, ImportError)):

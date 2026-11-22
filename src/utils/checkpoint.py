@@ -59,7 +59,7 @@ def compute_dual_thresholds_certified(
     probs: Any, targets: Any, min_precision: float = 0.98, min_samples: int = 20
 ) -> tuple[float, float, float, float]:
     """
-    Computes high-precision Bayesian decision thresholds (tau_real, tau_fake) and reports exact certified precision.
+    Computes high-precision dual-threshold 3-zone triage bounds (tau_real, tau_fake) and reports exact certified precision.
     Returns:
         tuple (tau_real, tau_fake, p_real_certified, p_fake_certified)
     """
@@ -110,7 +110,7 @@ def compute_dual_thresholds_certified(
 def compute_dual_thresholds(
     probs: Any, targets: Any, min_precision: float = 0.98, min_samples: int = 20
 ) -> tuple[float, float]:
-    """Computes high-precision Bayesian decision thresholds (tau_real, tau_fake)."""
+    """Computes high-precision dual-threshold 3-zone triage bounds (tau_real, tau_fake)."""
     tr, tf, _, _ = compute_dual_thresholds_certified(
         probs, targets, min_precision=min_precision, min_samples=min_samples
     )
@@ -171,7 +171,7 @@ def load_detector_checkpoint(
         target_device = torch.device(device) if isinstance(device, str) else device
 
     resolved_path = find_weights_path(weights_path, data_root)
-    ckpt = torch.load(resolved_path, map_location=target_device, weights_only=False)
+    ckpt = torch.load(resolved_path, map_location=target_device, weights_only=True)
 
     calib = ckpt.get("calibration", ckpt) if isinstance(ckpt.get("calibration"), dict) else ckpt
     temperature = float(calib.get("effective_temperature", calib.get("temperature", ckpt.get("temperature", DEFAULT_TEMPERATURE))))

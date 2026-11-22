@@ -31,3 +31,6 @@ jobs:
 
       - name: Run Pytest Suite
         run: python -m pytest tests/ -v
+
+      - name: Audit Fixture Consistency
+        run: python scripts/audit_fixture_consistency.py

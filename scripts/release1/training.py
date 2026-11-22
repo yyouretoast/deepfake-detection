@@ -211,7 +211,8 @@ def train_dual_stream_backbone(
 
     if not force_rerun and os.path.exists(resume_path):
         try:
-            ckpt = torch.load(resume_path, map_location=device)
+            # Trusted local training resume checkpoint containing optimizer/scheduler state
+            ckpt = torch.load(resume_path, map_location=device, weights_only=False)
             start_epoch = ckpt["epoch"] + 1
             best_macro_auc = ckpt.get("best_macro_auc", 0.0)
             model.load_state_dict(ckpt["model_state_dict"])

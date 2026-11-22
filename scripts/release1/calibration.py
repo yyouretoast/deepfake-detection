@@ -45,7 +45,7 @@ def calibrate_validation_split(
     calibrated_path = os.path.join(output_dir, "dual_stream_calibrated.pth")
     if not force_rerun and os.path.exists(calibrated_path):
         try:
-            ckpt = torch.load(calibrated_path, map_location=device, weights_only=False)
+            ckpt = torch.load(calibrated_path, map_location=device, weights_only=True)
             if "calibration" in ckpt:
                 logger.info("Found existing calibrated checkpoint: %s. Skipping calibration.", calibrated_path)
                 return calibrated_path, ckpt["calibration"]
@@ -69,7 +69,7 @@ def calibrate_validation_split(
     )
 
     model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
-    state_dict = torch.load(backbone_path, map_location=device, weights_only=False)
+    state_dict = torch.load(backbone_path, map_location=device, weights_only=True)
     model.load_state_dict(clean_state_dict(state_dict), strict=False)
     model.to(device)
 

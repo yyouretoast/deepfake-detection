@@ -109,7 +109,7 @@ def main() -> None:
     # 1. Load Backbone
     backbone = HybridDeepfakeDetector(pretrained=False)
     if backbone_path and os.path.exists(backbone_path):
-        b_ckpt = torch.load(backbone_path, map_location="cpu", weights_only=False)
+        b_ckpt = torch.load(backbone_path, map_location="cpu", weights_only=True)
         b_state = b_ckpt.get("model_state_dict", b_ckpt)
         backbone.load_state_dict(clean_state_dict(b_state), strict=False)
     backbone.to(device).eval()
@@ -122,7 +122,7 @@ def main() -> None:
     use_max_pool = True
     stride = 2
     if temporal_path and os.path.exists(temporal_path):
-        t_ckpt = torch.load(temporal_path, map_location="cpu", weights_only=False)
+        t_ckpt = torch.load(temporal_path, map_location="cpu", weights_only=True)
         t_state = t_ckpt.get("model_state_dict", t_ckpt)
         hidden_dim = t_ckpt.get("hidden_dim", 256)
         if "use_deltas" in t_ckpt:

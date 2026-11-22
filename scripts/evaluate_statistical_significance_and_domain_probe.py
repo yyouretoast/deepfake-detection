@@ -208,13 +208,13 @@ def main():
     # 1. Load Models
     logger.info("Loading Dual-Stream model from %s...", dual_ckpt_path)
     dual_model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
-    dual_state = torch.load(dual_ckpt_path, map_location=device, weights_only=False)
+    dual_state = torch.load(dual_ckpt_path, map_location=device, weights_only=True)
     dual_model.load_state_dict(clean_state_dict(dual_state.get("model_state_dict", dual_state)), strict=False)
     dual_model.to(device).eval()
 
     logger.info("Loading Spatial-Only model from %s...", spatial_ckpt_path)
     spatial_model = HybridDeepfakeDetector(pretrained=False, use_fft_branch=False)
-    spatial_state = torch.load(spatial_ckpt_path, map_location=device, weights_only=False)
+    spatial_state = torch.load(spatial_ckpt_path, map_location=device, weights_only=True)
     spatial_model.load_state_dict(clean_state_dict(spatial_state.get("model_state_dict", spatial_state)), strict=False)
     spatial_model.to(device).eval()
 

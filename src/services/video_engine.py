@@ -39,10 +39,27 @@ EXPECTED_WEIGHTS_SHA256: str | None = os.getenv(
     "EXPECTED_WEIGHTS_SHA256",
     os.getenv("PUBLISHED_WEIGHTS_SHA256", None)
 )
+EXPECTED_TEMPORAL_WEIGHTS_SHA256: str | None = os.getenv(
+    "EXPECTED_TEMPORAL_WEIGHTS_SHA256",
+    "b81eed741d93218a5c88b93d660f97d3266ffd3e7501c70470fc611772951abf",
+)
+
+
+def _verify_sha256(file_path: str, expected_sha256: str) -> None:
+    """Verify SHA-256 digest of a downloaded checkpoint file."""
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            sha256.update(chunk)
+    computed_hash = sha256.hexdigest()
+    if computed_hash.lower() != expected_sha256.lower():
+        raise ValueError(
+            f"Checksum mismatch for downloaded weights: expected {expected_sha256}, got {computed_hash}"
+        )
 
 
 class PredictionEngine(tuple):
-    """5-tuple holding prediction components with attribute access for Bayesian thresholds and Platt calibration."""
+    """5-tuple holding prediction components with attribute access for dual-threshold 3-zone triage and Platt calibration."""
 
     def __new__(
         cls,
@@ -105,15 +122,7 @@ def load_prediction_engine(
             )
             logger.info("Downloaded weights from HuggingFace Hub to %s", weights_path)
             if weights_path and EXPECTED_WEIGHTS_SHA256:
-                sha256 = hashlib.sha256()
-                with open(weights_path, "rb") as f:
-                    for chunk in iter(lambda: f.read(65536), b""):
-                        sha256.update(chunk)
-                computed_hash = sha256.hexdigest()
-                if computed_hash.lower() != EXPECTED_WEIGHTS_SHA256.lower():
-                    raise ValueError(
-                        f"Checksum mismatch for downloaded weights: expected {EXPECTED_WEIGHTS_SHA256}, got {computed_hash}"
-                    )
+                _verify_sha256(weights_path, EXPECTED_WEIGHTS_SHA256)
         except (ImportError, OSError, ValueError, RuntimeError) as e:
             logger.warning("Could not download weights from HuggingFace Hub: %s", e)
 
@@ -217,6 +226,8 @@ def load_temporal_engine(
                 filename="temporal_head_best.pth",
             )
             if downloaded and os.path.exists(downloaded):
+                if EXPECTED_TEMPORAL_WEIGHTS_SHA256:
+                    _verify_sha256(downloaded, EXPECTED_TEMPORAL_WEIGHTS_SHA256)
                 weights_path = downloaded
                 logger.info("Downloaded temporal head to %s", weights_path)
         except Exception as e:
@@ -224,7 +235,7 @@ def load_temporal_engine(
 
     if weights_path and os.path.exists(weights_path):
         try:
-            ckpt = torch.load(weights_path, map_location=DEVICE, weights_only=False)
+            ckpt = torch.load(weights_path, map_location=DEVICE, weights_only=True)
             state_dict = ckpt.get("model_state_dict", ckpt)
             hidden_dim = int(ckpt.get("hidden_dim", 256))
             temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=hidden_dim).to(DEVICE)
@@ -621,7 +632,7 @@ def process_single_image(
         temperature=temperature,
     )
 
-    # 7. Bayesian 3-zone verdict
+    # 7. Dual-threshold 3-zone triage verdict
     three_zone = classify_three_zone(
         prob,
         tau_real=effective_tau_real,

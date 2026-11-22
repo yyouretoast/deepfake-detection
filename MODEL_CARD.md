@@ -59,7 +59,7 @@ A PyTorch deepfake detection architecture coupling an ImageNet-modernized **Conv
 - **Spatial Backbone**: ConvNeXt-Small (512-d feature projection, 49.98M parameters; 53.62M total dual-stream architecture)
 - **Frequency Backbone**: ResSE-Spectral Tower (4 stages, 20-channel SRM/Bayar 2D Real FFT input, Squeeze-and-Excitation channel attention, 2.99M parameters)
 - **Video Temporal Head**: 2-Layer Bidirectional GRU with First-Order Feature Velocity ($\Delta \mathbf{e}_t$) and Dual-Path Pooling (Attention + Extreme-Value Max-Pooling, 3.32M parameters)
-- **Calibration**: Affine Platt Scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$) with Bayesian 3-Zone Bands ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$) and Youden's optimal threshold ($\tau^* = 0.2600$)
+- **Calibration**: Affine Platt Scaling ($a = 0.2783, b = 0.4089$, $T_{\text{eff}} = 3.5931$) with dual-threshold 3-zone triage bands ($\tau_{\text{real}}=0.40, \tau_{\text{fake}}=0.60$) and Youden's optimal threshold ($\tau^* = 0.2600$)
 
 ---
 
@@ -160,7 +160,7 @@ In strict accordance with the FaceForensics++ benchmark protocol, models are eva
 ## Known Limitations
 
 1. **Not deployable as a definitive detector.** JPEG Q30 → 0.7410 AUC; blur σ=3 → 0.7232; noise σ=10 → 0.7576; zero-shot acquisition-shift transfer on Celeb-DF = 0.5763 (≈ chance). Outputs are triage signals, not forensic evidence.
-2. **The temporal head's improvement over naive frame averaging is +0.003 AUC and has not been tested for statistical significance** (paired testing pending a full per-sample re-export).
+2. **The temporal head's improvement over naive frame averaging is modest (+0.003 AUC).** Paired DeLong on the canonical Release-1 per-video export (`n = 2,248` videos) yields $z = +2.18, p = 0.029$ (95% bootstrap CI `[+0.0001, +0.0059]`) — statistically significant, but small enough to skim zero at the lower bound.
 3. **Calibration constants are frozen Release-1 post-hoc values**; they were fit on the validation split (26.55% of total crops, fake-skewed 7.74:1) and confirmed on test. Recalibration is required when retraining on new data.
 4. **Test-set class skew (2.55:1 fake-heavy)** inflates F1/precision framing — the "always fake" baseline actually scores higher F1 (0.8358 vs 0.8292). Prefer ROC AUC / EER / balanced accuracy when comparing architectures.
 5. **Robustness attribution is correlative** — the spectral-vs-spatial degradation sensitivity claim is inferred from gating telemetry, not isolated stream ablations; single-generational perturbations only.

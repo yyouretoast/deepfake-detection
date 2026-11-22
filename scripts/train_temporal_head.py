@@ -69,7 +69,7 @@ def main() -> None:
     logger.info("Initializing backbone detector from %s", weights_path)
     backbone = HybridDeepfakeDetector(pretrained=False)
     if weights_path and os.path.exists(weights_path):
-        ckpt = torch.load(weights_path, map_location="cpu", weights_only=False)
+        ckpt = torch.load(weights_path, map_location="cpu", weights_only=True)
         state_dict = ckpt.get("model_state_dict", ckpt)
         backbone.load_state_dict(clean_state_dict(state_dict), strict=False)
     backbone.to(device).eval()

@@ -2,7 +2,7 @@
 
 Supports single-frame facial crops, raw images, and full video sequences.
 Evaluates using the Dual-Stream Spatial-Frequency model with Platt calibration
-and operational Bayesian 3-zone triage.
+and operational dual-threshold 3-zone triage.
 
 Usage Examples:
     # Single image evaluation
@@ -76,7 +76,7 @@ def load_detector(
 ) -> tuple[HybridDeepfakeDetector, dict[str, float]]:
     logger.info("Loading dual-stream model from: %s", weights_path)
     model = HybridDeepfakeDetector(pretrained=False, frequency_backbone="resse")
-    ckpt = torch.load(weights_path, map_location=device, weights_only=False)
+    ckpt = torch.load(weights_path, map_location=device, weights_only=True)
 
     calib_params = {
         "platt_scale_a": PLATT_SCALE_A,
@@ -140,7 +140,7 @@ def load_detector(
 
 
 def classify_zone(prob: float, tau_star: float = OPTIMAL_THRESHOLD) -> dict[str, Any]:
-    """Classifies posterior probability into the Bayesian 3-zone operational triage.
+    """Classifies posterior probability into the dual-threshold 3-zone operational triage.
 
     Thin adapter over ``src.utils.checkpoint.classify_three_zone`` so the CLI and the
     serving engine share a single triage policy; the legacy Zone 1/2/3 wording is kept
@@ -345,7 +345,7 @@ def main() -> None:
     if temporal_path and os.path.exists(temporal_path):
         try:
             temporal_model = BiGRUTemporalDetector(embed_dim=512, hidden_dim=256, use_deltas=True, use_max_pool=True)
-            t_state = torch.load(temporal_path, map_location=device, weights_only=False)
+            t_state = torch.load(temporal_path, map_location=device, weights_only=True)
             temporal_model.load_state_dict(clean_state_dict(t_state), strict=False)
             temporal_model.to(device)
             temporal_model.eval()
