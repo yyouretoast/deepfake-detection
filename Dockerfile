@@ -20,6 +20,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application modules, config, and calibration sidecar
 COPY app.py predict.py ./
 COPY config ./config
+COPY .streamlit ./.streamlit
 COPY src ./src
 COPY models/dual_stream_detector.json ./models/dual_stream_detector.json
 

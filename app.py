@@ -22,7 +22,7 @@ REPO_ROOT = os.path.abspath(os.path.dirname(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from src.services.ui_components import render_diagnostic_quad
+from src.services.ui_components import format_verdict, render_diagnostic_quad, render_image
 from src.services.video_engine import (
     DEVICE,
     load_prediction_engine,
@@ -187,41 +187,65 @@ def render_ui() -> None:
         unsafe_allow_html=True,
     )
 
+    # Intake Mode Selection (placed before sidebar so video-only controls are conditional)
+    intake_mode = st.radio(
+        "Select Forensic Intake Mode",
+        options=["Single Photo / Frame", "Video Sequence"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
     # Sidebar Controls
     st.sidebar.markdown("### Analysis Parameters")
 
+    active_tau_real, active_tau_fake = st.sidebar.slider(
+        "3-Zone Triage Band (τ_real, τ_fake)",
+        min_value=0.05,
+        max_value=0.95,
+        value=(float(tau_real), float(tau_fake)),
+        step=0.05,
+        help="Probabilities <= τ_real are cleared as Authentic; >= τ_fake are flagged Synthetic; values in between route to Manual Review.",
+    )
+
     threshold_slider = st.sidebar.slider(
-        "Decision Threshold (τ*)",
+        "Binary Operating Threshold (τ*)",
         min_value=0.01,
         max_value=0.99,
         value=float(default_threshold),
         step=0.01,
-        help="Operating decision threshold calibrated via validation ROC-curve (Youden's J).",
+        help="Youden's J operating threshold used for per-frame timeline tagging and the binary_decision field.",
     )
 
-    default_frames = 16
-    try:
-        from src.config import load_config
-        cfg = load_config()
-        default_frames = int(cfg.get("app", {}).get("frames_to_sample", 16))
-    except Exception:
+    n_frames_slider = 16
+    aggregation_select = "soft_max"
+    if intake_mode == "Video Sequence":
         default_frames = 16
+        try:
+            from src.config import load_config
 
-    n_frames_slider = st.sidebar.slider(
-        "Sampled Keyframes (N)",
-        min_value=4,
-        max_value=20,
-        value=default_frames,
-        step=2,
-        help="Number of uniformly sampled keyframes across video temporal span.",
-    )
+            cfg = load_config()
+            default_frames = int(cfg.get("app", {}).get("frames_to_sample", 16))
+        except Exception:
+            default_frames = 16
 
-    aggregation_select = st.sidebar.selectbox(
-        "Temporal Aggregation Policy",
-        options=["soft_max", "top_k", "ema", "mean"],
-        index=0,
-        help="Sequence pooling method when Bi-GRU temporal sequence model is inactive.",
-    )
+        n_frames_slider = st.sidebar.slider(
+            "Sampled Keyframes (N)",
+            min_value=4,
+            max_value=20,
+            value=default_frames,
+            step=2,
+            help="Number of uniformly sampled keyframes across video temporal span.",
+        )
+
+        aggregation_select = st.sidebar.selectbox(
+            "Temporal Aggregation Policy",
+            options=["soft_max", "top_k", "ema", "mean"],
+            index=0,
+            disabled=(temporal_model is not None),
+            help="Sequence pooling fallback when the Bi-GRU temporal head is inactive.",
+        )
+        if temporal_model is not None:
+            st.sidebar.caption("Bi-GRU temporal head is active and overrides fallback pooling.")
 
     st.sidebar.markdown("<hr style='margin: 16px 0; border-color: #1e293b;'>", unsafe_allow_html=True)
     st.sidebar.markdown("### Architecture Telemetry")
@@ -232,42 +256,33 @@ def render_ui() -> None:
             <p style="margin:0 0 8px 0; font-weight:600; color:#f1f5f9; font-size:13px;">ConvNeXt-Small (512-d)</p>
             <p style="margin:0; font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Frequency Stream</p>
             <p style="margin:0 0 8px 0; font-weight:600; color:#f1f5f9; font-size:13px;">SRM + Bayar + 2D Real FFT</p>
-            <p style="margin:0; font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Calibration & Bayesian Bands</p>
-            <p style="margin:0; font-weight:600; color:#38bdf8; font-size:13px;">T*={default_temperature:.2f} | τ_real={tau_real:.2f} | τ_fake={tau_fake:.2f}</p>
+            <p style="margin:0; font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px;">Calibration & 3-Zone Triage</p>
+            <p style="margin:0; font-weight:600; color:#38bdf8; font-size:13px;">T*={default_temperature:.2f} | τ_real={active_tau_real:.2f} | τ_fake={active_tau_fake:.2f}</p>
         </div>
     """,
         unsafe_allow_html=True,
     )
 
-    with st.sidebar.expander("ℹ️ Spectral SNR Gating Mechanics", expanded=False):
+    with st.sidebar.expander("Spectral SNR Gating Mechanics", expanded=False):
         st.markdown(
             """
             <div style="font-size:12px; color:#94a3b8; line-height: 1.5;">
-                <b>Noise Attenuation (γ)</b>: Frequency noise residuals degrade severely under heavy compression or Gaussian blur.
-                Our SNR-adaptive gate dynamically down-weights the spectral stream (γ &rarr; 0) and relies on spatial ConvNeXt features,
-                preventing performance degradation cliffs.
+                <b>Noise Attenuation (γ)</b>: Frequency noise residuals degrade under heavy compression or Gaussian blur.
+                The SNR-adaptive gate down-weights the spectral stream (γ &rarr; 0), shifting weight toward spatial ConvNeXt features under degradation (note: severe blur/JPEG still degrades accuracy; see Model Card).
             </div>
             """,
             unsafe_allow_html=True,
         )
-
-    # Intake Mode Selection
-    intake_mode = st.radio(
-        "Select Forensic Intake Mode",
-        options=["📷 Single Photo / Frame", "🎬 Video Sequence"],
-        horizontal=True,
-        label_visibility="collapsed",
-    )
 
     st.markdown("<hr style='margin: 12px 0 20px 0; border-color: #1e293b;'>", unsafe_allow_html=True)
 
     # ---------------------------------------------------------
     # Mode 1: Single Photo Intake
     # ---------------------------------------------------------
-    if intake_mode == "📷 Single Photo / Frame":
+    if intake_mode == "Single Photo / Frame":
         st.markdown("### Upload Still Image for Forensic Analysis")
         uploaded_img = st.file_uploader(
-            "Select PNG, JPG, JPEG, or WEBP image file (Max 20MB)",
+            "PNG, JPG, JPEG, or WEBP (Max 20 MB)",
             type=["png", "jpg", "jpeg", "webp"],
             key="single_img_uploader",
         )
@@ -304,10 +319,15 @@ def render_ui() -> None:
                 st.error("No facial region could be detected in the uploaded image.")
             else:
                 prob = float(res["prob"])
-                three_zone = res.get("three_zone", {})
-                is_ambiguous = three_zone.get("is_inconclusive", False)
-                final_label = "Fake" if prob > threshold_slider else "Real"
-                final_conf = normalize_confidence(prob, threshold_slider)
+                v = format_verdict(
+                    prob,
+                    tau_real=active_tau_real,
+                    tau_fake=active_tau_fake,
+                    threshold=threshold_slider,
+                    media_kind="image",
+                )
+                three_zone = v["three_zone"]
+                is_ambiguous = v["is_inconclusive"]
 
                 col_preview, col_verdict = st.columns([1, 1])
 
@@ -315,36 +335,19 @@ def render_ui() -> None:
                     st.markdown("#### Input & Aligned Crop")
                     c_orig, c_crop = st.columns(2)
                     with c_orig:
-                        st.image(uploaded_img, caption="Source Image", use_container_width=True)
+                        render_image(uploaded_img, caption="Source Image")
                     with c_crop:
-                        st.image(res["face_crop"], caption="YuNet Aligned Crop (256x256)", use_container_width=True)
+                        render_image(res["face_crop"], caption="YuNet Aligned Crop (256x256)")
 
                 with col_verdict:
                     st.markdown("#### Forensic Verdict")
-                    if is_ambiguous:
-                        card_class = "result-card-ambiguous"
-                        color = "#f59e0b"
-                        card_title = "INCONCLUSIVE / AMBIGUITY ZONE"
-                    elif prob <= tau_real:
-                        card_class = "result-card-real"
-                        color = "#22c55e"
-                        card_title = "DETECTED: AUTHENTIC / REAL"
-                    elif final_label == "Fake" or prob >= tau_fake:
-                        card_class = "result-card-fake"
-                        color = "#ef4444"
-                        card_title = "DETECTED: DEEPFAKE / SYNTHETIC"
-                    else:
-                        card_class = "result-card-real"
-                        color = "#22c55e"
-                        card_title = "DETECTED: AUTHENTIC / REAL"
-
                     st.markdown(
                         f"""
-                        <div class="{card_class}">
-                            <h2 style="color: {color}; margin: 0; font-size: 22px; font-weight: 700;">{card_title}</h2>
-                            <h3 style="color: {color}; margin: 6px 0 0 0; font-size: 28px; font-weight: 800;">{final_conf:.1f}% Confidence</h3>
+                        <div class="{v['card_class']}">
+                            <h2 style="color: {v['color']}; margin: 0; font-size: 22px; font-weight: 700;">{v['card_title']}</h2>
+                            <h3 style="color: {v['color']}; margin: 6px 0 0 0; font-size: 28px; font-weight: 800;">{v['headline']}</h3>
                             <p style="color: #94a3b8; font-size: 12px; margin: 6px 0 0 0;">
-                                Calibrated Prob: <b>{prob:.4f}</b> | Raw Logit: <b>{res['raw_logit']:.3f}</b> | Threshold τ*: <b>{threshold_slider:.2f}</b>
+                                Calibrated Prob: <b>{prob:.4f}</b> | Raw Logit: <b>{res['raw_logit']:.3f}</b> | Binary Threshold τ*: <b>{threshold_slider:.2f}</b>
                             </p>
                         </div>
                     """,
@@ -353,14 +356,14 @@ def render_ui() -> None:
 
                     if is_ambiguous:
                         st.warning(
-                            f"⚠️ **Ambiguity Warning**: Calibrated probability ({prob:.4f}) falls between "
-                            f"τ_real ({tau_real:.2f}) and τ_fake ({tau_fake:.2f}). Expert manual review required."
+                            f"**Ambiguity Warning**: Calibrated probability ({prob:.4f}) falls between "
+                            f"τ_real ({active_tau_real:.2f}) and τ_fake ({active_tau_fake:.2f}). Manual review recommended."
                         )
                     else:
-                        zone_label = three_zone.get("verdict", final_label)
+                        zone_label = three_zone.get("verdict", v["verdict"])
                         st.caption(
-                            f"🛡️ Bayesian High-Certainty Band: **{zone_label}** "
-                            f"(τ_real={tau_real:.2f}, τ_fake={tau_fake:.2f})"
+                            f"Dual-Threshold 3-Zone Policy: **{zone_label}** "
+                            f"(τ_real={active_tau_real:.2f}, τ_fake={active_tau_fake:.2f})"
                         )
 
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -368,7 +371,7 @@ def render_ui() -> None:
                     col_t1, col_t2, col_t3 = st.columns(3)
                     spectral_pct = res["spectral_gate"] * 100.0
                     spatial_pct = res["spatial_gate"] * 100.0
-                    col_t1.metric("Spectral Gate (g)", f"{spectral_pct:.1f}%", f"{spatial_pct:.1f}% Spatial")
+                    col_t1.metric("Spectral / Spatial Gate", f"{spectral_pct:.1f}% / {spatial_pct:.1f}%")
                     col_t2.metric("SNR Attenuator (γ)", f"{res['snr_attenuator']:.2f}")
                     col_t3.metric("Laplacian Var (σ²)", f"{res['laplacian_var']:.1f}")
 
@@ -377,7 +380,7 @@ def render_ui() -> None:
                 render_diagnostic_quad(res["diagnostics"], title_prefix="Interpretability Diagnostic Quad")
 
                 # Expandable guide
-                with st.expander("📖 How to Read the 4-Panel Diagnostic Quad", expanded=False):
+                with st.expander("How to Read the 4-Panel Diagnostic Quad", expanded=False):
                     st.markdown(
                         """
                         - **Panel A (RGB Face Crop)**: Normalized facial bounding box cropped via YuNet 5-point landmark similarity transform.
@@ -391,16 +394,17 @@ def render_ui() -> None:
                 report_data = {
                     "image_filename": uploaded_img.name,
                     "file_md5_hash": img_hash,
-                    "verdict": final_label.upper(),
-                    "calibrated_confidence_pct": round(float(final_conf), 2),
+                    "verdict": v["verdict"],
+                    "binary_decision": v["binary_decision"],
+                    "calibrated_confidence_pct": v["confidence_pct"],
                     "calibrated_probability": round(float(prob), 6),
                     "raw_logit": round(float(res["raw_logit"]), 6),
                     "decision_threshold_tau_star": float(threshold_slider),
-                    "bayesian_thresholds": {
-                        "tau_real": float(tau_real),
-                        "tau_fake": float(tau_fake),
+                    "triage_thresholds": {
+                        "tau_real": float(active_tau_real),
+                        "tau_fake": float(active_tau_fake),
                     },
-                    "three_zone_verdict": three_zone.get("verdict", final_label),
+                    "three_zone_verdict": three_zone.get("verdict", v["verdict"]),
                     "is_inconclusive": bool(is_ambiguous),
                     "telemetry": {
                         "spectral_gating_weight": round(float(res["spectral_gate"]), 4),
@@ -411,7 +415,7 @@ def render_ui() -> None:
                     },
                 }
                 st.download_button(
-                    label="📥 Download Forensic Inspection Report (.json)",
+                    label="Download Forensic Inspection Report (.json)",
                     data=json.dumps(report_data, indent=2),
                     file_name=f"forensic_report_{img_hash[:8]}.json",
                     mime="application/json",
@@ -424,7 +428,7 @@ def render_ui() -> None:
     else:
         st.markdown("### Upload Video for Temporal Sequence Analysis")
         uploaded_video = st.file_uploader(
-            "Select MP4, AVI, or MOV video file (Max 50MB)",
+            "MP4, AVI, or MOV (Max 50 MB)",
             type=["mp4", "avi", "mov"],
             key="video_file_uploader",
         )
@@ -498,9 +502,6 @@ def render_ui() -> None:
                     for p in res["sample_probs"]
                 ]
 
-                final_label = "Fake" if raw_video_prob > threshold_slider else "Real"
-                final_conf = normalize_confidence(raw_video_prob, threshold_slider)
-
                 fake_faces_count = sum(1 for p in all_probs if p > threshold_slider)
                 real_faces_count = len(all_probs) - fake_faces_count
 
@@ -521,33 +522,23 @@ def render_ui() -> None:
 
                 with col_results:
                     st.markdown("#### Sequence Verdict")
-                    three_zone = res.get("three_zone", {})
-                    is_ambiguous = three_zone.get("is_inconclusive", False)
-
-                    if is_ambiguous:
-                        card_class = "result-card-ambiguous"
-                        color = "#f59e0b"
-                        card_title = "INCONCLUSIVE / AMBIGUITY ZONE"
-                    elif raw_video_prob <= tau_real:
-                        card_class = "result-card-real"
-                        color = "#22c55e"
-                        card_title = "DETECTED: AUTHENTIC SEQUENCE"
-                    elif final_label == "Fake" or raw_video_prob >= tau_fake:
-                        card_class = "result-card-fake"
-                        color = "#ef4444"
-                        card_title = "DETECTED: DEEPFAKE SEQUENCE"
-                    else:
-                        card_class = "result-card-real"
-                        color = "#22c55e"
-                        card_title = "DETECTED: AUTHENTIC SEQUENCE"
+                    v = format_verdict(
+                        raw_video_prob,
+                        tau_real=active_tau_real,
+                        tau_fake=active_tau_fake,
+                        threshold=threshold_slider,
+                        media_kind="video",
+                    )
+                    three_zone = v["three_zone"]
+                    is_ambiguous = v["is_inconclusive"]
 
                     st.markdown(
                         f"""
-                        <div class="{card_class}">
-                            <h2 style="color: {color}; margin: 0; font-size: 22px; font-weight: 700;">{card_title}</h2>
-                            <h3 style="color: {color}; margin: 6px 0 0 0; font-size: 28px; font-weight: 800;">{final_conf:.1f}% Confidence</h3>
+                        <div class="{v['card_class']}">
+                            <h2 style="color: {v['color']}; margin: 0; font-size: 22px; font-weight: 700;">{v['card_title']}</h2>
+                            <h3 style="color: {v['color']}; margin: 6px 0 0 0; font-size: 28px; font-weight: 800;">{v['headline']}</h3>
                             <p style="color: #94a3b8; font-size: 12px; margin: 6px 0 0 0;">
-                                Sequence Anomaly Score: <b>{raw_video_prob:.4f}</b> | Threshold τ*: <b>{threshold_slider:.2f}</b>
+                                Sequence Anomaly Score: <b>{raw_video_prob:.4f}</b> | Binary Threshold τ*: <b>{threshold_slider:.2f}</b>
                             </p>
                         </div>
                     """,
@@ -556,14 +547,14 @@ def render_ui() -> None:
 
                     if is_ambiguous:
                         st.warning(
-                            f"⚠️ **Forensic Ambiguity Warning**: Sequence anomaly score ({raw_video_prob:.4f}) falls between "
-                            f"τ_real ({tau_real:.2f}) and τ_fake ({tau_fake:.2f}). Expert review recommended."
+                            f"**Forensic Ambiguity Warning**: Sequence anomaly score ({raw_video_prob:.4f}) falls between "
+                            f"τ_real ({active_tau_real:.2f}) and τ_fake ({active_tau_fake:.2f}). Manual review recommended."
                         )
                     else:
-                        zone_label = three_zone.get("verdict", final_label)
+                        zone_label = three_zone.get("verdict", v["verdict"])
                         st.caption(
-                            f"🛡️ Bayesian High-Certainty Band: **{zone_label}** "
-                            f"(τ_real={tau_real:.2f}, τ_fake={tau_fake:.2f})"
+                            f"Dual-Threshold 3-Zone Policy: **{zone_label}** "
+                            f"(τ_real={active_tau_real:.2f}, τ_fake={active_tau_fake:.2f})"
                         )
 
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -576,16 +567,17 @@ def render_ui() -> None:
                         "video_filename": uploaded_video.name,
                         "file_size_bytes": uploaded_video.size,
                         "file_md5_hash": file_id,
-                        "verdict": final_label.upper(),
-                        "calibrated_confidence_pct": round(float(final_conf), 2),
+                        "verdict": v["verdict"],
+                        "binary_decision": v["binary_decision"],
+                        "calibrated_confidence_pct": v["confidence_pct"],
                         "aggregated_anomaly_score": round(float(raw_video_prob), 6),
                         "operating_decision_threshold": float(threshold_slider),
                         "optimal_temperature_T_star": float(default_temperature),
-                        "bayesian_thresholds": {
-                            "tau_real": float(tau_real),
-                            "tau_fake": float(tau_fake),
+                        "triage_thresholds": {
+                            "tau_real": float(active_tau_real),
+                            "tau_fake": float(active_tau_fake),
                         },
-                        "three_zone_verdict": three_zone.get("verdict", final_label),
+                        "three_zone_verdict": three_zone.get("verdict", v["verdict"]),
                         "is_inconclusive": bool(is_ambiguous),
                         "analyzed_frame_count": len(all_probs),
                         "real_frame_count": real_faces_count,
@@ -597,7 +589,7 @@ def render_ui() -> None:
                         "temporal_attention": res.get("temporal_attention"),
                     }
                     st.download_button(
-                        label="📥 Download Forensic Inspection Report (.json)",
+                        label="Download Forensic Inspection Report (.json)",
                         data=json.dumps(report_data, indent=2),
                         file_name=f"forensic_report_{file_id[:8]}.json",
                         mime="application/json",
@@ -611,7 +603,7 @@ def render_ui() -> None:
 
                 if timestamps and all_probs:
                     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: #1e293b;'>", unsafe_allow_html=True)
-                    st.markdown("### 📈 Temporal Video Anomaly Timeline")
+                    st.markdown("### Temporal Video Anomaly Timeline")
 
                     fig = render_temporal_anomaly_timeline(
                         timestamps=timestamps,
@@ -622,7 +614,7 @@ def render_ui() -> None:
                     st.pyplot(fig, use_container_width=True)
                     plt.close(fig)
 
-                    st.markdown("#### 🔍 Interactive Timestamp / Frame Scrubbing")
+                    st.markdown("#### Interactive Timestamp / Frame Scrubbing")
                     scrub_options = [
                         f"Timestamp {t:.2f}s — Frame #{f_idx} (Prob: {p:.4f} - {'FAKE' if p > threshold_slider else 'REAL'})"
                         for t, f_idx, p in zip(timestamps, frame_indices, all_probs)
@@ -642,9 +634,10 @@ def render_ui() -> None:
 
                         scrub_col1, scrub_col2 = st.columns([1, 2])
                         with scrub_col1:
-                            st.image(
+                            render_image(
                                 s_face,
                                 caption=f"Scrubbed Face Crop at {s_time:.2f}s (Frame #{s_frame})",
+                                full_width=False,
                             )
 
                         with scrub_col2:
@@ -664,7 +657,7 @@ def render_ui() -> None:
                             )
                             st.markdown("<br>", unsafe_allow_html=True)
                             if st.button(
-                                "🔬 Generate 4-Panel Diagnostics for Selected Frame",
+                                "Generate 4-Panel Diagnostics for Selected Frame",
                                 key="btn_scrub_diag",
                             ):
                                 unwrapped = (
@@ -692,7 +685,7 @@ def render_ui() -> None:
                         label = "Fake" if prob > threshold_slider else "Real"
                         conf = normalize_confidence(prob, threshold_slider)
                         with col:
-                            st.image(face_img)
+                            render_image(face_img, full_width=False)
                             c_color = "#22c55e" if label == "Real" else "#ef4444"
                             st.markdown(
                                 f"<p style='text-align:center; color:{c_color}; font-size: 12px; margin-top:4px;'><b>{label}</b><br>{conf:.1f}%</p>",
@@ -707,8 +700,8 @@ def render_ui() -> None:
                 Dual-Stream Deepfake Detector • PyTorch 2.x • ConvNeXt-Small + SRM/Bayar 2D FFT Gated Fusion
             </p>
             <p>
-                <a href='https://github.com/yyouretoast/deepfake-detection' target='_blank' style='color: #60a5fa; text-decoration: none; margin-right: 12px;'>📦 GitHub Repository</a>
-                <a href='https://huggingface.co/spaces/yyouretoast/deepfake-detector' target='_blank' style='color: #60a5fa; text-decoration: none;'>🤗 Hugging Face Space</a>
+                <a href='https://github.com/yyouretoast/deepfake-detection' target='_blank' style='color: #60a5fa; text-decoration: none; margin-right: 12px;'>GitHub Repository</a>
+                <a href='https://huggingface.co/spaces/yyouretoast/deepfake-detector' target='_blank' style='color: #60a5fa; text-decoration: none;'>Hugging Face Space</a>
             </p>
         </div>
     """,

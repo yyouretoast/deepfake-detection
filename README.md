@@ -3,7 +3,7 @@ title: Dual-Stream Deepfake Forensics
 colorFrom: blue
 colorTo: purple
 sdk: streamlit
-sdk_version: 1.32.0
+sdk_version: 1.45.0
 app_file: app.py
 pinned: false
 license: mit
